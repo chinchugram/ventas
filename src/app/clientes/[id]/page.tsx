@@ -148,10 +148,11 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
                 <p className="text-slate-500">
                   Venta #{p.ventaNumero}/{p.ventaAnio}
                   {p.ventaAnulada ? " (anulada, no descuenta saldo)" : ""}
+                  {p.anulado ? ` · Pago anulado: ${p.motivoAnulacion ?? ""}` : ""}
                   {p.notas ? ` · ${p.notas}` : ""}
                 </p>
               </div>
-              <p className={`shrink-0 font-semibold tabular-nums ${p.ventaAnulada ? "text-slate-400 line-through" : "text-slate-900"}`}>
+              <p className={`shrink-0 font-semibold tabular-nums ${p.ventaAnulada || p.anulado ? "text-slate-400 line-through" : "text-slate-900"}`}>
                 {fmtMoneda(p.monto)}
               </p>
             </li>

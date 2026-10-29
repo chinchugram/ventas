@@ -36,7 +36,8 @@ async function clientesDesdeBase(): Promise<ClienteListado[]> {
         select: {
           fecha: true,
           totalBruto: true,
-          pagos: { select: { monto: true } },
+          // Los pagos anulados no cuentan en el saldo.
+          pagos: { where: { anuladoEn: null }, select: { monto: true } },
         },
       },
     },
@@ -120,6 +121,9 @@ export type PagoDeCliente = {
   ventaAnio: number;
   /** El pago quedo sobre una venta anulada: se muestra, pero no descuenta saldo. */
   ventaAnulada: boolean;
+  /** El pago se anulo: se muestra tachado, pero no descuenta saldo. */
+  anulado: boolean;
+  motivoAnulacion: string | null;
 };
 
 export type FichaCliente = {
@@ -173,7 +177,7 @@ async function fichaDesdeBase(id: string): Promise<FichaCliente | null> {
           fecha: true,
           estado: true,
           totalBruto: true,
-          pagos: { select: { monto: true } },
+          pagos: { where: { anuladoEn: null }, select: { monto: true } },
         },
       },
       pagos: {
@@ -221,6 +225,8 @@ async function fichaDesdeBase(id: string): Promise<FichaCliente | null> {
       ventaNumero: p.venta.numero,
       ventaAnio: p.venta.anio,
       ventaAnulada: p.venta.estado === "ANULADA",
+      anulado: p.anuladoEn !== null,
+      motivoAnulacion: p.motivoAnulacion,
     })),
     esDemo: false,
   };
@@ -277,6 +283,8 @@ function fichaDemo(id: string): FichaCliente | null {
         ventaNumero: v.numero,
         ventaAnio: v.anio,
         ventaAnulada: false,
+        anulado: false,
+        motivoAnulacion: null,
       })),
     esDemo: true,
   };
