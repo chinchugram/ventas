@@ -4,7 +4,7 @@ Plan de trabajo para que un agente orquestador reparta tareas a subagentes en pa
 Cada **ola** es un conjunto de tareas **independientes entre sí** (no tocan los mismos archivos):
 se lanzan juntas y, cuando todas terminan y se integran, empieza la ola siguiente.
 
-Estado al día de hoy: **Etapa 1 (MVP) y Etapa 2 (stock real) hechas**, en la rama
+Estado al día de hoy: **Etapa 1 (MVP) y Etapa 2 (stock real) hechas, olas 0 a 2 cerradas**, en la rama
 `etapa-2-stock-real`. Esta lista cubre lo que falta para que sea usable en el día a día y las
 etapas 3 a 6 de `docs/01-alcance-funcional.md`.
 
@@ -96,13 +96,13 @@ Al integrar: reemplazar en `demo-data.ts` lo que cada tarea haya dejado como par
 
 Migraciones reservadas: `20260130…`.
 
-- [ ] **2.1 Cobranzas**: registrar pagos sobre una venta existente (varios pagos por venta, nunca más que el
+- [x] **2.1 Cobranzas**: registrar pagos sobre una venta existente (varios pagos por venta, nunca más que el
       saldo), ver y anular un pago, saldo por cliente recalculado. Cambio de estado `PENDIENTE → ENTREGADA`
       en la venta. Dueña de `src/app/cobranzas/**` y de acciones nuevas en `src/app/ventas/[id]/`.
-- [ ] **2.2 Lista de reposición**: materiales bajo mínimo con cantidad sugerida (hasta mínimo × factor
+- [x] **2.2 Lista de reposición**: materiales bajo mínimo con cantidad sugerida (hasta mínimo × factor
       configurable) y costo estimado de la compra; botón que abre `Nueva compra` con las líneas cargadas.
       Cierra la etapa 2. Dueña de `src/app/reposicion/**`.
-- [ ] **2.3 Respaldo automático**: `db:backup` ya existe; agregar rotación programada (cron o servicio del
+- [x] **2.3 Respaldo automático**: `db:backup` ya existe; agregar rotación programada (cron o servicio del
       compose), prueba de restauración documentada y aviso en pantalla si el último respaldo es viejo.
       Dueña de `scripts/**`, `docker-compose.yml`, `src/lib/respaldo-estado.ts`.
 

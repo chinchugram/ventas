@@ -84,6 +84,7 @@ los botones no responden).
 | [`docs/01-alcance-funcional.md`](docs/01-alcance-funcional.md) | Qué hace el MVP, qué NO hace, y las etapas siguientes |
 | [`docs/02-modelo-datos.md`](docs/02-modelo-datos.md) | Entidades, decisiones de diseño y los cálculos derivados |
 | [`docs/03-stack-y-decisiones.md`](docs/03-stack-y-decisiones.md) | Stack, con el porqué de cada elección |
+| [`docs/05-respaldos.md`](docs/05-respaldos.md) | Respaldo diario, restauración y prueba de restauración |
 
 ---
 
@@ -133,7 +134,9 @@ el stock vuelve exactamente como salió.
 Sin base de datos (o sin datos cargados) la pantalla funciona como **simulación en modo demo**:
 muestra el comprobante que se generaría, con un aviso, sin escribir nada.
 
-Todavía no hay pantalla para registrar cobros posteriores sobre una venta existente.
+En `/ventas/[id]` también se registran cobros posteriores (varios por venta, nunca más que el
+saldo), se anula un pago (queda tachado con su motivo y deja de contar) y se marca la venta como
+entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 
 ---
 
@@ -151,6 +154,8 @@ Todavía no hay pantalla para registrar cobros posteriores sobre una venta exist
 | `/catalogo/nuevo`, `/catalogo/[id]` | Alta y edición de artículo con editor de receta y costo/margen en vivo |
 | `/materiales` | Stock, valorización y avisos de reposición |
 | `/materiales/[id]` | Libro de movimientos del material y ajuste por conteo físico |
+| `/reposicion` | Materiales en o bajo el mínimo: cuánto comprar (mínimo × factor), costo estimado y botón que arma la compra |
+| `/cobranzas` | Quién debe, cuánto y desde cuándo; pagos recientes |
 | `/materiales/nuevo`, `/materiales/[id]/editar` | Alta y edición; al cambiar el costo muestra qué artículos cambian de margen |
 | `/configuracion` | Nombre del negocio, costo/hora de mano de obra, IVA por defecto, margen objetivo y máquinas |
 | `/compras` | Historial de compras; `/compras/nueva` registra una (suma stock y actualiza el costo) |
@@ -174,7 +179,10 @@ el mostrador con el teléfono en la mano.
 | `npm run db:seed` | Cargar datos de ejemplo |
 | `npm run db:reset` | **Borra todo** y vuelve a migrar + sembrar |
 | `npm run db:studio` | Prisma Studio, para mirar la base |
-| `npm run db:backup` | `pg_dump` a `backups/`, con rotación de 30 archivos |
+| `npm run db:backup` | `pg_dump` a `backups/`, con rotación de 30 archivos (el servicio `backup` del compose lo hace solo, una vez por día) |
+| `npm run db:restore -- ARCHIVO` | Restaura un respaldo (pide confirmar si pisa una base existente). Ver `docs/05-respaldos.md` |
+| `npm run test:respaldo` / `test:respaldo:restaurar` | Lógica del aviso de respaldo viejo / prueba de restauración de punta a punta en una base descartable |
+| `npm run test:cobranzas` / `test:cobranzas:db` / `test:reposicion` | Cobros y lista de reposición |
 | `npm run test:costeo` | Verifica el motor de costeo contra 15 números conocidos |
 | `npm run test:stock` | Verifica las cuentas de compras y stock contra números conocidos |
 | `npm run test:integridad` | Verifica que los CHECK constraints rechazan datos inválidos |
@@ -228,9 +236,10 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 
 - [x] Guardado real de la venta: numeración correlativa por año, ítems, costo congelado y descuento de stock
 - [x] Formularios de alta/edición de clientes, artículos, materiales y recetas (ola 1 de `docs/04-checklist-olas.md`)
-- [ ] Registro de pagos sobre ventas existentes y cambio de estado (ola 2)
+- [x] Registro de pagos sobre ventas existentes, anulación de pagos y cambio de estado (ola 2)
 - [x] Página de configuración (costo/hora de mano de obra, IVA, margen objetivo) y máquinas (ola 1)
-- [ ] Backup automático diario (ola 2)
+- [x] Backup automático diario (ola 2): servicio `backup` del compose, restauración probada y aviso en pantalla. Ver `docs/05-respaldos.md`
+- [x] Lista de reposición sugerida (ola 2): cierra la etapa 2
 
 El plan completo, por olas y pensado para repartir a subagentes en paralelo, está en
 `docs/04-checklist-olas.md`.

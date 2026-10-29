@@ -12,7 +12,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate",
-    "db:up": "docker compose up -d db",
+    "db:up": "docker compose up -d db backup",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f db",
     "db:generate": "prisma generate",
@@ -22,6 +22,7 @@
     "db:reset": "prisma migrate reset --force && prisma db seed",
     "db:studio": "prisma studio",
     "db:backup": "sh scripts/backup.sh",
+    "db:restore": "sh scripts/restaurar.sh",
     "test:costeo": "tsx scripts/verificar-costeo.ts",
     "demo:video": "tsx scripts/grabar-demo.ts",
     "test:stock": "tsx scripts/verificar-stock.ts",
@@ -37,7 +38,9 @@
     "test:configuracion:db": "tsx scripts/test-configuracion.ts",
     "test:cobranzas": "tsx scripts/verificar-cobranzas.ts",
     "test:cobranzas:db": "tsx scripts/test-cobranzas.ts",
-    "test:reposicion": "tsx scripts/verificar-reposicion.ts"
+    "test:reposicion": "tsx scripts/verificar-reposicion.ts",
+    "test:respaldo": "tsx scripts/verificar-respaldo.ts",
+    "test:respaldo:restaurar": "sh scripts/probar-restauracion.sh"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
