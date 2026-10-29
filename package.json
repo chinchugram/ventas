@@ -30,6 +30,8 @@
     "demo:video": "tsx scripts/grabar-demo.ts",
     "test:stock": "tsx scripts/verificar-stock.ts",
     "test:integridad": "sh scripts/test-integridad.sh",
+    "test:precios": "tsx scripts/verificar-precios.ts",
+    "test:precios:db": "tsx scripts/test-precios.ts",
     "test:acciones": "tsx scripts/test-acciones.ts",
     "test:cuit": "tsx scripts/verificar-cuit.ts",
     "test:clientes": "tsx scripts/test-clientes.ts",

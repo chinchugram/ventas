@@ -1,8 +1,10 @@
-import { CERO, d, fmtNumero, type Dinero } from "@/lib/money";
+import { aCosto, CERO, d, fmtNumero, type Dinero } from "@/lib/money";
 import { ErrorDeNegocio } from "@/lib/acciones";
 import { costearLineaVenta, totalizarVenta } from "@/lib/costing";
 import { configNumero, recetaResuelta } from "@/lib/receta";
+import { resolverPrecio } from "@/lib/precios";
 import { ETIQUETA_UNIDAD } from "@/lib/unidades";
+import { cargarListaDeCliente } from "./listas-precios";
 import type { Tx } from "./tx";
 
 export type MetodoPago = "EFECTIVO" | "TRANSFERENCIA" | "TARJETA" | "OTRO";
@@ -12,7 +14,16 @@ export type VentaNueva = {
   fecha: Date;
   observaciones: string | null;
   entregada: boolean;
-  items: { articuloId: string; cantidad: Dinero }[];
+  items: {
+    articuloId: string;
+    cantidad: Dinero;
+    /**
+     * Override del precio unitario: SOLO lo pasa el servidor (por ejemplo al
+     * convertir un presupuesto con el precio acordado), nunca un formulario.
+     * Sin override, el precio sale de `resolverPrecio` segun la lista del cliente.
+     */
+    precioUnitario?: Dinero;
+  }[];
   pago: { monto: Dinero; metodo: MetodoPago } | null;
   /** Momento de los movimientos de stock. Por defecto, ahora (el seed lo fija). */
   momento?: Date;
@@ -27,9 +38,9 @@ export type VentaRegistrada = {
 };
 
 /**
- * Confirma una venta. Todo se recalcula a partir de la base: precio, IVA y
- * costo de receta del momento. Lo que llega de afuera es solo que se vendio,
- * cuanto y a quien.
+ * Confirma una venta. Todo se recalcula a partir de la base: precio (catalogo o
+ * lista del cliente, ver `resolverPrecio`), IVA y costo de receta del momento.
+ * Lo que llega de afuera es solo que se vendio, cuanto y a quien.
  *
  * Numera la venta, congela los costos, descuenta el stock de los materiales de
  * cada receta (con un movimiento por material) y registra el pago inicial.
@@ -43,10 +54,17 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
   const anio = fecha.getUTCFullYear();
   if (venta.items.length === 0) throw new ErrorDeNegocio("Agregá al menos un artículo");
 
+  for (const l of venta.items) {
+    if (l.precioUnitario !== undefined && l.precioUnitario.lt(0)) {
+      throw new ErrorDeNegocio("El precio unitario no puede ser negativo.");
+    }
+  }
+
   const cliente = await tx.cliente.findFirst({ where: { id: clienteId, activo: true }, select: { id: true } });
   if (!cliente) throw new ErrorDeNegocio("El cliente no existe o está dado de baja.");
 
   const ids = [...new Set(venta.items.map((l) => l.articuloId))];
+  const lista = await cargarListaDeCliente(tx, clienteId, ids);
   const articulos = await tx.articulo.findMany({
     where: { id: { in: ids }, activo: true },
     include: {
@@ -64,9 +82,13 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
     const articulo = porId.get(l.articuloId)!;
     const componentes = articulo.receta?.componentes ?? [];
     const receta = recetaResuelta(componentes, costoHora);
+    const precioUnitario =
+      l.precioUnitario !== undefined
+        ? aCosto(l.precioUnitario)
+        : resolverPrecio({ articuloId: articulo.id, precioCatalogo: articulo.precioVenta, lista }).precio;
     const cal = costearLineaVenta({
       cantidad: l.cantidad,
-      precioUnitario: articulo.precioVenta,
+      precioUnitario,
       ivaPct: articulo.ivaPct,
       costoUnitario: receta.costoTotal,
     });
@@ -83,7 +105,7 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
       articuloId: articulo.id,
       descripcion: articulo.nombre,
       cantidad: l.cantidad,
-      precioUnitario: articulo.precioVenta,
+      precioUnitario,
       ivaPct: articulo.ivaPct,
       subtotalNeto: cal.subtotalNeto,
       subtotalIVA: cal.subtotalIVA,

@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { aMoneda, d, fmtMoneda, fmtNumero, fmtPorcentaje, type Dinero } from "@/lib/money";
 import { registrarVenta } from "@/app/ventas/actions";
+import { preciosParaCliente, type PreciosCliente } from "@/app/ventas/nueva/actions";
+import type { OrigenPrecio } from "@/lib/precios";
 import {
   calcularMargen,
   costearLineaVenta,
@@ -20,6 +22,11 @@ import {
  * (`lib/costing.ts`), pero son informativos: al confirmar, el servidor recalcula
  * todo desde la base. Sin base de datos (modo demo) la venta se simula en
  * memoria y no se guarda nada.
+ *
+ * Precios por cliente: al elegir cliente se pide al servidor el precio de cada
+ * articulo segun su lista (`preciosParaCliente`, solo precios, nunca costos).
+ * Es informativo: `registrarVenta` recalcula el precio al confirmar. En modo
+ * demo no hay listas y se usa el precio de catalogo.
  */
 
 export type ComponenteDTO = {
@@ -54,6 +61,9 @@ type LineaCalculada = {
   linea: Linea;
   articulo: ArticuloDTO;
   cantidad: Dinero;
+  /** Precio unitario que se cobra a este cliente (catalogo o lista). */
+  precioUnitario: Dinero;
+  origenPrecio: OrigenPrecio;
   /** Resultado crudo del motor de costeo: neto, IVA, costo y ganancia de la linea. */
   cal: ReturnType<typeof costearLineaVenta>;
   margen: Margen;
@@ -91,6 +101,36 @@ export function NuevaVentaForm({
   const [entregada, setEntregada] = useState(true);
   const [guardando, iniciarGuardado] = useTransition();
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+  const [preciosCargados, setPreciosCargados] = useState<(PreciosCliente & { clienteId: string }) | null>(null);
+  const [reintento, setReintento] = useState(0);
+
+  // Precios del cliente elegido. Mientras llegan (o si fallan) no se deja guardar:
+  // el comprobante muestra estos precios y tienen que ser los que va a usar el servidor.
+  useEffect(() => {
+    if (esModoDemo || !clienteId) return;
+    let vigente = true;
+    preciosParaCliente({ clienteId, articuloIds: articulos.map((a) => a.id) })
+      .then((r) => vigente && setPreciosCargados({ ...r, clienteId }))
+      .catch(
+        () =>
+          vigente &&
+          setPreciosCargados({ ok: false, error: "No se pudo conectar con el servidor.", clienteId }),
+      );
+    return () => {
+      vigente = false;
+    };
+  }, [clienteId, articulos, esModoDemo, reintento]);
+
+  const preciosActuales = preciosCargados?.clienteId === clienteId ? preciosCargados : null;
+  const repreciando = !esModoDemo && clienteId !== "" && preciosActuales === null;
+  const errorPrecios = preciosActuales && !preciosActuales.ok ? preciosActuales.error : null;
+  const listaCliente = preciosActuales?.ok ? preciosActuales.lista : null;
+
+  /** Precio unitario del articulo para el cliente elegido. */
+  function precioDe(articulo: ArticuloDTO): { precio: string; origen: OrigenPrecio } {
+    const resuelto = preciosActuales?.ok ? preciosActuales.precios[articulo.id] : undefined;
+    return resuelto ?? { precio: articulo.precioVenta, origen: "CATALOGO" };
+  }
 
   function cargarEjemploDemo() {
     // Solo artículos con receta: uno sin receta tiene costo 0 y mostraría un
@@ -128,9 +168,10 @@ export function NuevaVentaForm({
       if (!articulo) continue;
 
       const cantidad = d(linea.cantidad || "0");
+      const { precio, origen } = precioDe(articulo);
       const cal = costearLineaVenta({
         cantidad,
-        precioUnitario: d(articulo.precioVenta),
+        precioUnitario: d(precio),
         ivaPct: d(articulo.ivaPct),
         costoUnitario: d(articulo.costoUnitario),
       });
@@ -139,6 +180,8 @@ export function NuevaVentaForm({
         linea,
         articulo,
         cantidad,
+        precioUnitario: d(precio),
+        origenPrecio: origen,
         cal,
         margen: calcularMargen({
           precioBruto: cal.subtotalBruto,
@@ -150,7 +193,7 @@ export function NuevaVentaForm({
     }
 
     return salida;
-  }, [lineas, porId]);
+  }, [lineas, porId, preciosActuales]);
 
   // Los totales salen de `totalizarVenta`, el mismo helper que usa la version que
   // guarda. El IVA se acumula linea por linea a proposito: cada articulo tiene su
@@ -274,6 +317,25 @@ export function NuevaVentaForm({
             </option>
           ))}
         </select>
+        {repreciando ? (
+          <p role="status" className="mt-1 text-xs text-slate-500">
+            Actualizando precios…
+          </p>
+        ) : null}
+        {errorPrecios ? (
+          <p role="alert" className="mt-1 text-sm text-red-700">
+            {errorPrecios}{" "}
+            <button type="button" onClick={() => setReintento((n) => n + 1)} className="font-semibold underline">
+              Reintentar
+            </button>
+          </p>
+        ) : null}
+        {listaCliente ? (
+          <p className="mt-1 text-xs text-marca-texto">
+            Lista de precios: {listaCliente.nombre}
+            {d(listaCliente.descuentoPct).gt(0) ? ` (−${fmtNumero(listaCliente.descuentoPct)}%)` : ""}
+          </p>
+        ) : null}
       </section>
 
       <section>
@@ -304,7 +366,7 @@ export function NuevaVentaForm({
                   }`}
                 >
                   <span>{a.nombre}</span>
-                  <span className="text-slate-500">{fmtMoneda(a.precioVenta)}</span>
+                  <span className="text-slate-500">{fmtMoneda(precioDe(a).precio)}</span>
                   {!a.recetaConfiable ? (
                     <span className="text-xs font-semibold text-amber-700">sin receta</span>
                   ) : null}
@@ -368,7 +430,12 @@ export function NuevaVentaForm({
                   <div>
                     <span className="mb-1 block text-xs font-medium text-slate-700">Unitario</span>
                     <p className="py-2.5 text-sm tabular-nums text-slate-600">
-                      {fmtMoneda(l.articulo.precioVenta)}
+                      {fmtMoneda(l.precioUnitario)}
+                      {l.origenPrecio !== "CATALOGO" ? (
+                        <span className="ml-1 text-xs font-semibold text-marca-texto">
+                          {l.origenPrecio === "ESPECIFICO" ? "precio de lista" : "con descuento"}
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                   <div>
@@ -516,7 +583,7 @@ export function NuevaVentaForm({
         total={totales.totalBruto}
         ganancia={totales.ganancia}
         margenPct={totales.margenPct}
-        habilitado={hayLineas && clienteId !== "" && !guardando}
+        habilitado={hayLineas && clienteId !== "" && !guardando && !repreciando && !errorPrecios}
         guardando={guardando}
         error={errorGuardado}
         onConfirmar={confirmar}
@@ -600,7 +667,7 @@ function ComprobanteSimulado({
                 </p>
               </div>
               <p className="mt-0.5 text-sm text-slate-500">
-                {fmtNumero(l.cantidad)} × {fmtMoneda(l.articulo.precioVenta)}
+                {fmtNumero(l.cantidad)} × {fmtMoneda(l.precioUnitario)}
               </p>
             </li>
           ))}

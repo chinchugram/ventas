@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCliente } from "@/lib/queries/clientes";
 import { formatearCuit } from "@/lib/cuit";
+import { getListaDeCliente, getListasParaElegir } from "@/lib/queries/listas-precios";
 import { Seccion } from "@/components/ui";
 import { ClienteForm } from "../../_componentes/cliente-form";
 
@@ -11,6 +12,8 @@ export default async function EditarClientePage({ params }: { params: Promise<{ 
   const { id } = await params;
   const cliente = await getCliente(id);
   if (!cliente) notFound();
+  const actual = await getListaDeCliente(cliente.id);
+  const listas = await getListasParaElegir(actual?.id ?? null);
 
   return (
     <>
@@ -29,6 +32,7 @@ export default async function EditarClientePage({ params }: { params: Promise<{ 
       <ClienteForm
         id={cliente.id}
         esModoDemo={cliente.esDemo}
+        listas={listas.map((l) => ({ valor: l.id, etiqueta: l.activo ? l.nombre : `${l.nombre} (de baja)` }))}
         inicial={{
           nombre: cliente.nombre,
           cuit: formatearCuit(cliente.cuit),
@@ -36,6 +40,7 @@ export default async function EditarClientePage({ params }: { params: Promise<{ 
           email: cliente.email ?? "",
           direccion: cliente.direccion ?? "",
           notas: cliente.notas ?? "",
+          listaPrecioId: actual?.id ?? "",
         }}
       />
     </>

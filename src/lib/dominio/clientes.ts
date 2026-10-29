@@ -10,6 +10,11 @@ export type DatosCliente = {
   email: string | null;
   direccion: string | null;
   notas: string | null;
+  /**
+   * Lista de precios del cliente. `null` la quita; `undefined` (no informado)
+   * no la toca al editar y deja al cliente nuevo sin lista.
+   */
+  listaPrecioId?: string | null;
 };
 
 /**
@@ -47,9 +52,21 @@ async function verificarCuitLibre(tx: Tx, cuit: string | null, excepto?: string)
   }
 }
 
+/**
+ * La lista tiene que existir y estar activa; una lista de baja solo se conserva
+ * si el cliente ya la tenia (`listaActual`), para poder editar sus otros datos.
+ */
+async function verificarLista(tx: Tx, listaPrecioId: string | null | undefined, listaActual: string | null = null) {
+  if (!listaPrecioId || listaPrecioId === listaActual) return;
+  const lista = await tx.listaPrecio.findUnique({ where: { id: listaPrecioId }, select: { activo: true } });
+  if (!lista) throw new ErrorDeNegocio("La lista de precios no existe.");
+  if (!lista.activo) throw new ErrorDeNegocio("La lista de precios está dada de baja.");
+}
+
 export async function crearClienteEnTx(tx: Tx, datos: DatosCliente): Promise<{ id: string }> {
   const cuit = cuitParaGuardar(datos.cuit);
   await verificarCuitLibre(tx, cuit);
+  await verificarLista(tx, datos.listaPrecioId);
   const creado = await tx.cliente.create({
     data: { ...datos, nombre: datos.nombre.trim(), cuit },
     select: { id: true },
@@ -58,10 +75,11 @@ export async function crearClienteEnTx(tx: Tx, datos: DatosCliente): Promise<{ i
 }
 
 export async function editarClienteEnTx(tx: Tx, id: string, datos: DatosCliente): Promise<void> {
-  const actual = await tx.cliente.findUnique({ where: { id }, select: { cuit: true } });
+  const actual = await tx.cliente.findUnique({ where: { id }, select: { cuit: true, listaPrecioId: true } });
   if (!actual) throw new ErrorDeNegocio("El cliente no existe.");
   const cuit = cuitParaGuardar(datos.cuit, actual.cuit);
   await verificarCuitLibre(tx, cuit, id);
+  await verificarLista(tx, datos.listaPrecioId, actual.listaPrecioId);
   await tx.cliente.update({ where: { id }, data: { ...datos, nombre: datos.nombre.trim(), cuit } });
 }
 
