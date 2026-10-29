@@ -63,6 +63,8 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
         </Link>
       </div>
 
+      <p className="mb-4 text-sm text-slate-500">Registrado por {venta.registradoPor ?? "—"}</p>
+
       <div className="mb-4 grid grid-cols-2 gap-3">
         <Tarjeta titulo="Total" valor={fmtMoneda(venta.totalBruto)} detalle={`IVA ${fmtMoneda(venta.totalIVA)}`} />
         <Tarjeta
@@ -118,6 +120,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
                         {fmtFecha(p.fecha)} · {ETIQUETA_METODO[p.metodo] ?? p.metodo}
                       </p>
                       {p.notas ? <p className="break-words text-slate-500">{p.notas}</p> : null}
+                      <p className="text-xs text-slate-500">Registrado por {p.registradoPor ?? "—"}</p>
                       {pagoAnulado ? (
                         <p className="break-words text-xs text-red-700">
                           Anulado el {fechaHoraAR(p.anuladoEn!)}: {p.motivoAnulacion}

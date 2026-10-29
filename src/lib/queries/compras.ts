@@ -13,6 +13,8 @@ export type CompraListada = {
   proveedor: string;
   comprobante: string | null;
   total: Dinero;
+  /** Nombre de quien la cargo; null = historico (se muestra "—"). */
+  registradoPor: string | null;
   items: { material: string; unidad: string; cantidad: Dinero; costoUnitario: Dinero }[];
 };
 
@@ -23,6 +25,8 @@ export type MovimientoListado = {
   cantidad: Dinero;
   stockResultante: Dinero;
   motivo: string | null;
+  /** Nombre de quien hizo el movimiento; null = historico (se muestra "—"). */
+  registradoPor: string | null;
 };
 
 
@@ -40,6 +44,7 @@ async function comprasDesdeBase(limite: number): Promise<CompraListada[]> {
     take: limite,
     include: {
       items: { include: { material: { select: { nombre: true, unidad: true } } } },
+      usuario: { select: { nombre: true } },
     },
   });
 
@@ -49,6 +54,7 @@ async function comprasDesdeBase(limite: number): Promise<CompraListada[]> {
     proveedor: c.proveedor,
     comprobante: c.comprobante,
     total: c.total,
+    registradoPor: c.usuario?.nombre ?? null,
     items: c.items.map((i) => ({
       material: i.material.nombre,
       unidad: ETIQUETA_UNIDAD[i.material.unidad] ?? i.material.unidad,
@@ -72,6 +78,7 @@ async function movimientosDesdeBase(materialId: string, limite: number): Promise
     where: { materialId },
     orderBy: { creadoEn: "desc" },
     take: limite,
+    include: { usuario: { select: { nombre: true } } },
   });
   return movimientos.map((m) => ({
     id: m.id,
@@ -80,5 +87,6 @@ async function movimientosDesdeBase(materialId: string, limite: number): Promise
     cantidad: m.cantidad,
     stockResultante: m.stockResultante,
     motivo: m.motivo,
+    registradoPor: m.usuario?.nombre ?? null,
   }));
 }

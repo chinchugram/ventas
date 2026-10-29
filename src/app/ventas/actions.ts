@@ -4,6 +4,7 @@ import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
 import { d } from "@/lib/money";
 import { decimalPositivo, hoyArgentina, mensajeDeError, primerError, SIN_BASE, textoOpcional } from "@/lib/acciones";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { registrarVentaEnTx } from "@/lib/dominio/ventas";
 import { revalidarVentas } from "@/lib/revalidar";
 
@@ -39,11 +40,15 @@ export async function registrarVenta(datos: DatosVenta): Promise<ResultadoVenta>
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   const { items, pago, ...resto } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
   try {
     const { id, numero, anio, advertencias } = await prisma.$transaction((tx) =>
       registrarVentaEnTx(tx, {
         ...resto,
         fecha: hoyArgentina(),
+        usuarioId,
         items: items.map((i) => ({ articuloId: i.articuloId, cantidad: d(i.cantidad) })),
         pago: pago ? { monto: d(pago.monto), metodo: pago.metodo } : null,
       }),

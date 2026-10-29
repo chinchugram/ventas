@@ -13,6 +13,8 @@ export type CompraNueva = {
   items: { materialId: string; cantidad: Dinero; costoUnitario: Dinero }[];
   /** Momento del movimiento de stock. Por defecto, ahora (el seed lo fija). */
   momento?: Date;
+  /** Quien la carga. Se guarda en la compra y en sus movimientos. Ausente = sin usuario. */
+  usuarioId?: string | null;
 };
 
 /**
@@ -25,6 +27,7 @@ export type CompraNueva = {
  */
 export async function registrarCompraEnTx(tx: Tx, compra: CompraNueva): Promise<{ id: string }> {
   const { items, actualizarCosto, momento } = compra;
+  const usuarioId = compra.usuarioId ?? null;
   if (items.length === 0) throw new ErrorDeNegocio("Agregá al menos un material");
 
   const ids = [...new Set(items.map((l) => l.materialId))];
@@ -39,6 +42,7 @@ export async function registrarCompraEnTx(tx: Tx, compra: CompraNueva): Promise<
       comprobante: compra.comprobante,
       notas: compra.notas,
       total: totalizarCompra(lineas),
+      usuarioId,
       items: {
         create: lineas.map((l) => ({
           materialId: l.materialId,
@@ -67,6 +71,7 @@ export async function registrarCompraEnTx(tx: Tx, compra: CompraNueva): Promise<
         stockResultante: material.stockActual,
         motivo: `Compra a ${compra.proveedor}`,
         compraId: creada.id,
+        usuarioId,
         ...(momento ? { creadoEn: momento } : {}),
       },
     });

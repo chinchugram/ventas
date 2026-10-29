@@ -165,15 +165,20 @@ model Venta {
   totalBruto  Decimal     @default(0) @db.Decimal(14, 2)
   costoTotal  Decimal     @default(0) @db.Decimal(14, 2)
 
+  /// Quien la cargo. NULL = historico, de antes de los usuarios (se muestra "—").
+  usuarioId String? @db.Uuid
+
   creadoEn      DateTime @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
   cliente   Cliente     @relation(fields: [clienteId], references: [id])
+  usuario   Usuario?    @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
   items     VentaItem[]
   pagos     Pago[]
   movimientos MovimientoStock[]
 
   @@unique([anio, numero])
+  @@index([usuarioId])
   @@index([fecha])
   @@index([clienteId])
   @@index([estado])
@@ -217,15 +222,20 @@ model Pago {
   anuladoEn       DateTime? @db.Timestamptz(3)
   motivoAnulacion String?
 
+  /// Quien registro el cobro. NULL = historico (se muestra "—").
+  usuarioId String? @db.Uuid
+
   creadoEn      DateTime @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
-  venta   Venta   @relation(fields: [ventaId], references: [id], onDelete: Cascade)
-  cliente Cliente @relation(fields: [clienteId], references: [id])
+  venta   Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  cliente Cliente  @relation(fields: [clienteId], references: [id])
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
 
   @@index([ventaId])
   @@index([clienteId])
   @@index([fecha])
+  @@index([usuarioId])
   @@map("pagos")
 }
 
@@ -244,14 +254,18 @@ model Compra {
   comprobante String?
   notas       String?
   total       Decimal  @default(0) @db.Decimal(14, 2)
+  /// Quien la cargo. NULL = historico (se muestra "—").
+  usuarioId   String?  @db.Uuid
 
   creadoEn      DateTime @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
+  usuario     Usuario?     @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
   items       CompraItem[]
   movimientos MovimientoStock[]
 
   @@index([fecha])
+  @@index([usuarioId])
   @@map("compras")
 }
 
@@ -283,15 +297,19 @@ model MovimientoStock {
   motivo          String?
   compraId        String?        @db.Uuid
   ventaId         String?        @db.Uuid
+  /// Quien hizo el movimiento (o la operacion que lo genero). NULL = historico.
+  usuarioId       String?        @db.Uuid
   creadoEn        DateTime       @default(now()) @db.Timestamptz(3)
 
   material Material @relation(fields: [materialId], references: [id])
   compra   Compra?  @relation(fields: [compraId], references: [id])
   venta    Venta?   @relation(fields: [ventaId], references: [id])
+  usuario  Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
 
   @@index([materialId, creadoEn])
   @@index([compraId])
   @@index([ventaId])
+  @@index([usuarioId])
   @@map("movimientos_stock")
 }
 
@@ -326,6 +344,12 @@ model Usuario {
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
   sesiones Sesion[]
+
+  // Trazabilidad (4.2): lo que cargo cada usuario. Con historial no se borra.
+  ventas      Venta[]
+  pagos       Pago[]
+  compras     Compra[]
+  movimientos MovimientoStock[]
 
   @@map("usuarios")
 }

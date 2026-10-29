@@ -5,6 +5,7 @@ import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
 import { d } from "@/lib/money";
 import { decimalNoNegativo, mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { ajustarStockEnTx } from "@/lib/dominio/stock";
 
 const esquema = z.object({
@@ -20,9 +21,12 @@ export async function ajustarStock(datos: z.input<typeof esquema>): Promise<Resu
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   const { materialId, motivo } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
   try {
     await prisma.$transaction((tx) =>
-      ajustarStockEnTx(tx, { materialId, motivo, stockContado: d(parsed.data.stockContado) }),
+      ajustarStockEnTx(tx, { materialId, motivo, usuarioId, stockContado: d(parsed.data.stockContado) }),
     );
   } catch (error) {
     console.error("[ajustarStock]", error);
