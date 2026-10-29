@@ -111,7 +111,7 @@ async function main() {
     prisma.cliente.create({
       data: {
         nombre: "Ferretería El Tornillo",
-        cuit: "30712345678",
+        cuit: "30712345671",
         telefono: "3514123456",
         email: "compras@eltornillo.com.ar",
         direccion: "Av. Colon 1234, Cordoba",
@@ -120,7 +120,7 @@ async function main() {
     prisma.cliente.create({
       data: {
         nombre: "Café La Esquina",
-        cuit: "20345678901",
+        cuit: "20345678906",
         telefono: "3514556677",
         email: "cafe@laesquina.com",
         direccion: "Bv. San Juan 890, Cordoba",
@@ -136,7 +136,7 @@ async function main() {
     prisma.cliente.create({
       data: {
         nombre: "Gimnasio Fuerza Total",
-        cuit: "30555555555",
+        cuit: "30555555551",
         telefono: "3514887766",
       },
     }),
