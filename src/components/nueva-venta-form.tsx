@@ -1,0 +1,743 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { aMoneda, d, fmtMoneda, fmtNumero, fmtPorcentaje, type Dinero } from "@/lib/money";
+import {
+  calcularMargen,
+  costearLineaVenta,
+  estadoPago,
+  totalizarVenta,
+  type Margen,
+  type TotalesVenta,
+} from "@/lib/costing";
+
+/**
+ * MOCKUP de la carga de venta.
+ *
+ * Importa el MISMO motor de costeo que usaria la version real (`lib/costing.ts`).
+ * No hay logica de negocio duplicada ni numeros de Showcase: los margenes que ve
+ * el dueño son los que saldrian de sus propias recetas.
+ */
+
+export type ComponenteDTO = {
+  tipo: "MATERIAL" | "MAQUINA" | "MANO_OBRA";
+  etiqueta: string;
+  cantidad: string;
+  costoUnitario: string;
+  costoTotal: string;
+};
+
+export type ArticuloDTO = {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  precioVenta: string;
+  ivaPct: string;
+  esServicio: boolean;
+  costoUnitario: string;
+  recetaConfiable: boolean;
+  receta: ComponenteDTO[];
+};
+
+export type ClienteDTO = {
+  id: string;
+  nombre: string;
+  cuit: string | null;
+};
+
+type Linea = { id: string; articuloId: string; cantidad: string };
+
+type LineaCalculada = {
+  linea: Linea;
+  articulo: ArticuloDTO;
+  cantidad: Dinero;
+  /** Resultado crudo del motor de costeo: neto, IVA, costo y ganancia de la linea. */
+  cal: ReturnType<typeof costearLineaVenta>;
+  margen: Margen;
+};
+
+const METODOS = [
+  { valor: "EFECTIVO", etiqueta: "Efectivo" },
+  { valor: "TRANSFERENCIA", etiqueta: "Transferencia" },
+  { valor: "TARJETA", etiqueta: "Tarjeta" },
+  { valor: "OTRO", etiqueta: "Otro" },
+] as const;
+
+// Contador para los keys de React. No hace falta un UUID: las lineas de esta
+// pantalla son efimeras, no se persisten.
+let secuenciaLinea = 0;
+
+export function NuevaVentaForm({
+  articulos,
+  clientes,
+  esModoDemo = false,
+}: {
+  articulos: ArticuloDTO[];
+  clientes: ClienteDTO[];
+  esModoDemo?: boolean;
+}) {
+  const [clienteId, setClienteId] = useState(clientes[0]?.id ?? "");
+  const [lineas, setLineas] = useState<Linea[]>([]);
+  const [busqueda, setBusqueda] = useState("");
+  const [verReceta, setVerReceta] = useState<string | null>(null);
+  const [modoCobro, setModoCobro] = useState<"TOTAL" | "PARCIAL">("TOTAL");
+  const [montoParcial, setMontoParcial] = useState("");
+  const [metodo, setMetodo] = useState<string>("EFECTIVO");
+  const [observaciones, setObservaciones] = useState("");
+  const [comprobante, setComprobante] = useState<Simulacion | null>(null);
+
+  function cargarEjemploDemo() {
+    const a1 = articulos[0];
+    if (!a1) return;
+    const a2 = articulos[1] ?? a1;
+    if (clientes[0]) {
+      setClienteId(clientes[0].id);
+    }
+    setLineas([
+      { id: `l${++secuenciaLinea}`, articuloId: a1.id, cantidad: "2" },
+      { id: `l${++secuenciaLinea}`, articuloId: a2.id, cantidad: "25" },
+    ]);
+    setObservaciones("Entrega coordinada para el viernes. Diseños aprobados.");
+    setModoCobro("TOTAL");
+  }
+
+  function limpiarFormulario() {
+    setLineas([]);
+    setMontoParcial("");
+    setObservaciones("");
+    setModoCobro("TOTAL");
+  }
+
+  const porId = useMemo(() => new Map(articulos.map((a) => [a.id, a])), [articulos]);
+  const cliente = clientes.find((c) => c.id === clienteId);
+
+  const lineasCalculadas = useMemo<LineaCalculada[]>(() => {
+    const salida: LineaCalculada[] = [];
+
+    for (const linea of lineas) {
+      const articulo = porId.get(linea.articuloId);
+      if (!articulo) continue;
+
+      const cantidad = d(linea.cantidad || "0");
+      const cal = costearLineaVenta({
+        cantidad,
+        precioUnitario: d(articulo.precioVenta),
+        ivaPct: d(articulo.ivaPct),
+        costoUnitario: d(articulo.costoUnitario),
+      });
+
+      salida.push({
+        linea,
+        articulo,
+        cantidad,
+        cal,
+        margen: calcularMargen({
+          precioBruto: cal.subtotalBruto,
+          costo: cal.costoTotalSnapshot,
+          ivaPct: d(articulo.ivaPct),
+          costoConfiable: articulo.recetaConfiable,
+        }),
+      });
+    }
+
+    return salida;
+  }, [lineas, porId]);
+
+  // Los totales salen de `totalizarVenta`, el mismo helper que usa la version que
+  // guarda. El IVA se acumula linea por linea a proposito: cada articulo tiene su
+  // propia alicuota, y redondear la suma no siempre da lo mismo que sumar lo
+  // redondeado.
+  const totales: TotalesVenta = useMemo(
+    () => totalizarVenta(lineasCalculadas.map((l) => l.cal)),
+    [lineasCalculadas],
+  );
+
+  const cobrado =
+    modoCobro === "TOTAL" ? totales.totalBruto : aMoneda(d(montoParcial || "0"));
+  const saldo = aMoneda(totales.totalBruto.minus(cobrado));
+  const hayLineas = lineasCalculadas.length > 0;
+
+  const articulosFiltrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return articulos;
+    return articulos.filter((a) => a.nombre.toLowerCase().includes(q));
+  }, [articulos, busqueda]);
+
+  const articulosYaCargados = useMemo(
+    () => new Set(lineasCalculadas.map((l) => l.articulo.id)),
+    [lineasCalculadas],
+  );
+
+  function agregar(articuloId: string) {
+    // Tocar un articulo que ya esta en la venta suma 1 a la linea existente en
+    // lugar de crear un renglon duplicado: es lo que uno espera en el mostrador.
+    const existente = lineas.find((l) => l.articuloId === articuloId);
+    if (existente) {
+      setLineas(
+        lineas.map((l) =>
+          l.id === existente.id ? { ...l, cantidad: d(l.cantidad || "0").plus(1).toString() } : l,
+        ),
+      );
+      return;
+    }
+    setLineas([...lineas, { id: `l${++secuenciaLinea}`, articuloId, cantidad: "1" }]);
+  }
+
+  function cambiarCantidad(id: string, valor: string) {
+    // Se acepta cualquier texto: limpiar el campo a "" tiene que ser legal o el
+    // input se traba en el celular en el momento de editar.
+    setLineas(lineas.map((l) => (l.id === id ? { ...l, cantidad: valor } : l)));
+  }
+
+  function quitar(id: string) {
+    setLineas(lineas.filter((l) => l.id !== id));
+  }
+
+  function confirmar() {
+    setComprobante({
+      numero: Math.floor(Math.random() * 900 + 100),
+      cliente: cliente?.nombre ?? "",
+      lineas: lineasCalculadas,
+      totales,
+      cobrado,
+      metodo,
+      estadoPago: estadoPago(totales.totalBruto, cobrado),
+      observaciones,
+    });
+  }
+
+  if (comprobante) {
+    return (
+      <ComprobanteSimulado
+        sim={comprobante}
+        onVolver={() => setComprobante(null)}
+        onEmpezarDeNuevo={() => {
+          setComprobante(null);
+          setLineas([]);
+          setMontoParcial("");
+          setObservaciones("");
+          setModoCobro("TOTAL");
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6 pb-32">
+      <BannerMockup
+        onCargarEjemplo={cargarEjemploDemo}
+        onLimpiar={limpiarFormulario}
+        tieneLineas={lineas.length > 0}
+        esModoDemo={esModoDemo}
+      />
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+          Cliente
+        </h2>
+        <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+          {clientes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nombre}
+              {c.cuit ? ` · ${c.cuit}` : ""}
+            </option>
+          ))}
+        </select>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+          Agregar articulo
+        </h2>
+        <input
+          type="search"
+          placeholder="Buscar en el catalogo"
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          className="mb-2"
+        />
+
+        <ul className="flex flex-wrap gap-2">
+          {articulosFiltrados.map((a) => {
+            const yaCargado = articulosYaCargados.has(a.id);
+            return (
+              <li key={a.id}>
+                <button
+                  type="button"
+                  onClick={() => agregar(a.id)}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
+                    yaCargado
+                      ? "border-marca bg-marca-claro text-marca"
+                      : "border-slate-300 bg-white text-slate-800"
+                  }`}
+                >
+                  <span>{a.nombre}</span>
+                  <span className="text-slate-500">{fmtMoneda(a.precioVenta)}</span>
+                  {!a.recetaConfiable ? (
+                    <span className="text-xs font-semibold text-amber-600">sin receta</span>
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+
+        {articulosFiltrados.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">Ningun articulo coincide con la busqueda.</p>
+        ) : null}
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
+            Detalle
+          </h2>
+          <span className="text-sm text-slate-500">
+            {lineasCalculadas.length}{" "}
+            {lineasCalculadas.length === 1 ? "linea" : "lineas"}
+          </span>
+        </div>
+
+        {lineasCalculadas.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+            Todavia no agregaste nada.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {lineasCalculadas.map((l) => (
+              <li key={l.linea.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-medium text-slate-900">{l.articulo.nombre}</p>
+                  <button
+                    type="button"
+                    onClick={() => quitar(l.linea.id)}
+                    className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-red-600"
+                  >
+                    Quitar
+                  </button>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="col-span-2 sm:col-span-1">
+                    <label htmlFor={`cant-${l.linea.id}`} className="text-xs">
+                      Cantidad
+                    </label>
+                    <input
+                      id={`cant-${l.linea.id}`}
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="any"
+                      value={l.linea.cantidad}
+                      onChange={(e) => cambiarCantidad(l.linea.id, e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs">Unitario</label>
+                    <p className="py-2.5 text-sm tabular-nums text-slate-600">
+                      {fmtMoneda(l.articulo.precioVenta)}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs">Total</label>
+                    <p className="py-2.5 text-sm font-semibold tabular-nums text-slate-900">
+                      {fmtMoneda(l.cal.subtotalBruto)}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs">Ganancia</label>
+                    <p
+                      className={`py-2.5 text-sm font-semibold tabular-nums ${
+                        l.margen.costoConfiable ? "text-emerald-700" : "text-amber-600"
+                      }`}
+                    >
+                      {l.margen.costoConfiable
+                        ? fmtMoneda(l.margen.ganancia)
+                        : "costo desconocido"}
+                    </p>
+                  </div>
+                </div>
+
+                {l.articulo.recetaConfiable ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Costo {fmtMoneda(l.cal.costoTotalSnapshot)} · margen{" "}
+                    {fmtPorcentaje(l.margen.margenPct)} · markup{" "}
+                    {fmtPorcentaje(l.margen.markupPct)}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-amber-700">
+                    Este articulo no tiene receta: el costo real se esta suponiendo 0 y el margen
+                    que se ve es optimista.
+                  </p>
+                )}
+
+                {l.articulo.receta.length > 0 ? (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVerReceta(verReceta === l.linea.id ? null : l.linea.id)
+                      }
+                      className="text-xs font-medium text-marca"
+                    >
+                      {verReceta === l.linea.id ? "Ocultar receta" : "Ver receta"}
+                    </button>
+                    {verReceta === l.linea.id ? (
+                      <ul className="mt-2 space-y-1 border-l-2 border-slate-200 pl-3">
+                        {l.articulo.receta.map((c, i) => (
+                          <li key={i} className="text-xs text-slate-600">
+                            {c.etiqueta}: {fmtNumero(c.cantidad)} × {fmtMoneda(c.costoUnitario)} ={" "}
+                            {fmtMoneda(c.costoTotal)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+          Cobro
+        </h2>
+
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <Boton toggle activo={modoCobro === "TOTAL"} onClick={() => setModoCobro("TOTAL")}>
+            Cobro total
+          </Boton>
+          <Boton toggle activo={modoCobro === "PARCIAL"} onClick={() => setModoCobro("PARCIAL")}>
+            Pago parcial
+          </Boton>
+        </div>
+
+        {modoCobro === "PARCIAL" ? (
+          <div className="mb-3">
+            <label htmlFor="monto-parcial">Monto que recibe ahora</label>
+            <input
+              id="monto-parcial"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="any"
+              value={montoParcial}
+              onChange={(e) => setMontoParcial(e.target.value)}
+            />
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-4 gap-2">
+          {METODOS.map((m) => (
+            <Boton key={m.valor} toggle activo={metodo === m.valor} onClick={() => setMetodo(m.valor)}>
+              {m.etiqueta}
+            </Boton>
+          ))}
+        </div>
+
+        <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+          <Fila
+            etiqueta="Total de la venta"
+            valor={fmtMoneda(totales.totalBruto)}
+            fuerte
+          />
+          <Fila etiqueta="Cobrado ahora" valor={fmtMoneda(cobrado)} />
+          <Fila
+            etiqueta="Queda pendiente"
+            valor={fmtMoneda(saldo)}
+            fuerte
+            tono={saldo.cmp(0) > 0 ? "amber" : "slate"}
+          />
+        </div>
+      </section>
+
+      <section>
+        <label htmlFor="obs">Observaciones</label>
+        <textarea
+          id="obs"
+          rows={2}
+          value={observaciones}
+          onChange={(e) => setObservaciones(e.target.value)}
+          placeholder="Como se entrega, plazos, medidas... lo que necesites recordar"
+        />
+      </section>
+
+      <BarraInferior
+        total={totales.totalBruto}
+        ganancia={totales.ganancia}
+        margenPct={totales.margenPct}
+        habilitado={hayLineas && clienteId !== ""}
+        onConfirmar={confirmar}
+      />
+    </div>
+  );
+}
+
+type Simulacion = {
+  numero: number;
+  cliente: string;
+  lineas: LineaCalculada[];
+  totales: TotalesVenta;
+  cobrado: Dinero;
+  metodo: string;
+  estadoPago: ReturnType<typeof estadoPago>;
+  observaciones: string;
+};
+
+function ComprobanteSimulado({
+  sim,
+  onVolver,
+  onEmpezarDeNuevo,
+}: {
+  sim: Simulacion;
+  onVolver: () => void;
+  onEmpezarDeNuevo: () => void;
+}) {
+  const etiquetaPago = {
+    AL_DIA: "Al dia",
+    PARCIAL: "Pago parcial",
+    PENDIENTE: "Sin cobrar",
+    PAGADA: "Pagada",
+  }[sim.estadoPago];
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+        <p className="text-sm font-semibold text-amber-900">
+          Asi quedaria el comprobante interno.
+        </p>
+        <p className="mt-1 text-sm text-amber-800">
+          Esto se genero en memoria: no se guardo nada en la base ni se desconto stock.
+        </p>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-slate-300 bg-white">
+        <div className="border-b border-dashed border-slate-300 p-4 text-center">
+          <p className="text-xs tracking-wide text-slate-500 uppercase">Comprobante interno</p>
+          <p className="text-lg font-semibold text-slate-900">Nº {sim.numero}</p>
+          <p className="text-sm text-slate-600">{sim.cliente}</p>
+        </div>
+
+        <ul className="divide-y divide-slate-100">
+          {sim.lineas.map((l) => (
+            <li key={l.linea.id} className="p-4">
+              <div className="flex justify-between gap-3">
+                <p className="font-medium text-slate-900">{l.articulo.nombre}</p>
+                <p className="font-semibold tabular-nums text-slate-900">
+                  {fmtMoneda(l.cal.subtotalBruto)}
+                </p>
+              </div>
+              <p className="mt-0.5 text-sm text-slate-500">
+                {fmtNumero(l.cantidad)} × {fmtMoneda(l.articulo.precioVenta)}
+              </p>
+            </li>
+          ))}
+        </ul>
+
+        <div className="space-y-1 border-t border-slate-200 p-4 text-sm">
+          <Fila etiqueta="Neto" valor={fmtMoneda(sim.totales.totalNeto)} />
+          <Fila etiqueta="IVA" valor={fmtMoneda(sim.totales.totalIVA)} />
+          <Fila etiqueta="Total" valor={fmtMoneda(sim.totales.totalBruto)} fuerte />
+          <Fila etiqueta="Costo" valor={fmtMoneda(sim.totales.costoTotal)} />
+          <Fila
+            etiqueta="Ganancia"
+            valor={`${fmtMoneda(sim.totales.ganancia)} (${fmtPorcentaje(sim.totales.margenPct)})`}
+            fuerte
+            tono="green"
+          />
+        </div>
+
+        <div className="border-t border-dashed border-slate-300 p-4 text-sm">
+          <Fila
+            etiqueta="Cobrado"
+            valor={`${fmtMoneda(sim.cobrado)} · ${sim.metodo.toLowerCase()}`}
+          />
+          <Fila
+            etiqueta="Estado"
+            valor={etiquetaPago}
+            fuerte
+            tono={estadoPago(sim.totales.totalBruto, sim.cobrado) === "PAGADA" ? "green" : "amber"}
+          />
+        </div>
+
+        {sim.observaciones ? (
+          <p className="border-t border-slate-100 p-4 text-sm text-slate-600">
+            {sim.observaciones}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <button
+          type="button"
+          onClick={onEmpezarDeNuevo}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Cargar otra venta
+        </button>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Imprimir comprobante
+        </button>
+        <Link
+          href="/ventas"
+          className="rounded-lg bg-marca px-4 py-3 text-center text-sm font-semibold text-white hover:opacity-90"
+        >
+          Volver a ventas
+        </Link>
+      </div>
+
+      <button
+        type="button"
+        onClick={onVolver}
+        className="w-full text-sm text-slate-500 hover:underline"
+      >
+        Volver a editar la venta
+      </button>
+    </div>
+  );
+}
+
+function BannerMockup({
+  onCargarEjemplo,
+  onLimpiar,
+  tieneLineas,
+  esModoDemo = false,
+}: {
+  onCargarEjemplo: () => void;
+  onLimpiar: () => void;
+  tieneLineas: boolean;
+  esModoDemo?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-md bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-900">
+              {esModoDemo ? "Mockup con catálogo demo" : "Mockup interactivo"}
+            </span>
+            <p className="text-sm font-semibold text-amber-900">Simulación en vivo (no guarda en base)</p>
+          </div>
+          <p className="mt-1 text-sm text-amber-800">
+            Los cálculos de costo, alícuotas de IVA y márgenes se computan en tiempo real según las recetas.
+            Podés seleccionar artículos, modificar cantidades y simular la emisión del comprobante.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {!tieneLineas ? (
+            <button
+              type="button"
+              onClick={onCargarEjemplo}
+              className="rounded-lg bg-amber-800 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-amber-900"
+            >
+              ⚡ Cargar ejemplo demo
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onLimpiar}
+              className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+            >
+              Limpiar líneas
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BarraInferior({
+  total,
+  ganancia,
+  margenPct,
+  habilitado,
+  onConfirmar,
+}: {
+  total: Dinero;
+  ganancia: Dinero;
+  margenPct: Dinero;
+  habilitado: boolean;
+  onConfirmar: () => void;
+}) {
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 backdrop-blur">
+      <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-slate-500">Total</p>
+          <p className="text-lg leading-tight font-semibold tabular-nums text-slate-900">
+            {fmtMoneda(total)}
+          </p>
+          <p className="text-xs tabular-nums text-emerald-700">
+            ganancia {fmtMoneda(ganancia)} · {fmtPorcentaje(margenPct)}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onConfirmar}
+          disabled={!habilitado}
+          className="shrink-0 rounded-lg bg-marca px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          Guardar venta
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Boton({
+  children,
+  toggle,
+  activo,
+  onClick,
+}: {
+  children: React.ReactNode;
+  toggle?: boolean;
+  activo?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border px-3 py-2.5 text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
+        toggle
+          ? activo
+            ? "border-marca bg-marca text-white"
+            : "border-slate-300 bg-white text-slate-700"
+          : "border-slate-300 bg-white text-slate-700"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Fila({
+  etiqueta,
+  valor,
+  fuerte,
+  tono = "slate",
+}: {
+  etiqueta: string;
+  valor: string;
+  fuerte?: boolean;
+  tono?: "slate" | "amber" | "green";
+}) {
+  const color = { slate: "text-slate-900", amber: "text-amber-700", green: "text-emerald-700" }[tono];
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-slate-500">{etiqueta}</span>
+      <span className={`tabular-nums ${fuerte ? `font-semibold ${color}` : "text-slate-700"}`}>
+        {valor}
+      </span>
+    </div>
+  );
+}

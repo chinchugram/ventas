@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --color-marca: oklch(0.55 0.16 265);
+  --color-marca-claro: oklch(0.94 0.03 265);
+  --color-ok: oklch(0.62 0.15 155);
+  --color-critico: oklch(0.58 0.19 25);
+  --color-aviso: oklch(0.72 0.15 75);
+}
+
+html {
+  /* Mobile-first: el area tactil minima comoda es 44px. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-slate-100 text-slate-900 antialiased;
+  /* Sin esto, iOS hace zoom automaticamente al enfocar un input con fuente <16px. */
+  font-size: 16px;
+}
+
+/* Los inputs de formulario se listenan a mano y con buen contraste. */
+input,
+select,
+textarea {
+  @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900;
+  @apply focus:border-marca focus:ring-2 focus:ring-marca/30 focus:outline-none;
+  /* 16px minimo: por debajo, iOS Safari hace zoom al hacer foco. */
+  font-size: 16px;
+}
+
+label {
+  @apply mb-1 block text-sm font-medium text-slate-700;
+}
+
+/* Entrada del menu lateral en mobile. */
+@keyframes drawer-in {
+  from {
+    transform: translateX(-1rem);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.drawer-in {
+  animation: drawer-in 180ms ease-out;
+}
+
+table {
+  @apply w-full border-collapse text-sm;
+}
+
+th {
+  @apply border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600;
+}
+
+td {
+  @apply border-b border-slate-100 px-3 py-2;
+}
