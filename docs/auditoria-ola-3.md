@@ -27,7 +27,7 @@ Los detalles completos están en las partes 1, 2 y 3 más abajo; los números de
 - No se aplicó el `autoComplete` de los formularios de cliente (hallazgo de la parte 1): ahí se cargan datos de terceros, no del usuario, y autocompletar con los propios sería un error.
 - No auditado: `/cortes`, `/reportes/stock` (solo se midió el desborde a 375 px: sin desborde), lector de pantalla real, escritorio.
 
-**Build y dependencias:** `npm run build` y `npm run typecheck` limpios en el árbol principal (el fallo de Turbopack de la parte 3 era del symlink de `node_modules` en el worktree). Las vulnerabilidades de `next` y `zod` (runtime) siguen **sin corregir**: ver la parte 3, secciones 4 a 5. Son actualizaciones no breaking dentro de los rangos de `package.json`; queda pendiente la decisión de aplicarlas.
+**Build y dependencias:** `npm run build` y `npm run typecheck` limpios en el árbol principal (el fallo de Turbopack de la parte 3 era del symlink de `node_modules` en el worktree). **Actualización de dependencias (tarea 4.0a, rama `ola-4-4.0a`):** las vulnerabilidades de `next`, `zod` y las transitivas de Prisma, `source-map-js`, `fast-uri` y `sharp` quedaron corregidas. `npm audit` pasó de 9 hallazgos a 0. Detalle en la parte 3, sección 5. Falta verificar el build con Turbopack en el árbol principal (lo corre el orquestador).
 
 ---
 
@@ -472,12 +472,25 @@ Otras dos correcciones a la nota:
 
 ### 5. Resumen de decisiones
 
-- **Aceptado, sin impacto en runtime**: `prisma`, `@prisma/config`, `deepmerge-ts`, `mysql2`, `fast-uri`, `source-map-js`. Se corrigen con `prisma@7.10.1` (cubre los primeros cuatro) y con updates no breaking de `source-map-js` (>=1.2.2) y `fast-uri` (>=3.1.9).
-- **Aceptado temporalmente con condición**: `sharp` (solo si se procesan SVG).
-- **No aceptado, corregir**:
-  - `next` a >=16.4.1. Es semver-compatible con `^16.3.6`. 16.4.1 existe en el registro, y el rango crítico termina en 16.4.0. No verifiqué su changelog. Corrige las advisories de Server Actions y las de Image Optimization.
-  - `zod` a 4.6.6 (dentro de `^4.6.5`, no breaking). Corrige la advisory de memoria con colecciones grandes, que sí aplica porque zod valida las líneas de las Server Actions.
-- **Rechazado**: bajar a Prisma 6. Se mantiene la decisión de la nota.
+Decisiones tomadas en la auditoría (3.3b) y estado después de la tarea 4.0a (rama `ola-4-4.0a`, 2026-10-29):
+
+| Paquete | Antes | Después | Decisión de 3.3b | Estado |
+|---|---|---|---|---|
+| `next` | 16.3.6 | 16.4.3 | No aceptado: corregir a >=16.4.1 | **Aplicado.** npm resolvió el patch más nuevo dentro de `^16.4`. |
+| `zod` | 4.6.5 | 4.6.7 | No aceptado: corregir a >=4.6.6 | **Aplicado.** |
+| `prisma`, `@prisma/client`, `@prisma/adapter-pg`, `@prisma/engines` | 7.10.0 | 7.10.1 | Aceptado mientras se aplica 7.10.1 | **Aplicado.** `allowScripts` actualizado a `prisma@7.10.1` y `@prisma/engines@7.10.1`. |
+| `@prisma/config`, `deepmerge-ts`, `mysql2` | 7.10.0, 7.1.5, 3.15.3 | 7.10.1, 8.0.2, 3.24.4 | Aceptado (sin impacto en runtime) | **Aplicado por arrastre** de Prisma 7.10.1. |
+| `source-map-js` | 1.2.1 | 1.2.2 | Aceptado: corregir a >=1.2.2 | **Aplicado** con `npm update`. |
+| `fast-uri` | 3.1.8 | 3.1.9 | Aceptado: corregir a >=3.1.9 | **Aplicado** con `npm update`. |
+| `sharp` (optional de next) | 0.35.4 | 0.35.5 | Aceptado temporalmente, solo si se procesan SVG | **Corregido por arrastre** de next 16.4.3. Sigue sin configurarse `dangerouslyAllowSVG`. |
+
+- **Rechazado**: bajar a Prisma 6. Se mantiene la decisión.
+- **`npm audit` después de 4.0a**: `found 0 vulnerabilities` (antes: 9, 1 crítica, 7 altas, 1 moderada).
+- **Verificación en el worktree** (base `ventas_40a` con `prisma migrate deploy` y `db:seed`): `prisma generate` y `npm run typecheck` pasan. Todos los `npm run test:*` que usan base pasan igual que antes del cambio. `test:respaldo:restaurar` pasa. `test:integridad` no corre en este entorno porque usa Docker. El mismo SQL (`scripts/test-integridad.sql`) corrido con `psql` local da 10 errores esperados y 1 INSERT aceptado, como indica el script.
+- **Pendiente**:
+  - `npm run build` (Turbopack) en el árbol principal. No se corrió en el worktree.
+  - Revisar el changelog de next 16.4.x. No se revisó en esta tarea.
+  - La discrepancia de `docs/03-stack-y-decisiones.md` (dice Prisma 6) y la recomendación 4.2 (`/_next/image` sin Basic Auth) siguen abiertas.
 
 ### 6. Otros hallazgos
 
