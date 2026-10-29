@@ -3,12 +3,14 @@ import { notFound } from "next/navigation";
 import { getCliente } from "@/lib/queries/clientes";
 import { formatearCuit } from "@/lib/cuit";
 import { getListaDeCliente, getListasParaElegir } from "@/lib/queries/listas-precios";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { Seccion } from "@/components/ui";
 import { ClienteForm } from "../../_componentes/cliente-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditarClientePage({ params }: { params: Promise<{ id: string }> }) {
+  await requierePermisoPagina("editarClientes");
   const { id } = await params;
   const cliente = await getCliente(id);
   if (!cliente) notFound();

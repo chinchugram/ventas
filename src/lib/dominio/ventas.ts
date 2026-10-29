@@ -27,6 +27,8 @@ export type VentaNueva = {
   pago: { monto: Dinero; metodo: MetodoPago } | null;
   /** Momento de los movimientos de stock. Por defecto, ahora (el seed lo fija). */
   momento?: Date;
+  /** Quien la carga. Se guarda en la venta, su pago y sus movimientos. Ausente = sin usuario. */
+  usuarioId?: string | null;
 };
 
 export type VentaRegistrada = {
@@ -51,6 +53,7 @@ export type VentaRegistrada = {
  */
 export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<VentaRegistrada> {
   const { clienteId, fecha, entregada, pago, momento } = venta;
+  const usuarioId = venta.usuarioId ?? null;
   const anio = fecha.getUTCFullYear();
   if (venta.items.length === 0) throw new ErrorDeNegocio("Agregá al menos un artículo");
 
@@ -137,13 +140,14 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
       totalIVA: totales.totalIVA,
       totalBruto: totales.totalBruto,
       costoTotal: totales.costoTotal,
+      usuarioId,
       items: { create: items },
     },
   });
 
   if (pago) {
     await tx.pago.create({
-      data: { ventaId: creada.id, clienteId, fecha, monto: pago.monto, metodo: pago.metodo },
+      data: { ventaId: creada.id, clienteId, fecha, monto: pago.monto, metodo: pago.metodo, usuarioId },
     });
   }
 
@@ -179,6 +183,7 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
         stockResultante: material.stockActual,
         motivo: `Venta #${numero}/${anio}${faltante.gt(0) ? ` (faltaron ${fmtNumero(faltante)})` : ""}`,
         ventaId: creada.id,
+        usuarioId,
         ...(momento ? { creadoEn: momento } : {}),
       },
     });
@@ -193,8 +198,9 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
  * cambio desde entonces, igual vuelve lo que realmente salio).
  *
  * La venta no se borra: queda ANULADA y deja de contar en saldos y reportes.
+ * Los movimientos de reversa quedan a nombre de quien anula (`usuarioId`).
  */
-export async function anularVentaEnTx(tx: Tx, ventaId: string): Promise<void> {
+export async function anularVentaEnTx(tx: Tx, ventaId: string, usuarioId?: string | null): Promise<void> {
   const filas = await tx.$queryRaw<{ estado: string; numero: number; anio: number }[]>`
     SELECT estado::text AS estado, numero, anio FROM "ventas" WHERE id = ${ventaId}::uuid FOR UPDATE`;
   const venta = filas[0];
@@ -221,6 +227,7 @@ export async function anularVentaEnTx(tx: Tx, ventaId: string): Promise<void> {
         stockResultante: material.stockActual,
         motivo: `Anulación de la venta #${venta.numero}/${venta.anio}`,
         ventaId,
+        usuarioId: usuarioId ?? null,
       },
     });
   }

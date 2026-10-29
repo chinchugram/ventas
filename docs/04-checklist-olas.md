@@ -4,10 +4,8 @@ Plan de trabajo para que un agente orquestador reparta tareas a subagentes en pa
 Cada **ola** es un conjunto de tareas **independientes entre sí** (no tocan los mismos archivos):
 se lanzan juntas y, cuando todas terminan y se integran, empieza la ola siguiente.
 
-Estado al día de hoy: **Etapa 1 (MVP) y Etapa 2 (stock real) hechas, olas 0 a 3 y ola 7 (comercial) cerradas**.
-La ola 7 se hizo **antes** que la 4 (multi-usuario): sus pantallas quedan sin roles ni `usuarioId` hasta que
-se haga la ola 4 (ver "Pendientes de la ola 7 para la ola 4"). Esta lista cubre lo que falta para que sea usable en el día a día y las
-etapas 3 a 6 de `docs/01-alcance-funcional.md`.
+Estado al día de hoy: **Etapa 1 (MVP), Etapa 2 (stock real) y Etapa 3 (multi-usuario) hechas, olas 0 a 4 y ola 7 (comercial) cerradas**.
+Esta lista cubre lo que falta para las etapas 4 a 6 de `docs/01-alcance-funcional.md`.
 
 Leyenda: `[x]` hecho · `[ ]` pendiente · `(R)` toca archivos compartidos, ver "Reglas".
 
@@ -117,18 +115,19 @@ Migraciones reservadas: `20260130…`.
       limpio, revisar `npm audit` y documentar. Reporta hallazgos; las correcciones a pantallas ajenas
       las aplica el orquestador.
 
-## Ola 4 — Etapa 3: multi-usuario (serie → paralela)
+## Ola 4 — Etapa 3: multi-usuario (saneamiento → serie → paralela)
 
-El modelo cambia en todas partes, por eso arranca con una tarea sola. Migraciones: `20260210…`.
+El modelo cambia en todas partes, por eso arranca con una tarea sola. Migraciones: `20260210…` y `20260215…`.
 
-- [ ] **4.1 Núcleo de autenticación (en serie, primero) (R)**: tabla `Usuario` (rol `DUENO` / `EMPLEADO`),
-      login con sesión (reemplaza el Basic Auth del `proxy.ts`), hash de contraseña, cierre de sesión,
-      helper `usuarioActual()` para server actions. Toca `schema.prisma`, `proxy.ts`, layout.
-- [ ] **4.2 Trazabilidad**: guardar `usuarioId` en ventas, pagos, compras y ajustes de stock; mostrarlo en
-      los detalles. *(Paralela a 4.3 una vez integrada la 4.1.)*
-- [ ] **4.3 Permisos por rol**: el empleado no ve costos ni márgenes ni anula ventas. Dueña de la capa de
-      autorización (`src/lib/permisos.ts`) y de ocultar columnas en las pantallas. *(Paralela a 4.2.)*
-- [ ] **4.4 Administración de usuarios**: alta, baja, cambio de contraseña. Dueña de `src/app/usuarios/**`.
+- [x] **4.0a Dependencias de runtime**: `next` 16.4.3, `zod` 4.6.7, `prisma` 7.10.1; `npm audit` de 9 hallazgos a 0.
+- [x] **4.0b Navbar accesible**: hoja "Más" como `<dialog>`, menú de escritorio completo (N1, N2, N5).
+- [x] **4.1 Núcleo de autenticación (en serie, primero) (R)**: tablas `Usuario` (rol `DUENO` / `EMPLEADO`) y `Sesion`,
+      login con sesión revocable (reemplaza el Basic Auth del `proxy.ts`), scrypt, pausa por fallos, cierre de sesión,
+      `usuarioActual()`. Decisiones en `docs/seguridad-ola-4-auth.md`.
+- [x] **4.2 Trazabilidad**: `usuarioId` en ventas, pagos, compras y movimientos de stock; "Registrado por" en los detalles.
+- [x] **4.3 Permisos por rol**: `src/lib/permisos.ts`; el empleado no recibe costos ni márgenes ni anula; `npm run test:permisos`.
+- [x] **4.4 Administración de usuarios**: alta, baja, rol, reseteo y clave propia; `src/app/usuarios/**`; `npm run test:usuarios`.
+- [x] **4.5 Documentación**: README, modelo de datos, alcance y checklist.
 
 ## Ola 5 — Etapa 4: facturación electrónica (serie → paralela)
 
@@ -183,7 +182,7 @@ auth, roles ni `usuarioId` todavía.
 ## Hecho
 
 - [x] Etapa 1 — MVP: clientes, catálogo, materiales, recetas, ventas, cobranzas (solo lectura), 5 reportes, dashboard.
-- [x] Acceso con usuario y contraseña (HTTP Basic) para todo el sitio.
+- [x] Acceso con usuario y contraseña (HTTP Basic) para todo el sitio. *Reemplazado en la ola 4 por login con usuarios y roles.*
 - [x] Calculadora de cortes por plancha.
 - [x] Etapa 2 — compras con actualización de costo, libro de movimientos, ajuste por conteo físico.
 - [x] Etapa 2 — ventas persistidas: numeración por año, costo congelado, descuento de stock, pago inicial, anulación.

@@ -13,12 +13,21 @@ import Decimal from "decimal.js";
 import { registrarCompraEnTx } from "../src/lib/dominio/compras";
 import { ajustarStockEnTx } from "../src/lib/dominio/stock";
 import { registrarVentaEnTx } from "../src/lib/dominio/ventas";
+import { crearUsuarioEnTx } from "../src/lib/dominio/auth";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
 const d = (v: number | string) => new Decimal(v);
+
+// Usuarios de ejemplo: SOLO fuera de produccion. En produccion el seed no toca
+// usuarios ni sesiones; el primer dueno se crea con `npm run usuarios:crear-dueno`.
+const PRODUCCION = process.env.NODE_ENV === "production";
+const USUARIOS_DE_EJEMPLO = [
+  { usuario: "dueno", clave: "dueno-de-ejemplo", nombre: "Dueño de ejemplo", rol: "DUENO" },
+  { usuario: "empleado", clave: "empleado-de-ejemplo", nombre: "Empleado de ejemplo", rol: "EMPLEADO" },
+] as const;
 
 async function main() {
   console.log("Limpiando datos de ejemplo...");
@@ -36,6 +45,20 @@ async function main() {
   await prisma.material.deleteMany();
   await prisma.maquina.deleteMany();
   await prisma.cliente.deleteMany();
+  if (!PRODUCCION) {
+    // Las sesiones antes que los usuarios (FK). Al final: lo de arriba no depende de usuarios.
+    await prisma.sesion.deleteMany();
+    await prisma.usuario.deleteMany();
+  }
+
+  if (PRODUCCION) {
+    console.log("Usuarios: en produccion el seed no los toca (ver npm run usuarios:crear-dueno).");
+  } else {
+    console.log("Creando usuarios de ejemplo...");
+    await prisma.$transaction(async (tx) => {
+      for (const u of USUARIOS_DE_EJEMPLO) await crearUsuarioEnTx(tx, { ...u });
+    });
+  }
 
   console.log("Creando configuracion...");
   await prisma.configuracion.upsert({
@@ -360,6 +383,9 @@ async function main() {
   console.log("");
   console.log("Listo.");
   console.log("  4 clientes, 5 articulos, 5 materiales, 3 maquinas, 2 compras, 7 ventas, 1 ajuste");
+  if (!PRODUCCION) {
+    console.log(`  Usuarios: ${USUARIOS_DE_EJEMPLO.map((u) => `${u.usuario} / ${u.clave}`).join(", ")} (solo desarrollo)`);
+  }
   console.log("  Para verlo: npm run dev");
 }
 

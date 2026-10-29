@@ -4,6 +4,7 @@ import { configNumero, getArticulosConMargen, getConfig } from "@/lib/queries/ca
 import { getArticulosDeBaja } from "@/lib/queries/recetas";
 import { precioParaMargen } from "@/lib/costing";
 import { Seccion, SemaforoMargen, Vacio } from "@/components/ui";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
  * Catalogo con costo y margen.
  */
 export default async function CatalogoPage() {
+  await requierePermisoPagina("verCostos", "verMargenes");
   const [articulos, config, deBaja] = await Promise.all([
     getArticulosConMargen(),
     getConfig(),

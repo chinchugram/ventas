@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import {
   decimalPositivo,
@@ -16,6 +17,7 @@ import {
   type Resultado,
 } from "@/lib/acciones";
 import { METODOS_PAGO, validarFechaPago } from "@/lib/cobranzas";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { anularVentaEnTx } from "@/lib/dominio/ventas";
 import { anularPagoEnTx, marcarEntregadaEnTx, registrarPagoEnTx } from "@/lib/dominio/pagos";
 import { revalidarVentas } from "@/lib/revalidar";
@@ -32,13 +34,18 @@ const esquema = z.object({ ventaId: z.uuid("Venta inválida") });
 
 /** Anula una venta (queda ANULADA, no se borra) y devuelve el stock que salio. */
 export async function anularVenta(datos: z.input<typeof esquema>): Promise<Resultado> {
+  const permiso = await verificarPermiso("anularVenta");
+  if (!permiso.ok) return permiso;
   const parsed = esquema.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
   const { ventaId } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
-    await prisma.$transaction((tx) => anularVentaEnTx(tx, ventaId));
+    await prisma.$transaction((tx) => anularVentaEnTx(tx, ventaId, usuarioId));
   } catch (error) {
     console.error("[anularVenta]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo anular la venta.") };
@@ -65,16 +72,21 @@ export type DatosPago = z.input<typeof esquemaPago>;
  * la venta bloqueada: del formulario solo se usa el monto tipeado.
  */
 export async function registrarPago(datos: DatosPago): Promise<Resultado> {
+  const permiso = await verificarPermiso("registrarCobro");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaPago.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   const problemaFecha = validarFechaPago(parsed.data.fecha, hoyArgentinaISO());
   if (problemaFecha) return { ok: false, error: problemaFecha };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
   const { ventaId, monto, metodo, fecha, notas } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
     await prisma.$transaction((tx) =>
-      registrarPagoEnTx(tx, { ventaId, monto: d(monto), metodo, fecha: fechaDesdeISO(fecha), notas }),
+      registrarPagoEnTx(tx, { ventaId, monto: d(monto), metodo, fecha: fechaDesdeISO(fecha), notas, usuarioId }),
     );
   } catch (error) {
     console.error("[registrarPago]", error);
@@ -92,6 +104,8 @@ const esquemaAnularPago = z.object({
 
 /** Anula un pago (baja logica, con motivo). El saldo de la venta vuelve a subir. */
 export async function anularPago(datos: z.input<typeof esquemaAnularPago>): Promise<Resultado> {
+  const permiso = await verificarPermiso("anularPago");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaAnularPago.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -111,6 +125,8 @@ export async function anularPago(datos: z.input<typeof esquemaAnularPago>): Prom
 
 /** PENDIENTE → ENTREGADA. */
 export async function marcarEntregada(datos: z.input<typeof esquema>): Promise<Resultado> {
+  const permiso = await verificarPermiso("marcarEntregada");
+  if (!permiso.ok) return permiso;
   const parsed = esquema.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };

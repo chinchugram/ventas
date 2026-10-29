@@ -16,7 +16,11 @@ type DatosComunes = {
   notas: string | null;
 };
 
-export type MaterialNuevo = DatosComunes & { stockInicial: Dinero };
+export type MaterialNuevo = DatosComunes & {
+  stockInicial: Dinero;
+  /** Quien lo da de alta: queda en el movimiento "Stock inicial". Ausente = sin usuario. */
+  usuarioId?: string | null;
+};
 
 export type MaterialEditado = DatosComunes & {
   id: string;
@@ -64,6 +68,7 @@ export async function crearMaterialEnTx(tx: Tx, m: MaterialNuevo): Promise<{ id:
         cantidad: m.stockInicial,
         stockResultante: m.stockInicial,
         motivo: MOTIVO_STOCK_INICIAL,
+        usuarioId: m.usuarioId ?? null,
       },
     });
   }

@@ -48,20 +48,41 @@ coherentes entre sí. Sirve para mostrar el mockup en una reunión sin Docker.
 Con base disponible, siempre se usan los datos reales: el respaldo solo entra cuando la base no
 responde o la consulta falla (por ejemplo, migraciones pendientes).
 
-### Acceso con contraseña (obligatorio al publicarlo)
+### Acceso: usuarios y sesiones
 
-La app no tiene login propio, así que `src/proxy.ts` pide usuario y contraseña (HTTP Basic) en
-todo el sitio. Se configura con variables de entorno:
+Se entra por `/login` con usuario y clave. Hay dos roles:
 
-| Variable | Qué es |
-|---|---|
-| `BASIC_AUTH_USER` | Usuario. Por defecto `demo`. |
-| `BASIC_AUTH_PASSWORD` | Contraseña. |
+- **`DUENO`**: todo.
+- **`EMPLEADO`**: carga ventas, registra cobros, marca ventas como entregadas, ve y edita clientes,
+  ve el stock (solo cantidades) y la lista de reposición (sin costos). No ve costos ni márgenes y no
+  puede anular, tocar el catálogo, cargar compras ni ver reportes. Su pantalla de inicio es
+  `/ventas/nueva`.
 
-- **En producción, sin `BASIC_AUTH_PASSWORD` el sitio responde 503**: un deploy con la variable
-  olvidada no queda público.
-- En desarrollo, sin contraseña, el sitio queda abierto.
-- Para probarlo en local con contraseña: definirla en `.env` y correr `npm run dev`.
+**Primer dueño:** `npm run usuarios:crear-dueno` pide usuario, nombre y clave (la clave no se ve al
+tipearla y se repite para confirmar; mínimo 10 caracteres). También acepta `DUENO_USUARIO`,
+`DUENO_CLAVE` y `DUENO_NOMBRE` como variables de entorno. Se niega si ya hay un dueño, aunque esté
+dado de baja: los demás usuarios se crean desde `/usuarios`.
+
+- **Sin ningún usuario** el sitio responde 503 con esa instrucción, en cualquier entorno: nunca
+  queda abierto.
+- **En producción sin base de datos** responde 503.
+- **En producción se exige HTTPS.** La cookie de sesión es `Secure` y se llama
+  `__Host-ventas_sesion`: por HTTP el navegador la descarta y el login vuelve siempre a `/login`.
+- **En desarrollo**, `npm run db:seed` crea `dueno` / `dueno-de-ejemplo` y `empleado` /
+  `empleado-de-ejemplo`. Solo fuera de producción.
+- **Sin base de datos en desarrollo** (modo demo) se entra como "Demo", un dueño simulado. Las
+  acciones no escriben nada y devuelven `SIN_BASE`.
+- Las sesiones duran 30 días y se renuevan con el uso. Cerrar sesión, dar de baja a un usuario,
+  cambiarle el rol o reiniciarle la clave corta sus sesiones abiertas.
+- Desde el quinto fallo seguido, la cuenta queda en pausa: 30 s, luego 1 min, 2 min… hasta 15 min.
+  Durante la pausa no se verifica la clave. El mensaje de error no dice si falló el usuario o la clave.
+- Los costos y márgenes no se envían al navegador del empleado: no se consultan, no solo se ocultan.
+
+No hay variables de entorno de acceso: solo `DATABASE_URL`. `BASIC_AUTH_USER` y
+`BASIC_AUTH_PASSWORD` ya no existen; si el servidor las tenía, se pueden retirar.
+
+Decisiones de seguridad (claves, sesiones, cookies, qué queda fuera): ver
+[`docs/seguridad-ola-4-auth.md`](docs/seguridad-ola-4-auth.md).
 
 ### Probarlo desde el celular
 
@@ -85,6 +106,7 @@ los botones no responden).
 | [`docs/02-modelo-datos.md`](docs/02-modelo-datos.md) | Entidades, decisiones de diseño y los cálculos derivados |
 | [`docs/03-stack-y-decisiones.md`](docs/03-stack-y-decisiones.md) | Stack, con el porqué de cada elección |
 | [`docs/05-respaldos.md`](docs/05-respaldos.md) | Respaldo diario, restauración y prueba de restauración |
+| [`docs/seguridad-ola-4-auth.md`](docs/seguridad-ola-4-auth.md) | Login, claves, sesiones y permisos: decisiones de seguridad y qué queda fuera |
 
 ---
 
@@ -184,6 +206,15 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 | `/compras` | Historial de compras; `/compras/nueva` registra una (suma stock y actualiza el costo) |
 | `/reportes` | Resumen, ganancia por producto, más rentables, deuda por cliente y consumo de materiales; filtro por mes o rango de fechas en la URL y botón "Exportar CSV" por reporte |
 | `/reportes/stock` | Valorización del stock, materiales sin movimiento, consumo real vs teórico y rotación; mismo filtro de fechas |
+| `/login` | Entrar con usuario y clave. Es la única pantalla que se ve sin sesión |
+| `/usuarios` | Lista de usuarios, con alta, rol, baja y reinicio de clave (solo `DUENO`) |
+| `/usuarios/nuevo` | Alta de un usuario: el dueño elige su clave inicial y se la pasa (solo `DUENO`) |
+| `/usuarios/[id]` | Ficha de un usuario: cambiar rol, dar de baja o reactivar, reiniciar la clave (solo `DUENO`) |
+| `/usuarios/mi-clave` | Cambiar la clave propia; la pide cualquier rol |
+
+Desde la ola 4, el detalle de una venta (y cada cobro) y el libro de movimientos de un material
+muestran "Registrado por" con quién lo cargó, y el listado de compras también. Lo anterior a los
+usuarios muestra "—".
 
 Todas mobile-first: en celular las tablas se convierten en tarjetas apiladas. El dueño atiende
 el mostrador con el teléfono en la mano.
@@ -203,6 +234,7 @@ el mostrador con el teléfono en la mano.
 | `npm run db:seed` | Cargar datos de ejemplo |
 | `npm run db:reset` | **Borra todo** y vuelve a migrar + sembrar |
 | `npm run db:studio` | Prisma Studio, para mirar la base |
+| `npm run usuarios:crear-dueno` | Crea el primer dueño (pide usuario, nombre y clave); se niega si ya hay un dueño. Ver "Acceso" |
 | `npm run db:backup` | `pg_dump` a `backups/`, con rotación de 30 archivos (el servicio `backup` del compose lo hace solo, una vez por día) |
 | `npm run db:restore -- ARCHIVO` | Restaura un respaldo (pide confirmar si pisa una base existente). Ver `docs/05-respaldos.md` |
 | `npm run test:respaldo` / `test:respaldo:restaurar` | Lógica del aviso de respaldo viejo / prueba de restauración de punta a punta en una base descartable |
@@ -222,6 +254,9 @@ el mostrador con el teléfono en la mano.
 | `npm run test:presupuestos:db` | Presupuestos contra Postgres real: alta, numeración, edición, conversión en venta (incluida la concurrencia) y los CHECK. Borra lo que crea |
 | `npm run test:recordatorios` | Lógica pura de recordatorios: a quién llamar hoy, orden por tramo y monto, teléfonos argentinos y enlace de WhatsApp |
 | `npm run test:recordatorios:db` | Registro de contactos y la consulta "a quién llamar hoy" contra Postgres real. Borra sus datos de prueba al terminar |
+| `npm run test:auth` / `test:auth:db` | Login sin base (claves, pausa por fallos, sesiones, cookies, y que cada página y acción verifica sesión) / el mismo núcleo contra Postgres real, con el alta del dueño |
+| `npm run test:permisos` | Matriz rol × acción y qué permiso exige cada acción y página, más acciones reales invocadas con un empleado contra Postgres |
+| `npm run test:usuarios` | Administración de usuarios (alta, baja, rol, reinicio de clave, clave propia) contra Postgres de desarrollo o de prueba; se niega con `NODE_ENV=production` |
 
 ---
 
@@ -283,6 +318,7 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 - [x] Listas de precios por cliente (ola 7.1)
 - [x] Presupuestos que se convierten en venta (ola 7.2)
 - [x] Recordatorios de cobranza: a quién llamar hoy (ola 7.3)
+- [x] Login con usuarios y roles, permisos por rol, trazabilidad (quién cargó cada venta, cobro, compra y movimiento) y administración de usuarios (ola 4)
 
 El plan completo, por olas y pensado para repartir a subagentes en paralelo, está en
 `docs/04-checklist-olas.md`.
@@ -299,15 +335,9 @@ ahora se muestra a todos.
 
 ## Notas
 
-**`npm audit` reporta 4 vulnerabilidades altas.** Están en `mysql2` y `deepmerge-ts`, que son
-dependencias transitivas del **CLI de Prisma** (`devDependency`), no del runtime. La de `mysql2`
-no aplica: el proyecto usa PostgreSQL. La única corrección que ofrece npm es bajar a Prisma 6,
-que es un retroceso. No se acepta; queda documentado.
+**`npm audit` no reporta vulnerabilidades.** Desde la tarea 4.0a (`next` 16.4.3, `zod` 4.6.7,
+`prisma` 7.10.1) el resultado es 0. Las que había antes se corrigieron con esas actualizaciones dentro
+de los rangos de `package.json`; no hizo falta bajar a Prisma 6. Detalle en `docs/auditoria-ola-3.md`, parte 3.
 
-**Actualización (ola 3).** La auditoría de dependencias (`docs/auditoria-ola-3.md`, parte 3) encontró que
-`prisma@7.10.1` (patch no breaking) también corrige esas cuatro, así que bajar a Prisma 6 sigue sin hacer
-falta. Hoy `npm audit` suma altas y una crítica en `next` y `zod` (runtime) que se corrigen con
-actualizaciones dentro de los rangos de `package.json` (`next` ≥ 16.4.1, `zod` 4.6.6); quedan pendientes de aplicar.
-
-**Sin autenticación por decisión propia** (un solo usuario). La app no expone datos públicos y
-el límite es el firewall del VPS. Agregar login es la etapa 3.
+**Acceso con usuarios y roles** (desde la ola 4). Ya no hay contraseña compartida ni HTTP Basic: cada
+persona entra con su usuario. Ver "Acceso: usuarios y sesiones" más arriba.

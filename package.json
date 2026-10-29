@@ -23,6 +23,7 @@
     "db:studio": "prisma studio",
     "db:backup": "sh scripts/backup.sh",
     "db:restore": "sh scripts/restaurar.sh",
+    "usuarios:crear-dueno": "tsx scripts/crear-dueno.ts",
     "test:costeo": "tsx scripts/verificar-costeo.ts",
     "test:rango-fechas": "tsx scripts/verificar-rango-fechas.ts",
     "test:reportes-rango": "tsx scripts/verificar-reportes-rango.ts",
@@ -51,21 +52,25 @@
     "test:recordatorios": "tsx scripts/verificar-recordatorios.ts",
     "test:recordatorios:db": "tsx scripts/test-recordatorios.ts",
     "test:presupuestos": "tsx scripts/verificar-presupuestos.ts",
-    "test:presupuestos:db": "tsx scripts/test-presupuestos.ts"
+    "test:presupuestos:db": "tsx scripts/test-presupuestos.ts",
+    "test:auth": "tsx scripts/verificar-auth.ts",
+    "test:auth:db": "tsx scripts/test-auth.ts",
+    "test:permisos": "tsx scripts/verificar-permisos.ts && tsx scripts/test-permisos.ts",
+    "test:usuarios": "tsx scripts/test-usuarios.ts"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.10.0",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
     "decimal.js": "^10.6.0",
     "dotenv": "^18.0.4",
     "ffmpeg-static": "^5.3.0",
-    "next": "^16.3.6",
+    "next": "^16.4.3",
     "pg": "^8.23.0",
     "playwright": "^1.64.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "testreel": "^0.2.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
@@ -74,14 +79,14 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "node-edge-tts": "^1.2.12",
-    "prisma": "^7.10.0",
+    "prisma": "^7.10.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
   "allowScripts": {
-    "prisma@7.10.0": true,
-    "@prisma/engines@7.10.0": true,
+    "prisma@7.10.1": true,
+    "@prisma/engines@7.10.1": true,
     "esbuild@0.28.2": true,
     "ffmpeg-static@5.3.0": true
   }

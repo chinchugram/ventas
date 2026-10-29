@@ -2,10 +2,12 @@ import Link from "next/link";
 import { dbDisponible } from "@/lib/prisma";
 import { Seccion } from "@/components/ui";
 import { MaquinaForm } from "../../_componentes/maquina-form";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
 export default async function NuevaMaquinaPage() {
+  await requierePermisoPagina("configuracion");
   // Esta pantalla no consulta nada: el modo demo se decide mirando la base.
   const esModoDemo = !(await dbDisponible());
   return (

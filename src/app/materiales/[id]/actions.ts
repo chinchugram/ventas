@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import { decimalNoNegativo, mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { ajustarStockEnTx } from "@/lib/dominio/stock";
 
 const esquema = z.object({
@@ -15,14 +17,19 @@ const esquema = z.object({
 
 /** Ajuste por conteo fisico: registra la diferencia como un movimiento. */
 export async function ajustarStock(datos: z.input<typeof esquema>): Promise<Resultado> {
+  const permiso = await verificarPermiso("ajustarStock");
+  if (!permiso.ok) return permiso;
   const parsed = esquema.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   const { materialId, motivo } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
   try {
     await prisma.$transaction((tx) =>
-      ajustarStockEnTx(tx, { materialId, motivo, stockContado: d(parsed.data.stockContado) }),
+      ajustarStockEnTx(tx, { materialId, motivo, usuarioId, stockContado: d(parsed.data.stockContado) }),
     );
   } catch (error) {
     console.error("[ajustarStock]", error);

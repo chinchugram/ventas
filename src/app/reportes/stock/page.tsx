@@ -9,6 +9,7 @@ import {
 } from "@/lib/queries/stock";
 import { parseRangoFechas, rangoDeMes, type ParamsFecha, type RangoFechas } from "@/lib/rango-fechas";
 import { Seccion, Tabla, Tarjeta, Vacio } from "@/components/ui";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ const CLASE_BOTON_SECUNDARIO =
   "flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700";
 
 export default async function ReporteStockPage({ searchParams }: { searchParams: Promise<ParamsFecha> }) {
+  await requierePermisoPagina("verReportes", "verCostos");
   const params = await searchParams;
   const rango = parseRangoFechas(params);
   const { dias, aviso: avisoDias } = leerDias(params.dias);

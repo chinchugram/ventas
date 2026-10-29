@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import {
   decimalNoNegativo,
@@ -15,6 +16,7 @@ import {
   textoOpcional,
   type Resultado,
 } from "@/lib/acciones";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { registrarCompraEnTx } from "@/lib/dominio/compras";
 
 export type { Resultado } from "@/lib/acciones";
@@ -40,16 +42,22 @@ export type DatosCompra = z.input<typeof esquemaCompra>;
 
 /** Registra una compra en una transaccion: o entra completa o no entra nada. */
 export async function registrarCompra(datos: DatosCompra): Promise<Resultado> {
+  const permiso = await verificarPermiso("registrarCompra");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaCompra.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   const { fecha, items, ...resto } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
   try {
     await prisma.$transaction((tx) =>
       registrarCompraEnTx(tx, {
         ...resto,
         fecha: fechaDesdeISO(fecha),
+        usuarioId,
         items: items.map((i) => ({ materialId: i.materialId, cantidad: d(i.cantidad), costoUnitario: d(i.costoUnitario) })),
       }),
     );

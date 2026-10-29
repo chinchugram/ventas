@@ -16,6 +16,9 @@ import type { Tx } from "../src/lib/dominio/tx";
 import { registrarCompraEnTx } from "../src/lib/dominio/compras";
 import { ajustarStockEnTx } from "../src/lib/dominio/stock";
 import { anularVentaEnTx, registrarVentaEnTx } from "../src/lib/dominio/ventas";
+import { registrarPagoEnTx } from "../src/lib/dominio/pagos";
+import { crearMaterialEnTx } from "../src/lib/dominio/materiales";
+import { crearUsuarioEnTx } from "../src/lib/dominio/auth";
 
 let fallos = 0;
 
@@ -262,6 +265,99 @@ async function main() {
     await rechaza("conteo igual al sistema", "no hay nada que ajustar", () =>
       ajustarStockEnTx(tx, { materialId: a.id, stockContado: d("8.5"), motivo: "Otra vez" }),
     );
+  });
+
+  // ─── Trazabilidad (4.2): cada operacion guarda quien la hizo ────────────────
+  await escenario("Trazabilidad: venta, pago, compra, ajuste y anulación guardan el usuario", async (tx) => {
+    const { a, articulo, cliente } = await preparar(tx);
+    const sufijo = Date.now().toString(36);
+    const laura = await crearUsuarioEnTx(tx, {
+      usuario: `laura-${sufijo}`, nombre: "Laura", clave: "clave-de-prueba-1", rol: "EMPLEADO",
+    });
+    const dueno = await crearUsuarioEnTx(tx, {
+      usuario: `dueno-${sufijo}`, nombre: "Dueño", clave: "clave-de-prueba-2", rol: "DUENO",
+    });
+    // `now()` es el inicio de la transaccion: todos los movimientos comparten `creadoEn`, asi que se ordenan por id de usuario.
+    const usuarios = async (donde: { ventaId?: string; compraId?: string; materialId?: string }) =>
+      (await tx.movimientoStock.findMany({ where: donde })).map((m) => String(m.usuarioId)).sort();
+    const juntos = (...ids: string[]) => ids.sort().join(",");
+
+    // Venta con cobro inicial: la venta, su pago y su movimiento de stock son de Laura.
+    const v = await registrarVentaEnTx(tx, {
+      clienteId: cliente.id, fecha: hoy, observaciones: null, entregada: false, usuarioId: laura.id,
+      items: [{ articuloId: articulo.id, cantidad: d(1) }],
+      pago: { monto: d(100), metodo: "EFECTIVO" },
+    });
+    comprobar("venta.usuarioId", String((await tx.venta.findUniqueOrThrow({ where: { id: v.id } })).usuarioId), laura.id);
+    const pagoInicial = await tx.pago.findFirstOrThrow({ where: { ventaId: v.id } });
+    comprobar("pago inicial.usuarioId", String(pagoInicial.usuarioId), laura.id);
+    comprobar("movimientos de la venta", (await usuarios({ ventaId: v.id })).join(","), juntos(laura.id, laura.id));
+
+    // Cobro posterior a nombre de otra persona.
+    const { id: pagoId } = await registrarPagoEnTx(tx, {
+      ventaId: v.id, fecha: hoy, monto: d(200), metodo: "TRANSFERENCIA", notas: null, usuarioId: dueno.id,
+    });
+    comprobar("pago posterior.usuarioId", String((await tx.pago.findUniqueOrThrow({ where: { id: pagoId } })).usuarioId), dueno.id);
+
+    // Anulacion: la venta conserva a quien la cargo; la reversa es de quien anula.
+    await anularVentaEnTx(tx, v.id, dueno.id);
+    comprobar("venta anulada sigue siendo de Laura", String((await tx.venta.findUniqueOrThrow({ where: { id: v.id } })).usuarioId), laura.id);
+    comprobar(
+      "movimientos tras anular (salidas Laura, reversas Dueño)",
+      (await usuarios({ ventaId: v.id })).join(","),
+      juntos(laura.id, laura.id, dueno.id, dueno.id),
+    );
+
+    // Compra: cabecera y movimiento.
+    const c = await registrarCompraEnTx(tx, {
+      fecha: hoy, proveedor: "Proveedor", comprobante: null, notas: null, actualizarCosto: false, usuarioId: laura.id,
+      items: [{ materialId: a.id, cantidad: d(5), costoUnitario: d(100) }],
+    });
+    comprobar("compra.usuarioId", String((await tx.compra.findUniqueOrThrow({ where: { id: c.id } })).usuarioId), laura.id);
+    comprobar("movimiento de la compra", (await usuarios({ compraId: c.id })).join(","), laura.id);
+
+    // Ajuste y alta de material con stock inicial.
+    await ajustarStockEnTx(tx, { materialId: a.id, stockContado: d(3), motivo: "Conteo", usuarioId: dueno.id });
+    const ajuste = await tx.movimientoStock.findFirstOrThrow({ where: { materialId: a.id, tipo: "AJUSTE" } });
+    comprobar("ajuste.usuarioId", String(ajuste.usuarioId), dueno.id);
+    const nuevo = await crearMaterialEnTx(tx, {
+      nombre: `Trazable ${sufijo}`, unidad: "U", stockInicial: d(4), stockMinimo: d(0),
+      costoUnitario: d(1), precioVenta: null, notas: null, usuarioId: laura.id,
+    });
+    comprobar("stock inicial.usuarioId", (await usuarios({ materialId: nuevo.id })).join(","), laura.id);
+
+    // Un usuario con historial no se borra (ON DELETE RESTRICT).
+    let restringido = false;
+    await tx.$executeRaw`SAVEPOINT borrar_usuario`;
+    try {
+      await tx.usuario.delete({ where: { id: laura.id } });
+    } catch {
+      restringido = true;
+      await tx.$executeRaw`ROLLBACK TO SAVEPOINT borrar_usuario`;
+    }
+    comprobar("borrar usuario con historial", String(restringido), "true");
+  });
+
+  await escenario("Trazabilidad: sin usuario queda NULL (seed, demo, scripts)", async (tx) => {
+    const { a, articulo, cliente } = await preparar(tx);
+    const v = await registrarVentaEnTx(tx, {
+      clienteId: cliente.id, fecha: hoy, observaciones: null, entregada: false,
+      items: [{ articuloId: articulo.id, cantidad: d(1) }],
+      pago: { monto: d(100), metodo: "EFECTIVO" },
+    });
+    const p = await registrarPagoEnTx(tx, { ventaId: v.id, fecha: hoy, monto: d(10), metodo: "OTRO", notas: null, usuarioId: null });
+    await anularVentaEnTx(tx, v.id);
+    const c = await registrarCompraEnTx(tx, {
+      fecha: hoy, proveedor: "Proveedor", comprobante: null, notas: null, actualizarCosto: false,
+      items: [{ materialId: a.id, cantidad: d(5), costoUnitario: d(100) }],
+    });
+    await ajustarStockEnTx(tx, { materialId: a.id, stockContado: d(3), motivo: "Conteo" });
+    comprobar("venta", String((await tx.venta.findUniqueOrThrow({ where: { id: v.id } })).usuarioId), "null");
+    comprobar("pagos", String((await tx.pago.findMany({ where: { ventaId: v.id } })).map((x) => x.usuarioId)), ",");
+    comprobar("pago con null explícito", String((await tx.pago.findUniqueOrThrow({ where: { id: p.id } })).usuarioId), "null");
+    comprobar("compra", String((await tx.compra.findUniqueOrThrow({ where: { id: c.id } })).usuarioId), "null");
+    const conUsuario = await tx.movimientoStock.count({ where: { materialId: a.id, usuarioId: { not: null } } });
+    comprobar("movimientos con usuario", String(conUsuario), "0");
   });
 
   console.log("");

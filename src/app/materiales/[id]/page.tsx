@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fmtFecha, fmtMoneda, fmtNumero } from "@/lib/money";
-import { getMateriales } from "@/lib/queries/materiales";
+import { getMateriales, getMaterialesStock, tieneCostos } from "@/lib/queries/materiales";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { getMovimientos } from "@/lib/queries/compras";
 import { AjusteStockForm } from "@/components/ajuste-stock-form";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
@@ -11,11 +12,14 @@ export const dynamic = "force-dynamic";
 const TEXTO_TIPO = { COMPRA: "Compra", VENTA: "Venta", AJUSTE: "Ajuste" } as const;
 
 export default async function MaterialPage({ params }: { params: Promise<{ id: string }> }) {
+  const usuario = await requierePermisoPagina("verStock");
   const { id } = await params;
-  const material = (await getMateriales()).find((m) => m.id === id);
+  const verCostos = puede(usuario, "verCostos");
+  // Sin permiso de ver costos, la consulta ni lee costo ni precio del material.
+  const material = (verCostos ? await getMateriales() : await getMaterialesStock()).find((m) => m.id === id);
   if (!material) notFound();
 
-  const movimientos = await getMovimientos(id);
+  const movimientos = await getMovimientos(id, 100, !puede(usuario, "registrarCompra"));
 
   return (
     <>
@@ -24,12 +28,14 @@ export default async function MaterialPage({ params }: { params: Promise<{ id: s
         descripcion="Movimientos de stock"
         accion={
           <div className="flex gap-2">
-            <Link
-              href={`/materiales/${material.id}/editar`}
-              className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-            >
-              Editar
-            </Link>
+            {puede(usuario, "editarMateriales") ? (
+              <Link
+                href={`/materiales/${material.id}/editar`}
+                className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
+              >
+                Editar
+              </Link>
+            ) : null}
             <Link
               href="/materiales"
               className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
@@ -42,12 +48,14 @@ export default async function MaterialPage({ params }: { params: Promise<{ id: s
 
       <div className="mb-4 grid grid-cols-2 gap-3">
         <Tarjeta titulo="Stock" valor={`${fmtNumero(material.stockActual)} ${material.unidad}`} />
-        <Tarjeta titulo="Costo unitario" valor={fmtMoneda(material.costoUnitario)} />
+        {tieneCostos(material) ? <Tarjeta titulo="Costo unitario" valor={fmtMoneda(material.costoUnitario)} /> : null}
       </div>
 
-      <div className="mb-4">
-        <AjusteStockForm materialId={material.id} unidad={material.unidad} />
-      </div>
+      {puede(usuario, "ajustarStock") ? (
+        <div className="mb-4">
+          <AjusteStockForm materialId={material.id} unidad={material.unidad} />
+        </div>
+      ) : null}
 
       {movimientos.length === 0 ? (
         <Vacio mensaje="Sin movimientos todavía" hint="Las compras y los ajustes quedan registrados acá." />
@@ -64,6 +72,7 @@ export default async function MaterialPage({ params }: { params: Promise<{ id: s
                       {fmtFecha(m.fecha)}
                       {m.motivo ? ` · ${m.motivo}` : ""}
                     </p>
+                    <p className="text-xs text-slate-500">Registrado por {m.registradoPor ?? "—"}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className={`font-semibold tabular-nums ${entra ? "text-emerald-700" : "text-red-700"}`}>

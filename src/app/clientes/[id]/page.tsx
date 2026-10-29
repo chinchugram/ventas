@@ -5,6 +5,7 @@ import { formatearCuit } from "@/lib/cuit";
 import { getCliente } from "@/lib/queries/clientes";
 import { getListaDeCliente } from "@/lib/queries/listas-precios";
 import { ESTILO_ESTADO_PAGO, ETIQUETA_ESTADO_PAGO } from "@/lib/queries/ventas";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
 import { BotonActivoCliente } from "../_componentes/boton-activo";
 
@@ -18,10 +19,12 @@ const METODO: Record<string, string> = {
 };
 
 export default async function ClientePage({ params }: { params: Promise<{ id: string }> }) {
+  const usuario = await requierePermisoPagina("verClientes");
   const { id } = await params;
   const c = await getCliente(id);
   if (!c) notFound();
   const lista = await getListaDeCliente(c.id);
+  const puedeEditar = puede(usuario, "editarClientes");
 
   const debe = c.saldo.cmp(0) > 0;
   const datos = [
@@ -51,7 +54,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
             >
               Volver
             </Link>
-            {!c.esDemo ? (
+            {!c.esDemo && puedeEditar ? (
               <Link
                 href={`/clientes/${c.id}/editar`}
                 className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta"
@@ -168,7 +171,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
         </ul>
       )}
 
-      {!c.esDemo ? <BotonActivoCliente id={c.id} activo={c.activo} tieneSaldo={debe} /> : null}
+      {!c.esDemo && puedeEditar ? <BotonActivoCliente id={c.id} activo={c.activo} tieneSaldo={debe} /> : null}
     </>
   );
 }

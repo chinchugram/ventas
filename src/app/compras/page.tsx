@@ -2,10 +2,12 @@ import Link from "next/link";
 import { fmtFecha, fmtMonedaCorta, fmtNumero } from "@/lib/money";
 import { getCompras } from "@/lib/queries/compras";
 import { Seccion, Vacio } from "@/components/ui";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
 export default async function ComprasPage() {
+  await requierePermisoPagina("registrarCompra", "verCostos");
   const compras = await getCompras();
 
   return (
@@ -36,6 +38,7 @@ export default async function ComprasPage() {
                     {fmtFecha(c.fecha)}
                     {c.comprobante ? ` · ${c.comprobante}` : ""}
                   </p>
+                  <p className="text-xs text-slate-500">Registrado por {c.registradoPor ?? "—"}</p>
                 </div>
                 <p className="shrink-0 font-semibold tabular-nums text-slate-900">{fmtMonedaCorta(c.total)}</p>
               </div>

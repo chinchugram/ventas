@@ -7,11 +7,13 @@ import { estadoDemo } from "@/lib/respaldo";
 import { Seccion } from "@/components/ui";
 import { ArticuloForm } from "../_componentes/articulo-form";
 import { BotonActivoArticulo } from "../_componentes/boton-activo";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
 /** Edicion de un articulo y su receta, con baja y reactivacion. */
 export default async function EditarArticuloPage({ params }: { params: Promise<{ id: string }> }) {
+  await requierePermisoPagina("editarCatalogo", "verCostos", "verMargenes");
   const { id } = await params;
   const [config, editor, ivaPorDefecto] = await Promise.all([getConfig(), getEditorArticulo(id), getIvaPorDefecto()]);
   if (!editor) notFound();

@@ -4,10 +4,12 @@ import { estadoDemo } from "@/lib/respaldo";
 import { getArticulosConManoObra, getConfiguracion, getMaquinas } from "@/lib/queries/configuracion";
 import { Seccion, Vacio } from "@/components/ui";
 import { ConfiguracionForm } from "./_componentes/configuracion-form";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConfiguracionPage() {
+  await requierePermisoPagina("configuracion");
   const [config, maquinas, articulosConManoObra] = await Promise.all([
     getConfiguracion(),
     getMaquinas(),

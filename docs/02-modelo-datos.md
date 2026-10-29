@@ -18,6 +18,10 @@
 5. **Baja lógica en todos los catálogos.** `activo = false` en clientes, artículos y materiales. Ningún
    registro con historial se borra.
 
+6. **Quién hizo qué.** Cada venta, cobro, compra y movimiento de stock guarda `usuarioId`. Es nullable:
+   lo anterior a los usuarios queda en `NULL` y se muestra "—", sin inventar un autor. Los usuarios no se
+   borran (FK `RESTRICT`), así que la trazabilidad no se pierde.
+
 ---
 
 ## Entidades
@@ -111,6 +115,7 @@ Restricción de integridad (CHECK en SQL de Prisma):
 | `observaciones` | text? | |
 | `totalNeto`, `totalIVA`, `totalBruto` | decimal(14,2) | `bruto = neto + IVA` |
 | `costoTotal` | decimal(14,2) | Suma de los snapshots de costo |
+| `usuarioId` | uuid? FK | Quién cargó la venta (`Usuario`). `NULL` = histórico, se muestra "—". FK `RESTRICT` |
 | `creadoEn`, `actualizadoEn` | timestamptz | |
 
 `numero` es único **por `anio`**, no global.
@@ -143,12 +148,14 @@ Restricción de integridad (CHECK en SQL de Prisma):
 | `notas` | text? | |
 | `anuladoEn` | timestamptz? | Baja lógica: el pago anulado se muestra y no cuenta en ningún saldo |
 | `motivoAnulacion` | text? | Obligatorio si está anulado (CHECK) |
+| `usuarioId` | uuid? FK | Quién registró el cobro (`Usuario`). `NULL` = histórico, se muestra "—". FK `RESTRICT` |
 
 No se modelan pagos sin venta (anticipos a cuenta) en el MVP: el pedido puede tener
 `estado = PENDIENTE` y el saldo a favor se maneja fuera del sistema hasta la etapa 2.
 
 ### `Compra` + `CompraItem` (etapa 2)
-`Compra`: `fecha`, `proveedor` (texto libre), `comprobante?`, `notas?`, `total` (suma de subtotales).
+`Compra`: `fecha`, `proveedor` (texto libre), `comprobante?`, `notas?`, `total` (suma de subtotales),
+`usuarioId?` (quién la cargó; `NULL` = histórico, FK `RESTRICT`).
 `CompraItem`: `materialId`, `cantidad` (> 0), `costoUnitario`, `subtotal`.
 
 Al registrar una compra, en una sola transacción: se guardan cabecera y líneas, se suma el stock
@@ -157,7 +164,8 @@ compra (último precio pagado = costo de reposición); las ventas viejas conserv
 
 ### `MovimientoStock` (etapa 2)
 Libro de stock, nunca se edita. `tipo` (`COMPRA`, `VENTA` o `AJUSTE`), `cantidad` con signo,
-`stockResultante` (saldo luego del movimiento, CHECK >= 0), `motivo?`, `compraId?`, `ventaId?`.
+`stockResultante` (saldo luego del movimiento, CHECK >= 0), `motivo?`, `compraId?`, `ventaId?`,
+`usuarioId?` (quién hizo el movimiento o la operación que lo generó; `NULL` = histórico, FK `RESTRICT`).
 `VENTA` es el descuento al confirmar una venta (uno por material de las recetas); al anularla se
 crean movimientos `VENTA` de signo contrario con lo que realmente salió. Si faltaba stock, se
 descuenta lo disponible (el saldo nunca es negativo) y el motivo deja constancia del faltante.
@@ -168,6 +176,57 @@ Los ajustes por conteo físico registran la diferencia como `AJUSTE` con su moti
 |---|---|---|
 | `clave` | text PK | `costoHoraManoObra`, `nombreNegocio`, `ivaDefault`, `moneda` |
 | `valor` | text | Todo como texto; se castea al leer |
+
+### `Usuario` (ola 4)
+Persona que entra al sistema. Sin sesión válida no se ve nada (ver `src/lib/auth.ts`).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `usuario` | text, único | Nombre para entrar, en minúsculas. Formato `^[a-z0-9._-]{3,40}$` |
+| `nombre` | text | Para mostrar ("Laura", "Mostrador"). 1 a 80 caracteres, sin contar espacios de los extremos |
+| `rol` | enum `Rol` | `DUENO` o `EMPLEADO` |
+| `hashClave` | text | `scrypt$ln=…,r=…,p=…$sal$hash`. Nunca sale del servidor |
+| `activo` | bool | Baja lógica. Reactivar es volver a `true` |
+| `intentosFallidos`, `ultimoFalloEn`, `bloqueadoHasta` | int, timestamptz? | Pausa por intentos fallidos. Está en la base, así sobrevive reinicios |
+| `creadoEn`, `actualizadoEn` | timestamptz | |
+
+CHECK en la migración `20260210000000_usuarios_y_sesiones`: `usuario` en minúsculas y con formato;
+`nombre` de 1 a 80 caracteres; `hashClave` con formato scrypt (nunca vacío ni texto plano);
+`intentosFallidos >= 0`.
+
+Decisiones:
+- **Nunca se borra un usuario en la app.** Dar de baja es `activo = false`: el historial (ventas, cobros,
+  compras, movimientos) sigue apuntando a él.
+- **FK `RESTRICT`** desde `sesiones`, `ventas`, `pagos`, `compras` y `movimientos_stock`: la base rechaza
+  borrar un usuario que tenga historial o sesiones. El seed es la única vía que borra usuarios, y solo fuera
+  de producción, después de borrar sus ventas, cobros, compras y movimientos.
+- El primer dueño se crea con `npm run usuarios:crear-dueno`, que se niega si ya existe un dueño (aunque
+  esté dado de baja). Los demás usuarios, incluido otro dueño, se crean desde `/usuarios`.
+
+### `Sesion` (ola 4)
+Sesión abierta. La cookie lleva un token aleatorio de 32 bytes; la base guarda solo su SHA-256.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `tokenHash` | text, único | SHA-256 en hex (64 caracteres). El token en claro nunca se guarda |
+| `usuarioId` | uuid FK | `Usuario`. FK `RESTRICT` |
+| `creadaEn` | timestamptz | |
+| `renovadaEn` | timestamptz | Última extensión del vencimiento; a lo sumo una vez por día |
+| `expiraEn` | timestamptz | 30 días desde la última renovación |
+
+CHECK: `tokenHash` es 64 caracteres hex minúsculas; `expiraEn > creadaEn`; `renovadaEn >= creadaEn`.
+
+Decisiones:
+- Quien lee la tabla o un respaldo no puede usar las sesiones. Como el token tiene 256 bits de entropía,
+  el hash es SHA-256 sin sal (no hace falta un hash lento).
+- Cerrar sesión borra su fila. Dar de baja, cambiar el rol o reiniciar la clave borra todas las sesiones
+  del usuario. Una sesión vencida no vale aunque exista, y se borra al encontrarla (no hay tarea programada).
+
+### `Rol` (enum)
+`DUENO` (todo) y `EMPLEADO`. Es el tipo `"Rol"` de Postgres. Qué puede cada rol está en
+`src/lib/permisos-pura.ts`.
 
 ### `ListaPrecio`
 Descuento general sobre el catálogo y/o precios específicos por artículo, para un grupo de clientes.

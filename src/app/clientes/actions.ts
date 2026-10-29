@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { mensajeDeError, primerError, SIN_BASE, textoOpcional, type Resultado } from "@/lib/acciones";
 import { cambiarActivoClienteEnTx, crearClienteEnTx, editarClienteEnTx } from "@/lib/dominio/clientes";
 
@@ -39,6 +40,8 @@ function revalidarClientes(id?: string) {
 }
 
 export async function crearCliente(datos: DatosCliente): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const permiso = await verificarPermiso("editarClientes");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaCliente.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -57,6 +60,8 @@ export async function crearCliente(datos: DatosCliente): Promise<{ ok: true; id:
 }
 
 export async function editarCliente(datos: DatosCliente & { id: string }): Promise<Resultado> {
+  const permiso = await verificarPermiso("editarClientes");
+  if (!permiso.ok) return permiso;
   const id = idCliente.safeParse(datos.id);
   if (!id.success) return { ok: false, error: primerError(id.error) };
   const parsed = esquemaCliente.safeParse(datos);
@@ -77,6 +82,8 @@ export async function editarCliente(datos: DatosCliente & { id: string }): Promi
 
 /** Baja logica (`activo: false`) o reactivacion (`activo: true`). */
 export async function cambiarActivoCliente(datos: { id: string; activo: boolean }): Promise<Resultado> {
+  const permiso = await verificarPermiso("editarClientes");
+  if (!permiso.ok) return permiso;
   const parsed = z.object({ id: idCliente, activo: z.boolean() }).safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };

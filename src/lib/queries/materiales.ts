@@ -9,23 +9,74 @@ import type { ArticuloConReceta } from "@/lib/materiales";
 import type { UnidadMedida } from "@/generated/prisma/client";
 import { getConfig } from "./catalogo";
 
-export type MaterialListado = {
+/** Lo que ve cualquier usuario con sesion de un material: cantidades, sin plata. */
+export type MaterialStock = {
   id: string;
   nombre: string;
   unidad: string;
   stockActual: Dinero;
   stockMinimo: Dinero;
+  estado: "SIN_STOCK" | "BAJO" | "OK";
+};
+
+/** El material trae costo, precio y valorizacion (solo lo arma `getMateriales`, nunca `getMaterialesStock`). */
+export function tieneCostos(material: MaterialStock): material is MaterialListado {
+  return "costoUnitario" in material;
+}
+
+export type MaterialListado = MaterialStock & {
   costoUnitario: Dinero;
   precioVenta: Dinero | null;
   /** Cuanto dinero hay parado en el material, a costo. */
   valorInventario: Dinero;
-  estado: "SIN_STOCK" | "BAJO" | "OK";
 };
 
 /** Materiales con su valorizacion y estado contra el minimo. */
 export const getMateriales = cache(
   (): Promise<MaterialListado[]> => conRespaldo(materialesDesdeBase, demoMateriales),
 );
+
+/**
+ * Materiales SOLO con cantidades (sin costo, precio ni valorizacion), para quien
+ * no puede `verCostos`. A diferencia de `getMateriales`, ni siquiera lee las
+ * columnas de plata de la base.
+ */
+export const getMaterialesStock = cache(
+  (): Promise<MaterialStock[]> =>
+    conRespaldo(
+      async () => {
+        const materiales = await prisma.material.findMany({
+          where: { activo: true },
+          orderBy: { nombre: "asc" },
+          select: { id: true, nombre: true, unidad: true, stockActual: true, stockMinimo: true },
+        });
+        return materiales.map((m) => ({
+          id: m.id,
+          nombre: m.nombre,
+          unidad: ETIQUETA_UNIDAD[m.unidad] ?? m.unidad,
+          stockActual: m.stockActual,
+          stockMinimo: m.stockMinimo,
+          estado: estadoDeStock(m.stockActual, m.stockMinimo),
+        }));
+      },
+      () =>
+        demoMateriales().map(({ id, nombre, unidad, stockActual, stockMinimo, estado }) => ({
+          id,
+          nombre,
+          unidad,
+          stockActual,
+          stockMinimo,
+          estado,
+        })),
+    ),
+);
+
+/** Sin minimo cargado no hay alerta posible: se informa OK, no se inventan. */
+function estadoDeStock(stockActual: Dinero, stockMinimo: Dinero): MaterialStock["estado"] {
+  if (stockMinimo.cmp(0) <= 0) return "OK";
+  if (stockActual.cmp(0) <= 0) return "SIN_STOCK";
+  return stockActual.cmp(stockMinimo) <= 0 ? "BAJO" : "OK";
+}
 
 const SELECT_LISTADO = {
   id: true,
@@ -57,10 +108,6 @@ type FilaListado = {
 };
 
 function aListado(m: FilaListado): MaterialListado {
-  const sinMinimo = m.stockMinimo.cmp(0) <= 0;
-  const agotado = m.stockActual.cmp(0) <= 0;
-  const bajo = m.stockActual.cmp(m.stockMinimo) <= 0;
-
   return {
     id: m.id,
     nombre: m.nombre,
@@ -70,8 +117,7 @@ function aListado(m: FilaListado): MaterialListado {
     costoUnitario: m.costoUnitario,
     precioVenta: m.precioVenta,
     valorInventario: d(m.stockActual).times(m.costoUnitario).toDecimalPlaces(2),
-    // Sin minimo cargado no hay alerta posible: se informa OK, no se inventan.
-    estado: sinMinimo ? "OK" : agotado ? "SIN_STOCK" : bajo ? "BAJO" : "OK",
+    estado: estadoDeStock(m.stockActual, m.stockMinimo),
   };
 }
 

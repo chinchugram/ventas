@@ -13,6 +13,8 @@ export type CompraListada = {
   proveedor: string;
   comprobante: string | null;
   total: Dinero;
+  /** Nombre de quien la cargo; null = historico (se muestra "—"). */
+  registradoPor: string | null;
   items: { material: string; unidad: string; cantidad: Dinero; costoUnitario: Dinero }[];
 };
 
@@ -23,6 +25,8 @@ export type MovimientoListado = {
   cantidad: Dinero;
   stockResultante: Dinero;
   motivo: string | null;
+  /** Nombre de quien hizo el movimiento; null = historico (se muestra "—"). */
+  registradoPor: string | null;
 };
 
 
@@ -40,6 +44,7 @@ async function comprasDesdeBase(limite: number): Promise<CompraListada[]> {
     take: limite,
     include: {
       items: { include: { material: { select: { nombre: true, unidad: true } } } },
+      usuario: { select: { nombre: true } },
     },
   });
 
@@ -49,6 +54,7 @@ async function comprasDesdeBase(limite: number): Promise<CompraListada[]> {
     proveedor: c.proveedor,
     comprobante: c.comprobante,
     total: c.total,
+    registradoPor: c.usuario?.nombre ?? null,
     items: c.items.map((i) => ({
       material: i.material.nombre,
       unidad: ETIQUETA_UNIDAD[i.material.unidad] ?? i.material.unidad,
@@ -58,20 +64,31 @@ async function comprasDesdeBase(limite: number): Promise<CompraListada[]> {
   }));
 }
 
-/** Libro de stock de un material, del movimiento mas reciente al mas antiguo. */
+/**
+ * Libro de stock de un material, del movimiento mas reciente al mas antiguo.
+ *
+ * El motivo de una COMPRA dice a que proveedor se le compro ("Compra a X"):
+ * con `sinProveedor` se descarta para quien no puede ver compras. El libro no
+ * guarda costos, pero el proveedor tampoco es para todos.
+ */
 export const getMovimientos = cache(
-  (materialId: string, limite = 100): Promise<MovimientoListado[]> =>
+  (materialId: string, limite = 100, sinProveedor = false): Promise<MovimientoListado[]> =>
     conRespaldo(
-      () => movimientosDesdeBase(materialId, limite),
-      () => demoMovimientos(materialId).slice(0, limite),
+      async () => quitarProveedor(await movimientosDesdeBase(materialId, limite), sinProveedor),
+      () => quitarProveedor(demoMovimientos(materialId).slice(0, limite), sinProveedor),
     ),
 );
+
+function quitarProveedor(movimientos: MovimientoListado[], quitar: boolean): MovimientoListado[] {
+  return quitar ? movimientos.map((m) => (m.tipo === "COMPRA" ? { ...m, motivo: null } : m)) : movimientos;
+}
 
 async function movimientosDesdeBase(materialId: string, limite: number): Promise<MovimientoListado[]> {
   const movimientos = await prisma.movimientoStock.findMany({
     where: { materialId },
     orderBy: { creadoEn: "desc" },
     take: limite,
+    include: { usuario: { select: { nombre: true } } },
   });
   return movimientos.map((m) => ({
     id: m.id,
@@ -80,5 +97,6 @@ async function movimientosDesdeBase(materialId: string, limite: number): Promise
     cantidad: m.cantidad,
     stockResultante: m.stockResultante,
     motivo: m.motivo,
+    registradoPor: m.usuario?.nombre ?? null,
   }));
 }

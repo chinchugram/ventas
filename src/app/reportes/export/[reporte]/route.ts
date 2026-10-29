@@ -1,4 +1,6 @@
 import { construirCSV, type Celda } from "@/lib/csv";
+import { SIN_SESION, usuarioActual } from "@/lib/auth";
+import { mensajeSinPermiso, puede, type Accion } from "@/lib/permisos";
 import { sumar } from "@/lib/money";
 import {
   getConsumoMateriales,
@@ -167,7 +169,25 @@ function texto404(): Response {
   });
 }
 
+/** Texto plano con el estado que corresponde: un 403 claro, nunca una redireccion HTML. */
+function denegado(status: 401 | 403, mensaje: string): Response {
+  return new Response(mensaje, {
+    status,
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
+// Los reportes traen costos y margenes: hace falta poder verlos Y poder exportarlos.
+const PERMISOS_EXPORT: Accion[] = ["exportarCsv", "verReportes", "verCostos", "verMargenes"];
+
 export async function GET(request: Request, { params }: { params: Promise<{ reporte: string }> }) {
+  // Primero quien es y que puede; recien despues se mira que reporte pide (un 404 no debe
+  // revelar a un empleado que reportes existen).
+  const usuario = await usuarioActual();
+  if (!usuario) return denegado(401, SIN_SESION);
+  const faltante = PERMISOS_EXPORT.find((accion) => !puede(usuario, accion));
+  if (faltante) return denegado(403, mensajeSinPermiso(faltante));
+
   const { reporte } = await params;
   const exportacion = EXPORTACIONES.get(reporte);
   if (!exportacion) return texto404();

@@ -2,11 +2,13 @@ import Link from "next/link";
 import { fmtFecha, fmtMonedaCorta as fmtMoneda, fmtNumero } from "@/lib/money";
 import { formatearCuit } from "@/lib/cuit";
 import { getClientes, getClientesDeBaja } from "@/lib/queries/clientes";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { Seccion, Vacio } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClientesPage() {
+  const usuario = await requierePermisoPagina("verClientes");
   const [clientes, bajas] = await Promise.all([getClientes(), getClientesDeBaja()]);
 
   const deudores = clientes.filter((c) => c.saldo.cmp(0) > 0);
@@ -27,7 +29,7 @@ export default async function ClientesPage() {
               ? `${deudores.length} con saldo pendiente`
               : "Todos al día"
         }
-        accion={botonNuevo}
+        accion={puede(usuario, "editarClientes") ? botonNuevo : undefined}
       />
 
       {clientes.length === 0 ? (

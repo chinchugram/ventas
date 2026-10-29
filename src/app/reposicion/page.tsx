@@ -1,23 +1,46 @@
 import Link from "next/link";
 import { fmtMoneda, fmtMonedaCorta, fmtNumero } from "@/lib/money";
 import { urlNuevaCompra } from "@/lib/reposicion";
-import { DIAS_CONSUMO, getReposicion, type MaterialReposicion } from "@/lib/queries/reposicion";
+import {
+  DIAS_CONSUMO,
+  getReposicion,
+  getReposicionSinCostos,
+  type LineaReposicionSinCostos,
+  type MaterialReposicion,
+} from "@/lib/queries/reposicion";
 import type { LineaReposicion } from "@/lib/reposicion";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { estadoDemo } from "@/lib/respaldo";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
 import { FactorForm } from "./_componentes/factor-form";
 
 export const dynamic = "force-dynamic";
 
+/** La linea trae costo por unidad y costo estimado (solo las arma `getReposicion`). */
+function conCostos(l: LineaReposicionSinCostos): l is LineaReposicion<MaterialReposicion> {
+  return "costoEstimado" in l;
+}
+
 export default async function ReposicionPage() {
-  const { lineas, total, factor, conMinimo } = await getReposicion();
+  const usuario = await requierePermisoPagina("verReposicion");
+  // Costos y compra sugerida solo para quien los ve y puede comprar; los demas, cantidades.
+  const verCostos = puede(usuario, "verCostos");
+  const puedeComprar = puede(usuario, "registrarCompra");
+  const puedeConfigurar = puede(usuario, "configuracion");
   const esModoDemo = estadoDemo().activo;
+
+  const completa = verCostos ? await getReposicion() : null;
+  const reducida = completa ? null : await getReposicionSinCostos();
+  const lineas: LineaReposicionSinCostos[] = completa?.lineas ?? reducida?.lineas ?? [];
+  const total = completa?.total ?? null;
+  const factor = (completa ?? reducida)!.factor;
+  const conMinimo = (completa ?? reducida)!.conMinimo;
 
   return (
     <>
       <Seccion
         titulo="Reposición"
-        descripcion="Materiales bajo el mínimo: cuánto comprar y cuánto va a salir"
+        descripcion={verCostos ? "Materiales bajo el mínimo: cuánto comprar y cuánto va a salir" : "Materiales bajo el mínimo y cuánto falta comprar"}
         accion={
           <Link
             href="/materiales"
@@ -28,9 +51,11 @@ export default async function ReposicionPage() {
         }
       />
 
-      <div className="mb-4">
-        <FactorForm inicial={factor.toString()} esModoDemo={esModoDemo} />
-      </div>
+      {puedeConfigurar ? (
+        <div className="mb-4">
+          <FactorForm inicial={factor.toString()} esModoDemo={esModoDemo} />
+        </div>
+      ) : null}
 
       {lineas.length === 0 ? (
         <Vacio
@@ -45,7 +70,7 @@ export default async function ReposicionPage() {
         <>
           <div className="mb-4 grid grid-cols-2 gap-3">
             <Tarjeta titulo="A reponer" valor={fmtNumero(lineas.length)} tono="aviso" detalle={lineas.length === 1 ? "material" : "materiales"} />
-            <Tarjeta titulo="Compra estimada" valor={fmtMonedaCorta(total)} detalle="a costo actual" />
+            {total ? <Tarjeta titulo="Compra estimada" valor={fmtMonedaCorta(total)} detalle="a costo actual" /> : null}
           </div>
 
           <ul className="space-y-2">
@@ -54,28 +79,32 @@ export default async function ReposicionPage() {
             ))}
           </ul>
 
-          <div className="sticky bottom-20 mt-4 flex items-center justify-between gap-3 rounded-xl bg-tinta p-4 text-white md:bottom-4">
-            <div className="min-w-0">
-              <p className="text-xs text-slate-300 uppercase">Compra sugerida</p>
-              <p className="text-xl font-semibold tabular-nums">{fmtMoneda(total)}</p>
-            </div>
-            <Link
-              href={urlNuevaCompra(lineas)}
-              className="shrink-0 rounded-lg bg-marca px-4 py-3 text-center font-semibold text-tinta"
-            >
-              Armar compra
-            </Link>
-          </div>
-          <p className="mt-2 text-center text-xs text-slate-500">
-            Abre Nueva compra con estas cantidades y el costo actual; podés cambiarlas antes de guardar.
-          </p>
+          {total && puedeComprar ? (
+            <>
+              <div className="sticky bottom-20 mt-4 flex items-center justify-between gap-3 rounded-xl bg-tinta p-4 text-white md:bottom-4">
+                <div className="min-w-0">
+                  <p className="text-xs text-slate-300 uppercase">Compra sugerida</p>
+                  <p className="text-xl font-semibold tabular-nums">{fmtMoneda(total)}</p>
+                </div>
+                <Link
+                  href={urlNuevaCompra(lineas)}
+                  className="shrink-0 rounded-lg bg-marca px-4 py-3 text-center font-semibold text-tinta"
+                >
+                  Armar compra
+                </Link>
+              </div>
+              <p className="mt-2 text-center text-xs text-slate-500">
+                Abre Nueva compra con estas cantidades y el costo actual; podés cambiarlas antes de guardar.
+              </p>
+            </>
+          ) : null}
         </>
       )}
     </>
   );
 }
 
-function LineaTarjeta({ linea: l }: { linea: LineaReposicion<MaterialReposicion> }) {
+function LineaTarjeta({ linea: l }: { linea: LineaReposicionSinCostos }) {
   const agotado = l.stockActual.lte(0);
   return (
     <li className="rounded-xl border border-slate-200 bg-white p-4">
@@ -113,14 +142,18 @@ function LineaTarjeta({ linea: l }: { linea: LineaReposicion<MaterialReposicion>
             {l.consumo.gt(0) ? `${fmtNumero(l.consumo)} ${l.etiquetaUnidad}` : "-"}
           </dd>
         </div>
-        <div>
-          <dt className="text-xs text-slate-500">Costo por {l.etiquetaUnidad}</dt>
-          <dd className="text-sm font-semibold tabular-nums text-slate-900">{fmtMoneda(l.costoUnitario)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-slate-500">Costo estimado</dt>
-          <dd className="text-sm font-semibold tabular-nums text-slate-900">{fmtMoneda(l.costoEstimado)}</dd>
-        </div>
+        {conCostos(l) ? (
+          <>
+            <div>
+              <dt className="text-xs text-slate-500">Costo por {l.etiquetaUnidad}</dt>
+              <dd className="text-sm font-semibold tabular-nums text-slate-900">{fmtMoneda(l.costoUnitario)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Costo estimado</dt>
+              <dd className="text-sm font-semibold tabular-nums text-slate-900">{fmtMoneda(l.costoEstimado)}</dd>
+            </div>
+          </>
+        ) : null}
       </dl>
     </li>
   );

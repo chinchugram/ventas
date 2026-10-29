@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { faltanteParaMinimo } from "@/lib/stock";
 import { fmtMoneda, fmtMonedaCorta, fmtNumero, sumar } from "@/lib/money";
-import { getMateriales, getMaterialesDeBaja, type MaterialDeBaja } from "@/lib/queries/materiales";
+import {
+  getMateriales,
+  getMaterialesDeBaja,
+  getMaterialesStock,
+  tieneCostos,
+  type MaterialDeBaja,
+} from "@/lib/queries/materiales";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -21,20 +28,35 @@ const TEXTO_ESTADO = {
 const BOTON_SECUNDARIO = "inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700";
 
 export default async function MaterialesPage({ searchParams }: { searchParams: Promise<{ bajas?: string }> }) {
-  const verBajas = (await searchParams).bajas === "1";
-  const [materiales, deBaja] = await Promise.all([getMateriales(), getMaterialesDeBaja()]);
+  const usuario = await requierePermisoPagina("verStock");
+  // Costos, precios, valorizacion y gestion (alta, edicion, bajas, compras): cada cosa con su permiso.
+  const verCostos = puede(usuario, "verCostos");
+  const puedeEditar = puede(usuario, "editarMateriales");
+  const puedeComprar = puede(usuario, "registrarCompra");
+  const verBajas = (await searchParams).bajas === "1" && verCostos && puedeEditar;
+  // Quien no ve costos recibe una lista que ni lee las columnas de plata. Las bajas traen costo: solo para quien edita.
+  const [materiales, deBaja] = await Promise.all([
+    verCostos ? getMateriales() : getMaterialesStock(),
+    verCostos && puedeEditar ? getMaterialesDeBaja() : Promise.resolve([]),
+  ]);
 
   const acciones = (
     <div className="flex flex-wrap gap-2">
-      <Link href="/reposicion" className={BOTON_SECUNDARIO}>
-        Reposición
-      </Link>
-      <Link href="/compras/nueva" className={BOTON_SECUNDARIO}>
-        Registrar compra
-      </Link>
-      <Link href="/materiales/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta">
-        Nuevo material
-      </Link>
+      {puede(usuario, "verReposicion") ? (
+        <Link href="/reposicion" className={BOTON_SECUNDARIO}>
+          Reposición
+        </Link>
+      ) : null}
+      {puedeComprar ? (
+        <Link href="/compras/nueva" className={BOTON_SECUNDARIO}>
+          Registrar compra
+        </Link>
+      ) : null}
+      {puedeEditar ? (
+        <Link href="/materiales/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta">
+          Nuevo material
+        </Link>
+      ) : null}
     </div>
   );
 
@@ -68,7 +90,7 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
     );
   }
 
-  const valorTotal = sumar(...materiales.map((m) => m.valorInventario));
+  const valorTotal = sumar(...materiales.filter(tieneCostos).map((m) => m.valorInventario));
   const alertas = materiales.filter((m) => m.estado !== "OK");
 
   return (
@@ -80,13 +102,13 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3">
-        <Tarjeta titulo="Valor en stock" valor={fmtMonedaCorta(valorTotal)} detalle="a costo de compra" />
+        {verCostos ? <Tarjeta titulo="Valor en stock" valor={fmtMonedaCorta(valorTotal)} detalle="a costo de compra" /> : null}
         <Tarjeta
           titulo="Necesitan reposición"
           valor={fmtNumero(alertas.length)}
           tono={alertas.length > 0 ? "aviso" : "ok"}
           detalle={
-            alertas.length > 0 ? (
+            alertas.length > 0 && puede(usuario, "verReposicion") ? (
               <Link href="/reposicion" className="inline-flex min-h-11 items-center underline underline-offset-2">
                 Ver qué comprar
               </Link>
@@ -106,13 +128,15 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
                 <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${ESTILO_ESTADO[m.estado]}`}>
                   {TEXTO_ESTADO[m.estado]}
                 </span>
-                <Link
-                  href={`/materiales/${m.id}/editar`}
-                  aria-label={`Editar ${m.nombre}`}
-                  className="-my-3 rounded-md px-2 py-3 text-sm font-medium text-marca-texto underline-offset-2 hover:underline"
-                >
-                  Editar
-                </Link>
+                {puedeEditar ? (
+                  <Link
+                    href={`/materiales/${m.id}/editar`}
+                    aria-label={`Editar ${m.nombre}`}
+                    className="-my-3 rounded-md px-2 py-3 text-sm font-medium text-marca-texto underline-offset-2 hover:underline"
+                  >
+                    Editar
+                  </Link>
+                ) : null}
               </div>
             </div>
 
@@ -130,18 +154,22 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
                   {m.stockMinimo.cmp(0) > 0 ? `${fmtNumero(m.stockMinimo)} ${m.unidad}` : "-"}
                 </dd>
               </div>
-              <div>
-                <dt className="text-xs text-slate-500">Costo unitario</dt>
-                <dd className="text-sm font-semibold tabular-nums text-slate-900">
-                  {fmtMoneda(m.costoUnitario)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-slate-500">Precio de venta</dt>
-                <dd className="text-sm font-semibold tabular-nums text-slate-900">
-                  {m.precioVenta ? fmtMoneda(m.precioVenta) : "solo insumo"}
-                </dd>
-              </div>
+              {tieneCostos(m) ? (
+                <>
+                  <div>
+                    <dt className="text-xs text-slate-500">Costo unitario</dt>
+                    <dd className="text-sm font-semibold tabular-nums text-slate-900">
+                      {fmtMoneda(m.costoUnitario)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">Precio de venta</dt>
+                    <dd className="text-sm font-semibold tabular-nums text-slate-900">
+                      {m.precioVenta ? fmtMoneda(m.precioVenta) : "solo insumo"}
+                    </dd>
+                  </div>
+                </>
+              ) : null}
             </dl>
 
             {m.estado !== "OK" ? (

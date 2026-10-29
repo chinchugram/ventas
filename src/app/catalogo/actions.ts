@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { validarArticulo, type DatosArticulo } from "@/lib/recetas";
 import { cambiarActivoArticuloEnTx, guardarArticuloEnTx } from "@/lib/dominio/articulos";
@@ -19,6 +20,8 @@ function revalidarCatalogo(id: string) {
 export async function guardarArticulo(
   datos: DatosArticulo,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const permiso = await verificarPermiso("editarCatalogo");
+  if (!permiso.ok) return permiso;
   // Primero la base: en modo demostracion los ids de ejemplo no son uuid y el
   // usuario veria un error de validacion en vez del aviso de que no se guarda.
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -39,6 +42,8 @@ const esquemaActivo = z.object({ id: z.uuid("Artículo inválido"), activo: z.bo
 
 /** Baja logica (`activo = false`) o reactivacion de un articulo. */
 export async function cambiarActivoArticulo(datos: z.input<typeof esquemaActivo>): Promise<Resultado> {
+  const permiso = await verificarPermiso("editarCatalogo");
+  if (!permiso.ok) return permiso;
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
   const parsed = esquemaActivo.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
