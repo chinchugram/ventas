@@ -4,6 +4,12 @@ import { conRespaldo } from "@/lib/respaldo";
 import { CERO, d, type Dinero } from "@/lib/money";
 import { ETIQUETA_UNIDAD } from "@/lib/unidades";
 import {
+  compararConsumo,
+  consumoTeoricoPorMaterial,
+  type MaterialParaConsumo,
+  type ReporteConsumo,
+} from "@/lib/consumo-teorico";
+import {
   calcularRotacion,
   diasDelPeriodo,
   sinMovimiento,
@@ -39,6 +45,13 @@ export type RotacionStock = ReporteRotacion<MaterialRotacion> & {
   hasta: Date;
 };
 export type StockSinMovimiento = SinMovimiento<MaterialInmovilizado> & { ahora: Date };
+
+export type MaterialConsumo = MaterialParaConsumo & MaterialStockReporte;
+export type ConsumoRealVsTeorico = ReporteConsumo<MaterialConsumo> & {
+  /** Periodo pedido: desde inclusivo, hasta exclusivo. */
+  desde: Date;
+  hasta: Date;
+};
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
@@ -107,19 +120,29 @@ async function movimientosDesde(instante: Date): Promise<Map<string, Dinero>> {
   return new Map(filas.map((f) => [f.materialId, d(f._sum.cantidad)]));
 }
 
+/**
+ * Consumo REAL de cada material en [desde, hasta): salidas tipo VENTA del libro,
+ * netas de anulaciones, con signo positivo (= cantidad que salio). Puede dar
+ * negativo si se anulo en el periodo una venta de uno anterior; cada reporte
+ * decide que hacer con eso. Lo usan la rotacion y el consumo real vs teorico.
+ */
+async function consumoRealPorMaterial(desde: Date, hasta: Date): Promise<Map<string, Dinero>> {
+  const ventas = await prisma.movimientoStock.groupBy({
+    by: ["materialId"],
+    where: { tipo: "VENTA", creadoEn: { gte: desde, lt: hasta } },
+    _sum: { cantidad: true },
+  });
+  // Las ventas descuentan con signo negativo y las anulaciones devuelven en positivo.
+  return new Map(ventas.map((v) => [v.materialId, d(v._sum.cantidad).neg()]));
+}
+
 async function rotacionDesdeBase(desde: Date, hasta: Date, dias: Dinero): Promise<ReporteRotacion<MaterialRotacion>> {
-  const [materiales, desdeDesde, desdeHasta, ventas] = await Promise.all([
+  const [materiales, desdeDesde, desdeHasta, consumo] = await Promise.all([
     prisma.material.findMany({ where: { activo: true }, select: SELECT_MATERIAL }),
     movimientosDesde(desde),
     movimientosDesde(hasta),
-    prisma.movimientoStock.groupBy({
-      by: ["materialId"],
-      where: { tipo: "VENTA", creadoEn: { gte: desde, lt: hasta } },
-      _sum: { cantidad: true },
-    }),
+    consumoRealPorMaterial(desde, hasta),
   ]);
-  // Las ventas descuentan con signo negativo y las anulaciones devuelven en positivo.
-  const consumo = new Map(ventas.map((v) => [v.materialId, d(v._sum.cantidad).neg()]));
 
   return calcularRotacion(
     materiales.map((m): MaterialRotacion => {
@@ -215,5 +238,89 @@ function sinMovimientoDemo(dias: number, ahora: Date): SinMovimiento<MaterialInm
     })),
     dias,
     ahora,
+  );
+}
+
+// ─── Consumo real vs teorico ──────────────────────────────────────────────────
+
+/**
+ * Por material: lo que deberia haber salido segun las recetas de lo vendido en
+ * [desde, hasta) contra lo que salio del libro de stock. La cuenta, la receta
+ * que se usa y los motivos de desvio estan en `lib/consumo-teorico.ts`.
+ * Falla (no usa el respaldo) si el periodo es invalido.
+ */
+export function getConsumoRealVsTeorico(desde: Date, hasta: Date): Promise<ConsumoRealVsTeorico> {
+  const dias = diasDelPeriodo(desde, hasta); // valida el periodo
+  return conRespaldo(
+    async () => ({ ...(await consumoDesdeBase(desde, hasta)), desde, hasta }),
+    () => ({ ...consumoDemo(dias), desde, hasta }),
+  );
+}
+
+async function consumoDesdeBase(desde: Date, hasta: Date): Promise<ReporteConsumo<MaterialConsumo>> {
+  // El teorico se ubica por Venta.fecha (dia calendario); el real, por la hora del movimiento.
+  const items = await prisma.ventaItem.findMany({
+    where: { venta: { estado: { not: "ANULADA" }, fecha: { gte: desde, lt: hasta } } },
+    select: { ventaId: true, articuloId: true, cantidad: true },
+  });
+  const idsArticulo = [...new Set(items.map((i) => i.articuloId))];
+
+  const [articulos, real] = await Promise.all([
+    prisma.articulo.findMany({
+      where: { id: { in: idsArticulo } },
+      select: {
+        id: true,
+        esServicio: true,
+        receta: { select: { componentes: { select: { tipo: true, materialId: true, cantidad: true } } } },
+      },
+    }),
+    consumoRealPorMaterial(desde, hasta),
+  ]);
+
+  const teorico = consumoTeoricoPorMaterial(
+    items.map((i) => ({ ventaId: i.ventaId, articuloId: i.articuloId, cantidad: d(i.cantidad) })),
+    articulos.map((a) => ({
+      id: a.id,
+      esServicio: a.esServicio,
+      componentes: (a.receta?.componentes ?? []).map((c) => ({
+        tipo: c.tipo,
+        materialId: c.materialId,
+        cantidad: d(c.cantidad),
+      })),
+    })),
+  );
+
+  // Sin filtrar por activo: una receta o un movimiento pueden apuntar a un material dado de baja.
+  const ids = [...new Set([...teorico.keys(), ...real.keys()])];
+  const materiales = await prisma.material.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, nombre: true, unidad: true, costoUnitario: true },
+  });
+  return compararConsumo(
+    materiales.map((m): MaterialConsumo => ({
+      id: m.id,
+      nombre: m.nombre,
+      unidad: ETIQUETA_UNIDAD[m.unidad] ?? m.unidad,
+      costoUnitario: d(m.costoUnitario),
+    })),
+    teorico,
+    real,
+  );
+}
+
+/** La demo no tiene libro ni ventas con recetas: real = teorico (sin desvio) con el consumo de ejemplo. */
+function consumoDemo(dias: Dinero): ReporteConsumo<MaterialConsumo> {
+  const consumo = new Map(
+    demoMateriales().map((m) => [m.id, d(CONSUMO_DEMO_30D[m.id] ?? "0").times(dias).div(30).toDecimalPlaces(3)]),
+  );
+  return compararConsumo(
+    demoMateriales().map((m): MaterialConsumo => ({
+      id: m.id,
+      nombre: m.nombre,
+      unidad: m.unidad,
+      costoUnitario: m.costoUnitario,
+    })),
+    consumo,
+    consumo,
   );
 }
