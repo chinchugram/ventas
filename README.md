@@ -258,5 +258,10 @@ dependencias transitivas del **CLI de Prisma** (`devDependency`), no del runtime
 no aplica: el proyecto usa PostgreSQL. La única corrección que ofrece npm es bajar a Prisma 6,
 que es un retroceso. No se acepta; queda documentado.
 
+**Actualización (ola 3).** La auditoría de dependencias (`docs/auditoria-ola-3.md`, parte 3) encontró que
+`prisma@7.10.1` (patch no breaking) también corrige esas cuatro, así que bajar a Prisma 6 sigue sin hacer
+falta. Hoy `npm audit` suma altas y una crítica en `next` y `zod` (runtime) que se corrigen con
+actualizaciones dentro de los rangos de `package.json` (`next` ≥ 16.4.1, `zod` 4.6.6); quedan pendientes de aplicar.
+
 **Sin autenticación por decisión propia** (un solo usuario). La app no expone datos públicos y
 el límite es el firewall del VPS. Agregar login es la etapa 3.
