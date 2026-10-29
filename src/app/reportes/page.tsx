@@ -7,7 +7,7 @@ import {
   type TopProducto,
 } from "@/lib/queries/dashboard";
 import { getMateriales } from "@/lib/queries/materiales";
-import { parseRangoFechas, rangoDeMes, type ParamsFecha } from "@/lib/rango-fechas";
+import { conRango, parseRangoFechas, rangoDeMes, type ParamsFecha } from "@/lib/rango-fechas";
 import { Seccion, Tabla, Tarjeta, Vacio } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +60,7 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
         titulo="1. Resumen del período"
         descripcion={rango.etiqueta}
         badge="Por período"
+        exportar={conRango("/reportes/export/resumen", rango)}
       >
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Tarjeta
@@ -78,7 +79,12 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
         </div>
       </Reporte>
 
-      <Reporte titulo="2. Ganancia por producto" descripcion="Cuánto le sale, a cuánto lo vende y cuánto gana" badge="Por período">
+      <Reporte
+        titulo="2. Ganancia por producto"
+        descripcion="Cuánto le sale, a cuánto lo vende y cuánto gana"
+        badge="Por período"
+        exportar={conRango("/reportes/export/ganancia-por-producto", rango)}
+      >
         {productos.length === 0 ? (
           <Vacio mensaje="Sin ventas en el período" />
         ) : (
@@ -96,7 +102,12 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
         )}
       </Reporte>
 
-      <Reporte titulo="5. Productos más rentables" descripcion="Ordenados por ganancia, no por unidades" badge="Por período">
+      <Reporte
+        titulo="5. Productos más rentables"
+        descripcion="Ordenados por ganancia, no por unidades"
+        badge="Por período"
+        exportar={conRango("/reportes/export/productos-rentables", rango)}
+      >
         {productos.length === 0 ? (
           <Vacio mensaje="Sin ventas en el período" />
         ) : (
@@ -112,6 +123,7 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
         titulo="3. Deuda por cliente"
         descripcion="Quién debe, cuánto y desde cuándo. Es el saldo de hoy de todas las ventas, sin importar la fecha: no cambia con el período."
         badge="A hoy"
+        exportar="/reportes/export/deuda-por-cliente"
       >
         <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Tarjeta
@@ -140,6 +152,7 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
         titulo="4. Consumo de materiales"
         descripcion="Lo que salió del stock por las ventas del período. El costo se estima con el costo actual de cada material."
         badge="Por período"
+        exportar={conRango("/reportes/export/consumo-materiales", rango)}
       >
         <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Tarjeta titulo="Costo consumido" valor={fmtMonedaCorta(costoConsumo)} detalle="estimado" />
@@ -182,11 +195,14 @@ function Reporte({
   titulo,
   descripcion,
   badge,
+  exportar,
   children,
 }: {
   titulo: string;
   descripcion?: string;
   badge: "Por período" | "A hoy";
+  /** Ruta del CSV de este reporte (ya con el filtro activo, si depende del período). */
+  exportar?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -200,6 +216,15 @@ function Reporte({
         >
           {badge}
         </span>
+        {exportar ? (
+          <a
+            href={exportar}
+            aria-label={`Exportar CSV: ${titulo}`}
+            className="ml-auto inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Exportar CSV
+          </a>
+        ) : null}
       </div>
       {descripcion ? <p className="mb-3 text-sm text-slate-500">{descripcion}</p> : null}
       {children}
