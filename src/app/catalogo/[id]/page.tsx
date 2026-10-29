@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getConfig } from "@/lib/queries/catalogo";
+import { getIvaPorDefecto } from "@/lib/queries/configuracion";
 import { getEditorArticulo } from "@/lib/queries/recetas";
 import { estadoDemo } from "@/lib/respaldo";
 import { Seccion } from "@/components/ui";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 /** Edicion de un articulo y su receta, con baja y reactivacion. */
 export default async function EditarArticuloPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [config, editor] = await Promise.all([getConfig(), getEditorArticulo(id)]);
+  const [config, editor, ivaPorDefecto] = await Promise.all([getConfig(), getEditorArticulo(id), getIvaPorDefecto()]);
   if (!editor) notFound();
 
   const { articulo, catalogo } = editor;
@@ -51,7 +52,7 @@ export default async function EditarArticuloPage({ params }: { params: Promise<{
         catalogo={catalogo}
         costoHoraManoObra={config.costoHoraManoObra ?? "0"}
         margenObjetivo={config.margenObjetivo ?? "40"}
-        ivaDefault={config.ivaDefault ?? "21"}
+        ivaDefault={ivaPorDefecto.toString()}
         esModoDemo={esModoDemo}
       />
 

@@ -145,10 +145,14 @@ Todavía no hay pantalla para registrar cobros posteriores sobre una venta exist
 | `/ventas` | Historial de ventas con margen y estado de pago |
 | `/ventas/nueva` | Carga de venta: calcula en vivo y guarda (descuenta stock) |
 | `/ventas/[id]` | Detalle de una venta, pagos y anulación |
-| `/clientes` | Quién es cada cliente y cuánto debe |
+| `/clientes` | Quién es cada cliente y cuánto debe; alta, edición y baja con CUIT validado |
+| `/clientes/[id]` | Ficha: ventas, pagos y saldo del cliente |
 | `/catalogo` | Costo por receta, precio, margen y precio necesario para la meta |
+| `/catalogo/nuevo`, `/catalogo/[id]` | Alta y edición de artículo con editor de receta y costo/margen en vivo |
 | `/materiales` | Stock, valorización y avisos de reposición |
 | `/materiales/[id]` | Libro de movimientos del material y ajuste por conteo físico |
+| `/materiales/nuevo`, `/materiales/[id]/editar` | Alta y edición; al cambiar el costo muestra qué artículos cambian de margen |
+| `/configuracion` | Nombre del negocio, costo/hora de mano de obra, IVA por defecto, margen objetivo y máquinas |
 | `/compras` | Historial de compras; `/compras/nueva` registra una (suma stock y actualiza el costo) |
 | `/reportes` | Ganancia por producto, más rentables, deuda por cliente, materiales |
 
@@ -175,6 +179,8 @@ el mostrador con el teléfono en la mano.
 | `npm run test:stock` | Verifica las cuentas de compras y stock contra números conocidos |
 | `npm run test:integridad` | Verifica que los CHECK constraints rechazan datos inválidos |
 | `npm run test:acciones` | Compra, venta, anulación y ajuste contra Postgres real (en transacciones que se deshacen) |
+| `npm run test:cuit` / `test:recetas` / `test:materiales` / `test:configuracion` | Lógica pura de cada pantalla de altas |
+| `npm run test:clientes` / `test:articulos` / `test:materiales:db` / `test:configuracion:db` | Las mismas altas contra Postgres real, sin dejar rastro |
 
 ---
 
@@ -221,9 +227,9 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 **Lo que falta para que sea usable (siguiente paso):**
 
 - [x] Guardado real de la venta: numeración correlativa por año, ítems, costo congelado y descuento de stock
-- [ ] Formularios de alta/edición de clientes, artículos, materiales y recetas (ola 1 de `docs/04-checklist-olas.md`)
+- [x] Formularios de alta/edición de clientes, artículos, materiales y recetas (ola 1 de `docs/04-checklist-olas.md`)
 - [ ] Registro de pagos sobre ventas existentes y cambio de estado (ola 2)
-- [ ] Página de configuración (costo/hora de mano de obra, IVA, margen objetivo) (ola 1)
+- [x] Página de configuración (costo/hora de mano de obra, IVA, margen objetivo) y máquinas (ola 1)
 - [ ] Backup automático diario (ola 2)
 
 El plan completo, por olas y pensado para repartir a subagentes en paralelo, está en

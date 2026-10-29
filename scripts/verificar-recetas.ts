@@ -131,7 +131,8 @@ comprobar("sin nombre", error({ nombre: "  " }), "Falta el nombre del artículo"
 comprobar("precio 0", error({ precioVenta: "0" }), "El precio de venta debe ser un número mayor a 0");
 comprobar("precio con miles", error({ precioVenta: "1.500,00" }), "El precio de venta debe ser un número mayor a 0");
 comprobar("precio 5 decimales", error({ precioVenta: "1,12345" }), "El precio admite hasta 4 decimales");
-comprobar("iva raro", error({ ivaPct: "27" }), "El IVA debe ser 21%, 10,5% o 0%");
+comprobar("iva raro", error({ ivaPct: "19" }), "El IVA debe ser 21%, 10,5%, 27% o 0%");
+comprobar("iva 27", error({ ivaPct: "27" }), "aceptado");
 comprobar("iva 0", error({ ivaPct: "0" }), "aceptado");
 comprobar("id invalido", error({ id: "art-1" }), "Artículo inválido");
 comprobar("receta vacia permitida", error({ lineas: [] }), "aceptado");

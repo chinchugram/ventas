@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getConfig } from "@/lib/queries/catalogo";
+import { getIvaPorDefecto } from "@/lib/queries/configuracion";
 import { getCatalogoCostos } from "@/lib/queries/recetas";
 import { estadoDemo } from "@/lib/respaldo";
 import { Seccion } from "@/components/ui";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** Alta de articulo con su receta. */
 export default async function NuevoArticuloPage() {
-  const [config, catalogo] = await Promise.all([getConfig(), getCatalogoCostos()]);
+  const [config, catalogo, ivaPorDefecto] = await Promise.all([getConfig(), getCatalogoCostos(), getIvaPorDefecto()]);
 
   return (
     <>
@@ -29,7 +30,7 @@ export default async function NuevoArticuloPage() {
         catalogo={catalogo}
         costoHoraManoObra={config.costoHoraManoObra ?? "0"}
         margenObjetivo={config.margenObjetivo ?? "40"}
-        ivaDefault={config.ivaDefault ?? "21"}
+        ivaDefault={ivaPorDefecto.toString()}
         esModoDemo={estadoDemo().activo}
       />
     </>

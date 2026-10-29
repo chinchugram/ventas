@@ -9,7 +9,7 @@ import { recetaResuelta, type ComponenteDb } from "@/lib/receta";
 // `scripts/verificar-recetas.ts`.
 
 /** Alicuotas de IVA que maneja el comercio. */
-export const ALICUOTAS_IVA = ["21", "10.5", "0"] as const;
+export const ALICUOTAS_IVA = ["21", "10.5", "27", "0"] as const;
 
 export const NOMBRE_TIPO: Record<TipoComponente, string> = {
   MATERIAL: "Material",
@@ -149,7 +149,7 @@ const esquemaCabecera = z.object({
     .string()
     .trim()
     .transform(normalizarDecimal)
-    .refine((v) => ALICUOTAS_IVA.some((a) => esDecimal(v) && d(v).eq(a)), "El IVA debe ser 21%, 10,5% o 0%"),
+    .refine((v) => ALICUOTAS_IVA.some((a) => esDecimal(v) && d(v).eq(a)), "El IVA debe ser 21%, 10,5%, 27% o 0%"),
   esServicio: z.boolean(),
   lineas: z.array(z.any()).max(MAX_LINEAS, `La receta admite hasta ${MAX_LINEAS} líneas`),
 });

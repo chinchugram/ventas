@@ -26,6 +26,7 @@ import type { VentaRow } from "@/lib/queries/ventas";
 export const DEMO_CONFIG: Record<string, string> = {
   nombreNegocio: "HL Laser",
   costoHoraManoObra: "3500",
+  ivaPorDefecto: "21",
   margenObjetivo: "40",
 };
 
