@@ -49,7 +49,9 @@
     "test:consumo": "tsx scripts/verificar-consumo.ts",
     "test:respaldo:restaurar": "sh scripts/probar-restauracion.sh",
     "test:recordatorios": "tsx scripts/verificar-recordatorios.ts",
-    "test:recordatorios:db": "tsx scripts/test-recordatorios.ts"
+    "test:recordatorios:db": "tsx scripts/test-recordatorios.ts",
+    "test:presupuestos": "tsx scripts/verificar-presupuestos.ts",
+    "test:presupuestos:db": "tsx scripts/test-presupuestos.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
