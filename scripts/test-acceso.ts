@@ -78,9 +78,7 @@ const DIA = 24 * 60 * 60 * 1000;
 // la prueba. `dueno` = solo DUENO (el empleado va a /ventas/nueva); `ambos` =
 // DUENO y EMPLEADO; `publica` = sin sesion. Sale de `requierePermisoPagina(...)`
 // de cada pagina y de la tabla de `src/lib/permisos-pura.ts`.
-// Pendiente de la tarea 8.1: /listas-precios/** (solo dueno), /presupuestos/** y
-// /cobranzas/hoy (ambos) todavia no verifican permisos; hasta que se integre, el
-// empleado entra a /listas-precios/** y esta prueba lo marca como falla real.
+// /listas-precios/** es solo del dueno; /presupuestos/** y /cobranzas/hoy, de ambos.
 
 type Clase = "publica" | "dueno" | "ambos";
 
