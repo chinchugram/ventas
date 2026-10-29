@@ -31,8 +31,10 @@ npm run dev
 Abrir <http://localhost:3000>.
 
 El seed carga un comercio de ejemplo con 4 clientes, 5 artículos con receta, 5 materiales,
-3 máquinas y 7 ventas (pagadas, sin cobrar y pagadas a medias) para ver las pantallas con
-información realista antes de cargar nada real.
+3 máquinas, 2 compras, 7 ventas (pagadas, sin cobrar y pagadas a medias) y un ajuste por conteo,
+para ver las pantallas con información realista antes de cargar nada real. Compras y ventas pasan
+por la misma lógica que las pantallas, así que el stock de cada material coincide con su libro de
+movimientos.
 
 **Para limpiar los datos de ejemplo y empezar de cero:** `npm run db:reset`
 
@@ -172,6 +174,7 @@ el mostrador con el teléfono en la mano.
 | `npm run test:costeo` | Verifica el motor de costeo contra 15 números conocidos |
 | `npm run test:stock` | Verifica las cuentas de compras y stock contra números conocidos |
 | `npm run test:integridad` | Verifica que los CHECK constraints rechazan datos inválidos |
+| `npm run test:acciones` | Compra, venta, anulación y ajuste contra Postgres real (en transacciones que se deshacen) |
 
 ---
 
@@ -190,8 +193,12 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
    constraints de `prisma/migrations/` validan siempre. Verificables con
    `scripts/test-integridad.sql`.
 5. **Baja lógica en todo catálogo.** `activo = false`. Nunca se borra algo con historial.
-6. **Server Components finos.** Consultas en `src/lib/queries/`, escrituras en `src/actions/`
-   como Server Actions con Zod. Los componentes renderizan, no saben SQL.
+6. **Server Components finos.** Consultas en `src/lib/queries/`; escrituras como Server Actions
+   con Zod en `src/app/**/actions.ts`, que validan y delegan en `src/lib/dominio/` (funciones que
+   reciben un `tx`, probadas sin Next por `npm run test:acciones`). Las piezas comunes de las
+   acciones (`Resultado`, `SIN_BASE`, decimales con coma, fecha de hoy en Argentina) están en
+   `src/lib/acciones.ts`, y las de los formularios en `src/components/form/`. Los componentes
+   renderizan, no saben SQL.
 7. **Código en inglés, dominio en español.** `costoTotalSnapshot`, `stockMinimo`, `saldoCliente`.
    Lo que hay que entender sin traducciones es el dominio.
 

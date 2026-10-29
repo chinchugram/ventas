@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { demoCompras, demoMovimientos } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import type { Dinero } from "@/lib/money";
+import { ETIQUETA_UNIDAD } from "@/lib/unidades";
+
+export { ETIQUETA_UNIDAD };
 
 export type CompraListada = {
   id: string;
@@ -22,15 +25,6 @@ export type MovimientoListado = {
   motivo: string | null;
 };
 
-export const ETIQUETA_UNIDAD: Record<string, string> = {
-  M2: "m2",
-  M: "m",
-  KG: "kg",
-  L: "L",
-  U: "u",
-  HOJA: "hoja",
-  ROLLO: "rollo",
-};
 
 export const getCompras = cache(
   (limite = 50): Promise<CompraListada[]> =>

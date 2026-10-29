@@ -3,16 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { demoMateriales } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { d, type Dinero } from "@/lib/money";
-
-const ETIQUETA_UNIDAD: Record<string, string> = {
-  M2: "m2",
-  M: "m",
-  KG: "kg",
-  L: "L",
-  U: "u",
-  HOJA: "hoja",
-  ROLLO: "rollo",
-};
+import { ETIQUETA_UNIDAD } from "@/lib/unidades";
 
 export type MaterialListado = {
   id: string;
