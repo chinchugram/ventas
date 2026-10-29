@@ -144,13 +144,17 @@ model ListaPrecio {
   /// Porcentaje (0-100) que se descuenta del precio de catalogo.
   descuentoPct Decimal  @default(0) @db.Decimal(5, 2)
   activo       Boolean  @default(true)
+  /// Quien la creo. NULL = historico, de antes de los usuarios (se muestra "—").
+  usuarioId    String?  @db.Uuid
   creadoEn     DateTime @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
+  usuario  Usuario?          @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
   items    ListaPrecioItem[]
   clientes Cliente[]
 
   @@index([activo])
+  @@index([usuarioId])
   @@map("listas_precios")
 }
 
@@ -373,25 +377,30 @@ model MovimientoStock {
 /// Llamado o mensaje de cobranza a un cliente. Solo guarda lo que pasó (fecha,
 /// nota) y lo que se prometió (próximo contacto): el saldo y la antigüedad de la
 /// deuda se calculan desde ventas y pagos, nunca se guardan acá.
-/// Sin `usuarioId`: todavía no hay autenticación.
+/// `usuarioId` es quien lo registró (NULL = histórico, de antes de los usuarios).
 model ContactoCobranza {
   id              String    @id @default(uuid()) @db.Uuid
   clienteId       String    @db.Uuid
   fecha           DateTime  @db.Date
   nota            String
   proximoContacto DateTime? @db.Date
+  /// Quien lo registro. NULL = historico, de antes de los usuarios (se muestra "—").
+  usuarioId       String?   @db.Uuid
   creadoEn        DateTime  @default(now()) @db.Timestamptz(3)
 
-  cliente Cliente @relation(fields: [clienteId], references: [id])
+  cliente Cliente  @relation(fields: [clienteId], references: [id])
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
 
   @@index([clienteId, fecha])
+  @@index([usuarioId])
   @@map("contactos_cobranza")
 }
 
 /// Oferta de precios a un cliente. Los precios se congelan al crearlo (o al
 /// agregar una linea al editarlo); los TOTALES no se guardan: se calculan con
 /// `costearLineaVenta`/`totalizarVenta`, igual que la venta que resulta de
-/// convertirlo. No guarda costos ni margenes. Sin `usuarioId`: todavia no hay auth.
+/// convertirlo. No guarda costos ni margenes. `usuarioId` es quien lo creo (no cambia al
+/// editarlo; el duplicado queda a nombre de quien duplica).
 /// CHECK en la migracion: validezDias > 0, numero > 0 y
 /// (estado = CONVERTIDO) <=> (ventaId no nulo).
 model Presupuesto {
@@ -408,10 +417,13 @@ model Presupuesto {
   ventaId       String?           @unique @db.Uuid
   /// Presupuesto del que este es copia (duplicado con precios actuales).
   duplicadoDeId String?           @db.Uuid
+  /// Quien lo creo. NULL = historico, de antes de los usuarios (se muestra "—").
+  usuarioId     String?           @db.Uuid
   creadoEn      DateTime          @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime          @updatedAt @db.Timestamptz(3)
 
   cliente     Cliente           @relation(fields: [clienteId], references: [id])
+  usuario     Usuario?          @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
   venta       Venta?            @relation(fields: [ventaId], references: [id], onDelete: Restrict)
   duplicadoDe Presupuesto?      @relation("Duplicado", fields: [duplicadoDeId], references: [id], onDelete: Restrict)
   duplicados  Presupuesto[]     @relation("Duplicado")
@@ -422,6 +434,7 @@ model Presupuesto {
   @@index([estado])
   @@index([fecha])
   @@index([duplicadoDeId])
+  @@index([usuarioId])
   @@map("presupuestos")
 }
 
@@ -482,6 +495,10 @@ model Usuario {
   pagos       Pago[]
   compras     Compra[]
   movimientos MovimientoStock[]
+  // Trazabilidad (8.2): lo que cargo cada usuario en la ola 7.
+  presupuestos      Presupuesto[]
+  contactosCobranza ContactoCobranza[]
+  listasPrecios     ListaPrecio[]
 
   @@map("usuarios")
 }

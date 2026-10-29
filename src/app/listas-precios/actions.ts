@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { dbDisponible, prisma } from "@/lib/prisma";
 import { verificarPermiso } from "@/lib/permisos";
+import { idParaGuardar } from "@/lib/auth";
 import { d } from "@/lib/money";
 import { esDecimal, mensajeDeError, normalizarDecimal, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import {
@@ -61,11 +62,12 @@ export async function crearLista(datos: DatosLista): Promise<{ ok: true; id: str
   const parsed = esquemaLista.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const usuarioId = idParaGuardar(permiso.usuario);
 
   let id: string;
   try {
     ({ id } = await prisma.$transaction((tx) =>
-      crearListaEnTx(tx, { nombre: parsed.data.nombre, descuentoPct: d(parsed.data.descuentoPct) }),
+      crearListaEnTx(tx, { nombre: parsed.data.nombre, descuentoPct: d(parsed.data.descuentoPct) }, usuarioId),
     ));
   } catch (error) {
     if (esNombreDuplicado(error)) return { ok: false, error: "Ya hay una lista con ese nombre." };

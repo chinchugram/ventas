@@ -5,7 +5,7 @@
  *
  * Venta de un cliente con lista (cada rama de la regla), con lista inactiva y
  * sin lista; override de precio; costo congelado; ABM de listas y asignacion a
- * clientes. Como `test-acciones.ts`: cada escenario corre en una transaccion
+ * clientes, y la trazabilidad (`usuarioId` de la lista). Como `test-acciones.ts`: cada escenario corre en una transaccion
  * que se deshace al final, asi que no deja rastro en la base.
  */
 import "dotenv/config";
@@ -245,6 +245,51 @@ async function main() {
     comprobar("baja lógica (la fila sigue)", String((await tx.listaPrecio.findUniqueOrThrow({ where: { id } })).activo), "false");
     await cambiarActivoListaEnTx(tx, id, true);
     comprobar("reactivada", String((await tx.listaPrecio.findUniqueOrThrow({ where: { id } })).activo), "true");
+  });
+
+  await escenario("Trazabilidad (8.2): quién creó la lista", async (tx) => {
+    const ana = await tx.usuario.create({
+      data: {
+        usuario: `zz-${Math.random().toString(36).slice(2, 10)}`,
+        nombre: "Ana de prueba",
+        rol: "EMPLEADO",
+        hashClave: `scrypt$ln=14,r=8,p=1$${"a".repeat(22)}$${"b".repeat(43)}`,
+      },
+    });
+    const creador = async (id: string) => (await tx.listaPrecio.findUniqueOrThrow({ where: { id } })).usuarioId;
+
+    const { id } = await crearListaEnTx(tx, { nombre: "Con usuario", descuentoPct: d(5) }, ana.id);
+    comprobar("crear guarda el usuario", String((await creador(id)) === ana.id), "true");
+    const leida = await tx.listaPrecio.findUniqueOrThrow({ where: { id }, include: { usuario: { select: { nombre: true } } } });
+    comprobar("se lee el nombre para mostrar", String(leida.usuario?.nombre), "Ana de prueba");
+
+    const sin = await crearListaEnTx(tx, { nombre: "Sin usuario", descuentoPct: d(5) }, null);
+    comprobar("con null queda NULL", String(await creador(sin.id)), "null");
+    const omitido = await crearListaEnTx(tx, { nombre: "Omitido", descuentoPct: d(5) });
+    comprobar("sin pasar usuario queda NULL", String(await creador(omitido.id)), "null");
+
+    // Editar, dar de baja o tocar precios no cambia quien la creó.
+    await editarListaEnTx(tx, id, { nombre: "Con usuario 2", descuentoPct: d(7) });
+    await cambiarActivoListaEnTx(tx, id, false);
+    comprobar("editar o dar de baja no cambia quién la creó", String((await creador(id)) === ana.id), "true");
+
+    await tx.$executeRaw`SAVEPOINT prueba`;
+    try {
+      await crearListaEnTx(tx, { nombre: "Usuario fantasma", descuentoPct: d(1) }, "00000000-0000-4000-8000-0000000000ee");
+      comprobar("FK: un usuario inexistente se rechaza", "se aceptó", "rechazada por la base");
+    } catch {
+      comprobar("FK: un usuario inexistente se rechaza", "rechazada por la base", "rechazada por la base");
+    }
+    await tx.$executeRaw`ROLLBACK TO SAVEPOINT prueba`;
+    await tx.$executeRaw`SAVEPOINT prueba`;
+    try {
+      await tx.usuario.delete({ where: { id: ana.id } });
+      comprobar("RESTRICT: no se borra un usuario con listas", "se borró", "rechazada por la base");
+    } catch {
+      comprobar("RESTRICT: no se borra un usuario con listas", "rechazada por la base", "rechazada por la base");
+    }
+    await tx.$executeRaw`ROLLBACK TO SAVEPOINT prueba`;
+    comprobar("el usuario sigue ahí", String((await tx.usuario.count({ where: { id: ana.id } })) === 1), "true");
   });
 
   await escenario("Asignación de lista al cliente", async (tx) => {

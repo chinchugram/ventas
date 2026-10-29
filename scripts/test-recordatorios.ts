@@ -81,6 +81,15 @@ const hoy = fechaDesdeISO(hoyISO);
 const dia = (n: number) => new Date(hoy.getTime() + n * 86_400_000);
 const iso = (f: Date | null) => (f ? f.toISOString().slice(0, 10) : "null");
 
+const HASH_DE_PRUEBA = `scrypt$ln=14,r=8,p=1$${"a".repeat(22)}$${"b".repeat(43)}`;
+
+/** Usuario real de prueba (los escenarios lo crean dentro de su transaccion: se deshace con ella). */
+async function usuarioDePrueba(tx: Tx, nombre: string) {
+  return tx.usuario.create({
+    data: { usuario: `zz-${Math.random().toString(36).slice(2, 10)}`, nombre, rol: "EMPLEADO", hashClave: HASH_DE_PRUEBA },
+  });
+}
+
 async function clienteDePrueba(tx: Tx, nombre = "Cliente de recordatorios", telefono: string | null = "351 455-6677") {
   return tx.cliente.create({ data: { nombre, telefono } });
 }
@@ -157,6 +166,31 @@ async function main() {
     );
   });
 
+  await escenario("Trazabilidad (8.2): quién registró el contacto", async (tx) => {
+    const c = await clienteDePrueba(tx);
+    const ana = await usuarioDePrueba(tx, "Ana de prueba");
+    const { id } = await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "Con usuario", proximoContacto: null, usuarioId: ana.id });
+    const guardado = await tx.contactoCobranza.findUniqueOrThrow({ where: { id }, include: { usuario: { select: { nombre: true } } } });
+    comprobar("guarda el usuario", String(guardado.usuarioId === ana.id), "true");
+    comprobar("se lee el nombre para mostrar", String(guardado.usuario?.nombre), "Ana de prueba");
+
+    const sin = await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "Sin usuario", proximoContacto: null, usuarioId: null });
+    comprobar("con null queda NULL", String((await tx.contactoCobranza.findUniqueOrThrow({ where: { id: sin.id } })).usuarioId), "null");
+    const omitido = await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "Omitido", proximoContacto: null });
+    comprobar("sin pasar usuario queda NULL", String((await tx.contactoCobranza.findUniqueOrThrow({ where: { id: omitido.id } })).usuarioId), "null");
+
+    await violaRestriccion("FK: un usuario inexistente se rechaza", "contactos_cobranza_usuarioId_fkey", () =>
+      tx.contactoCobranza.create({ data: { clienteId: c.id, fecha: hoy, nota: "x", usuarioId: "00000000-0000-0000-0000-000000000000" } }),
+    );
+  });
+
+  await escenario("Un usuario con contactos no se puede borrar (RESTRICT)", async (tx) => {
+    const c = await clienteDePrueba(tx);
+    const ana = await usuarioDePrueba(tx, "Ana de prueba");
+    await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "x", proximoContacto: null, usuarioId: ana.id });
+    await violaRestriccion("ON DELETE RESTRICT", "contactos_cobranza_usuarioId_fkey", () => tx.usuario.delete({ where: { id: ana.id } }));
+  });
+
   await escenario("Un cliente con contactos no se puede borrar (hay historial)", async (tx) => {
     const c = await clienteDePrueba(tx);
     await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "x", proximoContacto: null });
@@ -173,7 +207,12 @@ async function main() {
 async function consultaDePuntaAPunta() {
   console.log("--- Consulta: a quién llamar hoy, de punta a punta ---");
   const rotulo = `PRUEBA-REC-${Date.now()}`;
-  const creados: { clientes: string[]; ventas: string[]; articulo: string | null } = { clientes: [], ventas: [], articulo: null };
+  const creados: { clientes: string[]; ventas: string[]; articulo: string | null; usuario: string | null } = {
+    clientes: [],
+    ventas: [],
+    articulo: null,
+    usuario: null,
+  };
 
   try {
     const ids = await prisma.$transaction(async (tx) => {
@@ -181,6 +220,8 @@ async function consultaDePuntaAPunta() {
         data: { nombre: `${rotulo} servicio`, precioVenta: d(1000), ivaPct: d(0), esServicio: true },
       });
       creados.articulo = servicio.id;
+      const autor = await usuarioDePrueba(tx, `${rotulo} autor`);
+      creados.usuario = autor.id;
 
       /** Cliente con una venta de $1.000 de hace `dias` dias, y un pago opcional. */
       async function conDeuda(clave: string, dias: number, pago?: string, telefono: string | null = "351 455-6677") {
@@ -215,7 +256,7 @@ async function consultaDePuntaAPunta() {
       await registrarContactoEnTx(tx, { clienteId: prometio.cliente.id, fecha: dia(-1), nota: "Pagará el viernes", proximoContacto: dia(3) });
       await registrarContactoEnTx(tx, { clienteId: llamadoHoy.cliente.id, fecha: hoy, nota: "No atendió", proximoContacto: null });
       await registrarContactoEnTx(tx, { clienteId: promesaVencida.cliente.id, fecha: dia(-9), nota: "Dijo que pagaba el lunes", proximoContacto: dia(-2) });
-      await registrarContactoEnTx(tx, { clienteId: promesaVencida.cliente.id, fecha: dia(-8), nota: "(segunda nota)", proximoContacto: dia(-2) });
+      await registrarContactoEnTx(tx, { clienteId: promesaVencida.cliente.id, fecha: dia(-8), nota: "(segunda nota)", proximoContacto: dia(-2), usuarioId: autor.id });
 
       return {
         vieja: vieja.cliente.id,
@@ -253,8 +294,11 @@ async function consultaDePuntaAPunta() {
     const pv = mios.find((r) => r.id === ids.promesaVencida);
     comprobar("promesa vencida: trae la última nota", `${pv?.ultimaNota?.nota} | ${iso(pv?.ultimaNota?.fecha ?? null)} | ${iso(pv?.ultimaNota?.proximoContacto ?? null)}`, `(segunda nota) | ${iso(dia(-8))} | ${iso(dia(-2))}`);
     comprobar("etiqueta del tramo", String(v?.tramoEtiqueta), "Más de 60 días");
+    comprobar("registrado por: el nombre de quien cargó la última nota", String(pv?.ultimaNota?.registradoPor), `${rotulo} autor`);
+    comprobar("registrado por: sin usuario es null", String(mios.find((r) => r.id === ids.pagoAnulado)?.ultimaNota), "null");
 
     // Solo lo necesario: nada de costos ni márgenes en la respuesta.
+    comprobar("el usuario no viaja: la nota solo trae el nombre", Object.keys(pv?.ultimaNota ?? {}).sort().join(","), "fecha,nota,proximoContacto,registradoPor");
     comprobar(
       "campos devueltos",
       Object.keys(v ?? {}).sort().join(","),
@@ -277,9 +321,11 @@ async function consultaDePuntaAPunta() {
       prisma.venta.deleteMany({ where: { id: { in: creados.ventas } } }),
       prisma.articulo.deleteMany({ where: { id: creados.articulo ?? "00000000-0000-0000-0000-000000000000" } }),
       prisma.cliente.deleteMany({ where: { id: { in: creados.clientes } } }),
+      prisma.usuario.deleteMany({ where: { id: creados.usuario ?? "00000000-0000-0000-0000-000000000000" } }),
     ]);
     const quedan = await prisma.cliente.count({ where: { nombre: { startsWith: rotulo } } });
     comprobar("sin rastro: no queda ningún cliente de prueba", String(quedan), "0");
+    comprobar("sin rastro: no queda ningún usuario de prueba", String(await prisma.usuario.count({ where: { nombre: { startsWith: rotulo } } })), "0");
   }
 }
 

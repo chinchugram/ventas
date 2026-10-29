@@ -60,6 +60,8 @@ export type ListaDetalle = {
   activo: boolean;
   clientes: number;
   precios: PrecioDeLista[];
+  /** Nombre para mostrar de quien la creo; null = historica o sin usuario ("—"). */
+  creadaPor: string | null;
 };
 
 export const getListaPrecio = cache(
@@ -72,6 +74,8 @@ export const getListaPrecio = cache(
           where: { id },
           include: {
             _count: { select: { clientes: true } },
+            // Solo el nombre para mostrar: nunca el hash ni datos de sesion.
+            usuario: { select: { nombre: true } },
             items: { include: { articulo: { select: { nombre: true, precioVenta: true, activo: true } } } },
           },
         });
@@ -90,6 +94,7 @@ export const getListaPrecio = cache(
               precio: i.precio,
             }))
             .sort((a, b) => a.nombre.localeCompare(b.nombre, "es")),
+          creadaPor: l.usuario?.nombre ?? null,
         };
       },
       () => null,

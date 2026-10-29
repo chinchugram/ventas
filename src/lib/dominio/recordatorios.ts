@@ -9,6 +9,8 @@ export type ContactoNuevo = {
   nota: string;
   /** Cuando volver a llamar; null si no se prometio nada. */
   proximoContacto: Date | null;
+  /** Quien lo registra; null/ausente = sin usuario (se muestra "—"). */
+  usuarioId?: string | null;
 };
 
 const MAX_NOTA = 500;
@@ -41,6 +43,7 @@ export async function registrarContactoEnTx(tx: Tx, contacto: ContactoNuevo): Pr
       fecha: contacto.fecha,
       nota,
       proximoContacto: contacto.proximoContacto,
+      usuarioId: contacto.usuarioId ?? null,
     },
     select: { id: true },
   });

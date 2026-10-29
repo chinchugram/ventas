@@ -136,7 +136,13 @@ async function numeroDeVenta(tx: Tx, ventaId: string | null): Promise<string | n
 
 async function crearConLineas(
   tx: Tx,
-  datos: { clienteId: string; validezDias: number; observaciones: string | null; duplicadoDeId: string | null },
+  datos: {
+    clienteId: string;
+    validezDias: number;
+    observaciones: string | null;
+    duplicadoDeId: string | null;
+    usuarioId: string | null;
+  },
   lineas: LineaNueva[],
   hoy: Date,
 ): Promise<{ id: string; numero: number; anio: number }> {
@@ -155,6 +161,7 @@ async function crearConLineas(
       validezDias: datos.validezDias,
       observaciones: datos.observaciones,
       duplicadoDeId: datos.duplicadoDeId,
+      usuarioId: datos.usuarioId,
       items: { create: lineas },
     },
     select: { id: true },
@@ -165,16 +172,18 @@ async function crearConLineas(
 /**
  * Alta. `hoy` es la fecha de Argentina (`hoyArgentina()`); el numero es
  * correlativo por anio. Los precios se congelan ahora con `resolverPrecio`.
+ * `usuarioId` es quien lo crea (null = sin usuario): queda fijo, editar no lo cambia.
  */
 export async function crearPresupuestoEnTx(
   tx: Tx,
   datos: DatosPresupuesto,
   hoy: Date,
+  usuarioId?: string | null,
 ): Promise<{ id: string; numero: number; anio: number }> {
   verificarValidez(datos.validezDias);
   await verificarCliente(tx, datos.clienteId);
   const lineas = await armarLineas(tx, datos.clienteId, datos.items);
-  return crearConLineas(tx, { ...datos, duplicadoDeId: null }, lineas, hoy);
+  return crearConLineas(tx, { ...datos, duplicadoDeId: null, usuarioId: usuarioId ?? null }, lineas, hoy);
 }
 
 /**
@@ -233,11 +242,13 @@ export async function anularPresupuestoEnTx(tx: Tx, id: string): Promise<void> {
 /**
  * Copia como presupuesto NUEVO (numero y fecha de hoy) con los precios de hoy
  * del cliente: es lo que se hace con uno vencido. Sirve para cualquier estado.
+ * La copia queda a nombre de quien duplica (`usuarioId`), no del original.
  */
 export async function duplicarPresupuestoEnTx(
   tx: Tx,
   id: string,
   hoy: Date,
+  usuarioId?: string | null,
 ): Promise<{ id: string; numero: number; anio: number }> {
   const origen = await tx.presupuesto.findUnique({ where: { id }, include: { items: { orderBy: { id: "asc" } } } });
   if (!origen) throw new ErrorDeNegocio("El presupuesto no existe.");
@@ -259,7 +270,13 @@ export async function duplicarPresupuestoEnTx(
   );
   return crearConLineas(
     tx,
-    { clienteId: origen.clienteId, validezDias: origen.validezDias, observaciones: origen.observaciones, duplicadoDeId: origen.id },
+    {
+      clienteId: origen.clienteId,
+      validezDias: origen.validezDias,
+      observaciones: origen.observaciones,
+      duplicadoDeId: origen.id,
+      usuarioId: usuarioId ?? null,
+    },
     lineas,
     hoy,
   );
@@ -285,11 +302,19 @@ export type PresupuestoConvertido = {
  *     baja lo rechaza `registrarVentaEnTx`;
  *  4. marca CONVERTIDO con el `ventaId`.
  *
+ * La venta (con sus movimientos de stock) queda a nombre de quien convierte
+ * (`usuarioId`), no de quien creo el presupuesto.
+ *
  * Limite conocido: el IVA de la venta lo toma `registrarVentaEnTx` del articulo
  * de hoy. Si cambio desde el presupuesto, el total (con IVA incluido) es el
  * mismo pero el desglose neto/IVA no; se avisa.
  */
-export async function convertirPresupuestoEnTx(tx: Tx, id: string, hoy: Date): Promise<PresupuestoConvertido> {
+export async function convertirPresupuestoEnTx(
+  tx: Tx,
+  id: string,
+  hoy: Date,
+  usuarioId?: string | null,
+): Promise<PresupuestoConvertido> {
   const actual = await bloquearPresupuesto(tx, id);
   const ventaNumero = await numeroDeVenta(tx, actual.ventaId);
   const motivo = motivoNoAbierto({ ...actual, ventaNumero }, hoy, "convertir");
@@ -304,6 +329,7 @@ export async function convertirPresupuestoEnTx(tx: Tx, id: string, hoy: Date): P
     fecha: hoy,
     observaciones: `Presupuesto N° ${nro}${actual.observaciones ? ` — ${actual.observaciones}` : ""}`,
     entregada: false,
+    usuarioId,
     items: items.map((i) => ({ articuloId: i.articuloId, cantidad: i.cantidad, precioUnitario: i.precioUnitario })),
     pago: null,
   });

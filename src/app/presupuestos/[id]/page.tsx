@@ -94,6 +94,8 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
         </p>
       ) : null}
 
+      <p className="mb-4 text-sm text-slate-500">Registrado por {p.registradoPor ?? "—"}</p>
+
       <div className="mb-4 grid grid-cols-2 gap-3">
         <Tarjeta titulo="Total" valor={fmtMoneda(p.totales.totalBruto)} detalle={`IVA ${fmtMoneda(p.totales.totalIVA)}`} />
         <Tarjeta titulo="Validez" valor={`${p.validezDias} ${p.validezDias === 1 ? "día" : "días"}`} detalle={`Desde ${fmtFecha(p.fecha)}`} />

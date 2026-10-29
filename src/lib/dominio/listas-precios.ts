@@ -81,11 +81,15 @@ function verificarDescuento(descuentoPct: Dinero) {
   if (descuentoPct.lt(0) || descuentoPct.gt(100)) throw new ErrorDeNegocio("El descuento tiene que estar entre 0 y 100.");
 }
 
-export async function crearListaEnTx(tx: Tx, datos: DatosLista): Promise<{ id: string }> {
+/** `usuarioId` es quien la crea (null = sin usuario): queda fijo, editar no lo cambia. */
+export async function crearListaEnTx(tx: Tx, datos: DatosLista, usuarioId?: string | null): Promise<{ id: string }> {
   const nombre = datos.nombre.trim();
   verificarDescuento(datos.descuentoPct);
   await verificarNombreLibre(tx, nombre);
-  return tx.listaPrecio.create({ data: { nombre, descuentoPct: datos.descuentoPct }, select: { id: true } });
+  return tx.listaPrecio.create({
+    data: { nombre, descuentoPct: datos.descuentoPct, usuarioId: usuarioId ?? null },
+    select: { id: true },
+  });
 }
 
 export async function editarListaEnTx(tx: Tx, id: string, datos: DatosLista): Promise<void> {
