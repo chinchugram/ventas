@@ -25,7 +25,7 @@ export default async function ClientesPage() {
         descripcion={
           deudores.length > 0
             ? `${deudores.length} con saldo pendiente`
-            : "Todos al dia"
+            : "Todos al día"
         }
       />
 
@@ -36,7 +36,7 @@ export default async function ClientesPage() {
               <div className="min-w-0">
                 <p className="font-medium text-slate-900">{c.nombre}</p>
                 <p className="text-sm text-slate-500">
-                  {c.telefono ?? "sin telefono"}
+                  {c.telefono ?? "sin teléfono"}
                   {c.cuit ? ` · ${c.cuit}` : ""}
                 </p>
               </div>
@@ -46,7 +46,7 @@ export default async function ClientesPage() {
                 </span>
               ) : (
                 <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                  al dia
+                  al día
                 </span>
               )}
             </div>
@@ -65,7 +65,7 @@ export default async function ClientesPage() {
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">Ultima venta</dt>
+                <dt className="text-xs text-slate-500">Última venta</dt>
                 <dd className="font-semibold text-slate-900">{fmtFecha(c.ultimaVenta)}</dd>
               </div>
             </dl>

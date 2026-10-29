@@ -66,6 +66,10 @@ function igualesEnTiempoConstante(a: string, b: string): boolean {
 }
 
 export const config = {
-  // Todo el sitio, salvo los archivos estaticos de Next y el icono.
-  matcher: ["/((?!_next/static|_next/image|icon.svg).*)"],
+  // Todo el sitio, salvo los archivos estaticos de Next y lo que el navegador
+  // pide SIN credenciales: el manifiesto y los iconos de la app instalable.
+  // (El logo y demas imagenes se piden despues de autenticarse: no se excluyen.)
+  matcher: [
+    "/((?!_next/static|_next/image|manifest.webmanifest|icon.png|apple-icon.png|marca/icon-).*)",
+  ],
 };

@@ -16,10 +16,10 @@ export default async function CatalogoPage() {
   if (articulos.length === 0) {
     return (
       <>
-        <Seccion titulo="Articulos" />
+        <Seccion titulo="Artículos" />
         <Vacio
-          mensaje="No hay articulos cargados"
-          hint="Empeza por los materiales: un sticker o un cartel se costean a partir de ellos."
+          mensaje="No hay artículos cargados"
+          hint="Empezá por los materiales: un sticker o un cartel se costean a partir de ellos."
         />
       </>
     );
@@ -28,7 +28,7 @@ export default async function CatalogoPage() {
   return (
     <>
       <Seccion
-        titulo="Articulos"
+        titulo="Artículos"
         descripcion="Costo por receta, precio de venta y margen real"
       />
 
@@ -72,7 +72,7 @@ export default async function CatalogoPage() {
 
               {a.receta.confiable ? (
                 <details className="mt-3 group">
-                  <summary className="cursor-pointer text-sm font-medium text-marca">
+                  <summary className="cursor-pointer text-sm font-medium text-marca-texto">
                     Ver receta ({a.receta.componentes.length}{" "}
                     {a.receta.componentes.length === 1 ? "componente" : "componentes"})
                   </summary>
@@ -92,7 +92,7 @@ export default async function CatalogoPage() {
               ) : (
                 <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
                   Sin receta: el costo real es desconocido y el margen que se muestra es
-                  optimista. <span className="font-medium">No tomes decisiones con este numero.</span>
+                  optimista. <span className="font-medium">No tomes decisiones con este número.</span>
                 </p>
               )}
 

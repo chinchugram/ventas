@@ -34,8 +34,8 @@ async function main() {
   console.log("Creando configuracion...");
   await prisma.configuracion.upsert({
     where: { clave: "nombreNegocio" },
-    update: { valor: "Láser & Rotulación" },
-    create: { clave: "nombreNegocio", valor: "Láser & Rotulación" },
+    update: { valor: "HL Laser" },
+    create: { clave: "nombreNegocio", valor: "HL Laser" },
   });
   await prisma.configuracion.upsert({
     where: { clave: "costoHoraManoObra" },

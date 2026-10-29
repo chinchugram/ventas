@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { fmtFecha, fmtMonedaCorta as fmtMoneda, fmtNumero, sumar } from "@/lib/money";
 import { ETIQUETA_ESTADO_PAGO, ESTILO_ESTADO_PAGO, getVentas } from "@/lib/queries/ventas";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
@@ -13,18 +12,7 @@ export default async function VentasPage() {
 
   return (
     <>
-      <Seccion
-        titulo="Ventas"
-        descripcion={`Últimas ${ventas.length}`}
-        accion={
-          <Link
-            href="/ventas/nueva"
-            className="rounded-lg bg-marca px-4 py-2.5 text-sm font-semibold text-white"
-          >
-            Nueva venta
-          </Link>
-        }
-      />
+      <Seccion titulo="Ventas" descripcion={`Últimas ${ventas.length}`} />
 
       <div className="mb-4 grid grid-cols-2 gap-3">
         <Tarjeta titulo="Facturado" valor={fmtMoneda(facturado)} />
@@ -83,7 +71,7 @@ export default async function VentasPage() {
                       v.saldo.cmp(0) > 0 ? "text-amber-700" : "text-slate-400"
                     }`}
                   >
-                    {v.saldo.cmp(0) > 0 ? fmtMoneda(v.saldo) : "al dia"}
+                    {v.saldo.cmp(0) > 0 ? fmtMoneda(v.saldo) : "al día"}
                   </dd>
                 </div>
               </dl>

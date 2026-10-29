@@ -123,7 +123,7 @@ export type VentaListada = {
   estadoPago: EstadoPago;
 };
 
-/** Ultimas ventas con su estado de pago ya resuelto. */
+/** Últimas ventas con su estado de pago ya resuelto. */
 export const getUltimasVentas = cache(
   (limite = 8): Promise<VentaListada[]> =>
     conRespaldo(
@@ -173,7 +173,7 @@ export type DeudaCliente = {
   masAntigua: Date | null;
 };
 
-/** Quien debe, cuanto y desde cuando. La pregunta del dia a dia del dueño. */
+/** Quién debe, cuánto y desde cuándo. La pregunta del dia a dia del dueño. */
 export const getDeudas = cache(
   (): Promise<DeudaCliente[]> => conRespaldo(deudasDesdeBase, demoDeudas),
 );

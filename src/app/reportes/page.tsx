@@ -71,12 +71,12 @@ export default async function ReportesPage({
         />
       </div>
 
-      <Reporte titulo="2. Ganancia por producto" descripcion="Cuanto le sale, a cuanto lo vende y cuanto gana">
+      <Reporte titulo="2. Ganancia por producto" descripcion="Cuánto le sale, a cuánto lo vende y cuánto gana">
         {productos.length === 0 ? (
-          <Vacio mensaje="Sin ventas en el periodo" />
+          <Vacio mensaje="Sin ventas en el período" />
         ) : (
           <Tabla
-            columnas={["Articulo", "Unidades", "Facturado", "Costo", "Ganancia", "Margen"]}
+            columnas={["Artículo", "Unidades", "Facturado", "Costo", "Ganancia", "Margen"]}
             filas={productos.map((p) => [
               p.nombre,
               fmtNumero(p.unidades),
@@ -89,7 +89,7 @@ export default async function ReportesPage({
         )}
       </Reporte>
 
-      <Reporte titulo="5. Productos mas rentables" descripcion="Ordenados por ganancia, no por unidades">
+      <Reporte titulo="5. Productos más rentables" descripcion="Ordenados por ganancia, no por unidades">
         {productos.length === 0 ? (
           <Vacio mensaje="Sin datos" />
         ) : (
@@ -112,9 +112,9 @@ export default async function ReportesPage({
         )}
       </Reporte>
 
-      <Reporte titulo="3. Deuda por cliente" descripcion="Quien debe, cuanto y desde cuando">
+      <Reporte titulo="3. Deuda por cliente" descripcion="Quién debe, cuánto y desde cuándo">
         {deudas.length === 0 ? (
-          <Vacio mensaje="Nadie debe nada" hint="Todas las ventas estan cobradas." />
+          <Vacio mensaje="Nadie debe nada" hint="Todas las ventas están cobradas." />
         ) : (
           <Tabla
             columnas={["Cliente", "Ventas", "Desde", "Debe"]}
@@ -130,7 +130,7 @@ export default async function ReportesPage({
 
       <Reporte
         titulo="4. Materiales"
-        descripcion="Cuanto hay parado en stock y que hay que reponer"
+        descripcion="Cuánto hay parado en stock y qué hay que reponer"
       >
         <div className="mb-3">
           <Tarjeta titulo="Valor total en materiales" valor={fmtMonedaCorta(valorMateriales)} />
@@ -145,7 +145,7 @@ export default async function ReportesPage({
               `${fmtNumero(m.stockActual)} ${m.unidad}`,
               fmtMoneda(m.costoUnitario),
               fmtMoneda(m.valorInventario),
-              m.estado === "OK" ? "OK" : m.estado === "BAJO" ? "Bajo minimo" : "Sin stock",
+              m.estado === "OK" ? "OK" : m.estado === "BAJO" ? "Bajo mínimo" : "Sin stock",
             ])}
           />
         )}

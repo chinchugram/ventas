@@ -9,6 +9,8 @@ import {
 import { getArticulosConMargen, getConfig, configNumero, type ArticuloConMargen } from "@/lib/queries/catalogo";
 import { getMateriales } from "@/lib/queries/materiales";
 import { Seccion, SemaforoMargen, Tarjeta, Vacio } from "@/components/ui";
+import { GananciaDelMes, VentasPorDia, type DiaVentas } from "@/components/tablero";
+import { getVentas, type VentaRow } from "@/lib/queries/ventas";
 
 // El dashboard lee datos que cambian con cada venta: nunca se cachea ni se
 // prerenderiza. Sin esto, `next build` intenta generar la pagina en build time
@@ -28,19 +30,21 @@ const ETIQUETA_ESTADO_PAGO = {
 } as const;
 
 export default async function Dashboard() {
-  const [resumen, ultimas, deudas, articulos, config, materiales] = await Promise.all([
+  const [resumen, ultimas, deudas, articulos, config, materiales, ventas] = await Promise.all([
     getResumenMes(),
     getUltimasVentas(8),
     getDeudas(),
     getArticulosConMargen(),
     getConfig(),
     getMateriales(),
+    getVentas(50),
   ]);
 
   const stockBajo = materiales.filter((m) => m.stockMinimo.cmp(0) > 0);
 
   const metaMargenPct = configNumero(config, "margenObjetivo", "40");
   const alertas = detectarAlertas(articulos, stockBajo, resumen.cantidadVentas, metaMargenPct);
+  const dias = ventasPorDia(ventas, 14);
 
   return (
     <>
@@ -48,20 +52,18 @@ export default async function Dashboard() {
         titulo={`${NOMBRES_MES[resumen.mes - 1]} ${resumen.anio}`}
         descripcion={
           resumen.cantidadVentas === 0
-            ? " todavia no hay ventas registradas este mes"
+            ? "Todavía no hay ventas registradas este mes"
             : `${resumen.cantidadVentas} ${resumen.cantidadVentas === 1 ? "venta" : "ventas"}`
-        }
-        accion={
-          <Link
-            href="/ventas/nueva"
-            className="rounded-lg bg-marca px-4 py-2.5 text-sm font-semibold text-white"
-          >
-            Nueva venta
-          </Link>
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <GananciaDelMes
+        ganancia={resumen.ganancia}
+        margenPct={resumen.margenPct}
+        metaPct={metaMargenPct}
+      />
+
+      <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tarjeta
           titulo="Facturado"
           valor={fmtMoneda(resumen.facturadoBruto)}
@@ -79,26 +81,20 @@ export default async function Dashboard() {
           detalle="materiales + horas"
         />
         <Tarjeta
-          titulo="Ganancia"
-          valor={fmtMoneda(resumen.ganancia)}
-          tono={tonoMargen(resumen.margenPct, metaMargenPct)}
-          detalle={`margen ${fmtPorcentaje(resumen.margenPct)} (meta ${fmtPorcentaje(metaMargenPct)})`}
+          titulo="Por cobrar"
+          valor={fmtMoneda(resumen.pendienteCobro)}
+          tono={resumen.pendienteCobro.cmp(0) > 0 ? "aviso" : "ok"}
+          detalle={
+            deudas.length > 0
+              ? `${fmtNumero(deudas.length)} ${deudas.length === 1 ? "cliente" : "clientes"} con deuda`
+              : "nadie debe nada"
+          }
         />
       </div>
 
-      <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
-          Pendiente de cobro (historico)
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Tarjeta titulo="Total a cobrar" valor={fmtMoneda(resumen.pendienteCobro)} tono="aviso" />
-          <Tarjeta
-            titulo="Clientes con deuda"
-            valor={fmtNumero(deudas.length)}
-            tono={deudas.length > 0 ? "aviso" : "ok"}
-          />
-        </div>
-      </section>
+      <div className="mt-3">
+        <VentasPorDia dias={dias} />
+      </div>
 
       {alertas.length > 0 && (
         <section className="mt-6">
@@ -125,11 +121,11 @@ export default async function Dashboard() {
 
       <section className="mt-6">
         <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
-          Ultimas ventas
+          Últimas ventas
         </h2>
         {ultimas.length === 0 ? (
           <Vacio
-            mensaje="Todavia no hay ventas"
+            mensaje="Todavía no hay ventas"
             hint="Registra la primera para empezar a ver el margen real."
           />
         ) : (
@@ -161,7 +157,7 @@ export default async function Dashboard() {
       {deudas.length > 0 && (
         <section className="mt-6">
           <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
-            Quien debe
+            Quién debe
           </h2>
           <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
             {deudas.slice(0, 5).map((d) => (
@@ -185,7 +181,7 @@ export default async function Dashboard() {
       {articulos.length > 0 && (
         <section className="mt-6">
           <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
-            Margen del catalogo
+            Margen del catálogo
           </h2>
           <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
             {articulos.slice(0, 6).map((a) => (
@@ -203,9 +199,9 @@ export default async function Dashboard() {
           </ul>
           <Link
             href="/catalogo"
-            className="mt-2 inline-block text-sm font-medium text-marca hover:underline"
+            className="mt-2 inline-block text-sm font-medium text-marca-texto hover:underline"
           >
-            Ver catalogo completo →
+            Ver catálogo completo →
           </Link>
         </section>
       )}
@@ -213,10 +209,24 @@ export default async function Dashboard() {
   );
 }
 
-function tonoMargen(margenPct: Dinero, metaPct: Dinero) {
-  if (margenPct.cmp(metaPct) >= 0) return "ok" as const;
-  if (margenPct.cmp(0) > 0) return "aviso" as const;
-  return "critico" as const;
+/** Facturado por día en los últimos `cantidad` días, terminando hoy. */
+function ventasPorDia(ventas: VentaRow[], cantidad: number): DiaVentas[] {
+  const clave = (f: Date) =>
+    `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}-${String(f.getDate()).padStart(2, "0")}`;
+
+  // Las fechas de venta se guardan como dia calendario en UTC.
+  const porDia = new Map<string, number>();
+  for (const v of ventas) {
+    const k = v.fecha.toISOString().slice(0, 10);
+    porDia.set(k, (porDia.get(k) ?? 0) + v.totalBruto.toNumber());
+  }
+
+  const hoy = new Date();
+  return Array.from({ length: cantidad }, (_, i) => {
+    const f = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - (cantidad - 1 - i));
+    const k = clave(f);
+    return { clave: k, dia: String(f.getDate()), total: porDia.get(k) ?? 0, hoy: i === cantidad - 1 };
+  });
 }
 
 type MaterialConUmbral = {
@@ -244,7 +254,7 @@ function detectarAlertas(
       tipo: "SIN_RECETA",
       severidad: "aviso",
       mensaje: "Sin ventas este mes.",
-      detalle: "O no se registro ninguna, o el sistema se esta usando recien.",
+      detalle: "O no se registró ninguna, o el sistema se está usando recién.",
     });
   }
 
@@ -253,8 +263,8 @@ function detectarAlertas(
     alertas.push({
       tipo: "SIN_RECETA",
       severidad: "critica",
-      mensaje: `${sinReceta.length} ${sinReceta.length === 1 ? "articulo" : "articulos"} sin receta.`,
-      detalle: `Su margen real es desconocido: se esta suponiendo costo 0. Ej: ${sinReceta
+      mensaje: `${sinReceta.length} ${sinReceta.length === 1 ? "artículo" : "artículos"} sin receta.`,
+      detalle: `Su margen real es desconocido: se está suponiendo costo 0. Ej: ${sinReceta
         .slice(0, 3)
         .map((a) => a.nombre)
         .join(", ")}.`,
@@ -271,7 +281,7 @@ function detectarAlertas(
     alertas.push({
       tipo: "BAJO_MARGEN",
       severidad: "aviso",
-      mensaje: `${bajoMargen.length} ${bajoMargen.length === 1 ? "articulo" : "articulos"} por debajo de la meta de margen.`,
+      mensaje: `${bajoMargen.length} ${bajoMargen.length === 1 ? "artículo" : "artículos"} por debajo de la meta de margen.`,
       detalle: bajoMargen
         .slice(0, 3)
         .map((a) => `${a.nombre} (${fmtPorcentaje(a.margen.margenPct)})`)
@@ -286,7 +296,7 @@ function detectarAlertas(
         tipo: "STOCK_BAJO",
         severidad: sinStock ? "critica" : "aviso",
         mensaje: sinStock ? `${m.nombre}: sin stock.` : `${m.nombre}: stock bajo.`,
-        detalle: `${fmtNumero(m.stockActual)} ${m.unidad} disponibles (minimo ${fmtNumero(m.stockMinimo)}).`,
+        detalle: `${fmtNumero(m.stockActual)} ${m.unidad} disponibles (mínimo ${fmtNumero(m.stockMinimo)}).`,
       });
     }
   }

@@ -12,7 +12,7 @@ const ESTILO_ESTADO = {
 
 const TEXTO_ESTADO = {
   SIN_STOCK: "Sin stock",
-  BAJO: "Bajo minimo",
+  BAJO: "Bajo mínimo",
   OK: "OK",
 } as const;
 
@@ -44,7 +44,7 @@ export default async function MaterialesPage() {
       <div className="mb-4 grid grid-cols-2 gap-3">
         <Tarjeta titulo="Valor en stock" valor={fmtMonedaCorta(valorTotal)} detalle="a costo de compra" />
         <Tarjeta
-          titulo="Necesitan reposicion"
+          titulo="Necesitan reposición"
           valor={fmtNumero(alertas.length)}
           tono={alertas.length > 0 ? "aviso" : "ok"}
         />
@@ -71,7 +71,7 @@ export default async function MaterialesPage() {
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">Minimo</dt>
+                <dt className="text-xs text-slate-500">Mínimo</dt>
                 <dd className="text-sm font-semibold tabular-nums text-slate-500">
                   {m.stockMinimo.cmp(0) > 0 ? `${fmtNumero(m.stockMinimo)} ${m.unidad}` : "-"}
                 </dd>

@@ -88,9 +88,12 @@ export function NuevaVentaForm({
   const [comprobante, setComprobante] = useState<Simulacion | null>(null);
 
   function cargarEjemploDemo() {
-    const a1 = articulos[0];
+    // Solo artículos con receta: uno sin receta tiene costo 0 y mostraría un
+    // margen inflado en la primera pantalla que ve el cliente.
+    const costeados = articulos.filter((a) => a.recetaConfiable);
+    const a1 = costeados[0] ?? articulos[0];
     if (!a1) return;
-    const a2 = articulos[1] ?? a1;
+    const a2 = costeados[1] ?? a1;
     if (clientes[0]) {
       setClienteId(clientes[0].id);
     }
@@ -224,7 +227,7 @@ export function NuevaVentaForm({
   }
 
   return (
-    <div className="space-y-6 pb-32">
+    <div className="space-y-6 pb-28">
       <BannerMockup
         onCargarEjemplo={cargarEjemploDemo}
         onLimpiar={limpiarFormulario}
@@ -284,7 +287,7 @@ export function NuevaVentaForm({
         </ul>
 
         {articulosFiltrados.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">Ningun articulo coincide con la busqueda.</p>
+          <p className="mt-2 text-sm text-slate-500">Ningún artículo coincide con la búsqueda.</p>
         ) : null}
       </section>
 
@@ -301,7 +304,7 @@ export function NuevaVentaForm({
 
         {lineasCalculadas.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
-            Todavia no agregaste nada.
+            Todavía no agregaste nada.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -367,7 +370,7 @@ export function NuevaVentaForm({
                   </p>
                 ) : (
                   <p className="mt-2 text-xs text-amber-700">
-                    Este articulo no tiene receta: el costo real se esta suponiendo 0 y el margen
+                    Este artículo no tiene receta: el costo real se está suponiendo 0 y el margen
                     que se ve es optimista.
                   </p>
                 )}
@@ -379,7 +382,7 @@ export function NuevaVentaForm({
                       onClick={() =>
                         setVerReceta(verReceta === l.linea.id ? null : l.linea.id)
                       }
-                      className="text-xs font-medium text-marca"
+                      className="text-xs font-medium text-marca-texto"
                     >
                       {verReceta === l.linea.id ? "Ocultar receta" : "Ver receta"}
                     </button>
@@ -461,7 +464,7 @@ export function NuevaVentaForm({
           rows={2}
           value={observaciones}
           onChange={(e) => setObservaciones(e.target.value)}
-          placeholder="Como se entrega, plazos, medidas... lo que necesites recordar"
+          placeholder="Cómo se entrega, plazos, medidas... lo que necesites recordar"
         />
       </section>
 
@@ -497,7 +500,7 @@ function ComprobanteSimulado({
   onEmpezarDeNuevo: () => void;
 }) {
   const etiquetaPago = {
-    AL_DIA: "Al dia",
+    AL_DIA: "Al día",
     PARCIAL: "Pago parcial",
     PENDIENTE: "Sin cobrar",
     PAGADA: "Pagada",
@@ -587,7 +590,7 @@ function ComprobanteSimulado({
         </button>
         <Link
           href="/ventas"
-          className="rounded-lg bg-marca px-4 py-3 text-center text-sm font-semibold text-white hover:opacity-90"
+          className="rounded-lg bg-marca px-4 py-3 text-center text-sm font-semibold text-tinta hover:opacity-90"
         >
           Volver a ventas
         </Link>
@@ -668,7 +671,7 @@ function BarraInferior({
   onConfirmar: () => void;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 backdrop-blur">
+    <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t border-slate-200 bg-white/95 backdrop-blur md:bottom-0">
       <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-xs text-slate-500">Total</p>
@@ -683,7 +686,7 @@ function BarraInferior({
           type="button"
           onClick={onConfirmar}
           disabled={!habilitado}
-          className="shrink-0 rounded-lg bg-marca px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="shrink-0 rounded-lg bg-marca px-5 py-3 text-sm font-semibold text-tinta disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Guardar venta
         </button>
@@ -710,7 +713,7 @@ function Boton({
       className={`rounded-lg border px-3 py-2.5 text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
         toggle
           ? activo
-            ? "border-marca bg-marca text-white"
+            ? "border-marca bg-marca text-tinta"
             : "border-slate-300 bg-white text-slate-700"
           : "border-slate-300 bg-white text-slate-700"
       }`}

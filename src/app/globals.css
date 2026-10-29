@@ -1,11 +1,15 @@
 @import "tailwindcss";
 
-@theme {
-  --color-marca: oklch(0.55 0.16 265);
-  --color-marca-claro: oklch(0.94 0.03 265);
+@theme inline {
+  /* HL Laser: naranja y negro del logo. */
+  --color-marca: #f09102;
+  --color-marca-claro: #fff3de;
+  --color-marca-texto: #a85a00; /* naranja legible sobre blanco (contraste 4.6:1) */
+  --color-tinta: #1a171a; /* negro del logo; tambien el texto sobre naranja */
   --color-ok: oklch(0.62 0.15 155);
   --color-critico: oklch(0.58 0.19 25);
   --color-aviso: oklch(0.72 0.15 75);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
 html {
@@ -33,20 +37,20 @@ label {
   @apply mb-1 block text-sm font-medium text-slate-700;
 }
 
-/* Entrada del menu lateral en mobile. */
-@keyframes drawer-in {
+/* Entrada de la hoja "Mas" en mobile. */
+@keyframes sheet-in {
   from {
-    transform: translateX(-1rem);
+    transform: translateY(1.5rem);
     opacity: 0;
   }
   to {
-    transform: translateX(0);
+    transform: translateY(0);
     opacity: 1;
   }
 }
 
-.drawer-in {
-  animation: drawer-in 180ms ease-out;
+.sheet-in {
+  animation: sheet-in 200ms ease-out;
 }
 
 table {

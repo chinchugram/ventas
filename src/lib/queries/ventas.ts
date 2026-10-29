@@ -71,7 +71,7 @@ async function ventasDesdeBase(limite: number): Promise<VentaRow[]> {
 }
 
 export const ETIQUETA_ESTADO_PAGO: Record<EstadoPago, string> = {
-  AL_DIA: "Al dia",
+  AL_DIA: "Al día",
   PARCIAL: "Parcial",
   PENDIENTE: "Sin cobrar",
   PAGADA: "Pagada",
