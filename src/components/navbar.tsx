@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icono, type NombreIcono } from "@/components/iconos";
+import { salir } from "@/app/login/actions";
+import type { Rol } from "@/lib/auth-pura";
 
 type Seccion = {
   href: string;
@@ -35,6 +37,7 @@ const CONFIGURACION: Seccion = { href: "/configuracion", etiqueta: "Configuraci�
 const ENLACES_ESCRITORIO: Seccion[] = [...PRINCIPALES, ...SECUNDARIAS];
 const EN_HOJA_MAS: Seccion[] = [...SECUNDARIAS, CONFIGURACION];
 const ID_HOJA_MAS = "hoja-mas";
+const ID_MENU_USUARIO = "menu-usuario";
 const NUEVA_VENTA = "/ventas/nueva";
 
 function estaActiva(pathname: string, href: string): boolean {
@@ -44,7 +47,17 @@ function estaActiva(pathname: string, href: string): boolean {
   return pathname.startsWith(href);
 }
 
-export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
+/** Lo unico que el navegador sabe del usuario: nombre para mostrar y rol. */
+export type UsuarioNavbar = { nombre: string; rol: Rol };
+
+const ETIQUETA_ROL: Record<Rol, string> = { DUENO: "Dueño", EMPLEADO: "Empleado" };
+
+/** Primera letra del nombre para mostrar (respeta acentos y emojis). */
+function inicial(nombre: string): string {
+  return ([...nombre.trim()][0] ?? "?").toLocaleUpperCase("es-AR");
+}
+
+export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string; usuario: UsuarioNavbar }) {
   const pathname = usePathname() ?? "/";
   const [masAbierto, setMasAbierto] = useState(false);
   const hojaRef = useRef<HTMLDialogElement>(null);
@@ -143,7 +156,9 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
             </nav>
           </div>
 
-          <div className="hidden shrink-0 items-center gap-2 md:flex">
+          {/* gap-1: con el menu del usuario, en lg las diez secciones justo entran. */}
+          <div className="hidden shrink-0 items-center gap-1 md:flex">
+            <MenuUsuario usuario={usuario} pathname={pathname} />
             <Link
               href={CONFIGURACION.href}
               aria-label={CONFIGURACION.etiqueta}
@@ -220,6 +235,16 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
               );
             })}
           </ul>
+          <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-200 px-3 pt-3">
+            <p className="min-w-0 text-sm text-slate-600">
+              <span className="block truncate font-semibold text-slate-900">{usuario.nombre}</span>
+              {ETIQUETA_ROL[usuario.rol]}
+            </p>
+            <BotonSalir className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 active:bg-slate-100">
+              <IconoSalir className="h-5 w-5" />
+              Cerrar sesión
+            </BotonSalir>
+          </div>
         </div>
       </dialog>
 
@@ -292,5 +317,107 @@ function Indicador({ visible }: { visible: boolean }) {
       aria-hidden="true"
       className={`h-1 w-1 rounded-full ${visible ? "bg-marca" : "bg-transparent"}`}
     />
+  );
+}
+
+/**
+ * Cierra la sesion con un formulario y una server action (POST, mismo origen):
+ * anda aunque el JS no haya cargado y otro sitio no puede dispararlo.
+ */
+function BotonSalir({ className, children }: { className: string; children: React.ReactNode }) {
+  return (
+    <form action={salir}>
+      <button type="submit" className={className}>
+        {children}
+      </button>
+    </form>
+  );
+}
+
+/** Flecha saliendo de una puerta (mismo trazo que los iconos de la navegacion). */
+function IconoSalir({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+    </svg>
+  );
+}
+
+/**
+ * Menu del usuario en el encabezado de escritorio: la inicial (en la barra no
+ * entra el nombre completo) abre un panel con el nombre, el rol y "Cerrar sesion".
+ * Patron "disclosure": boton con aria-expanded; Escape o un clic afuera lo cierran.
+ */
+function MenuUsuario({ usuario, pathname }: { usuario: UsuarioNavbar; pathname: string }) {
+  const [abierto, setAbierto] = useState(false);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  const botonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setAbierto(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const alClicFuera = (e: MouseEvent) => {
+      if (!contenedorRef.current?.contains(e.target as Node)) setAbierto(false);
+    };
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setAbierto(false);
+      botonRef.current?.focus();
+    };
+    document.addEventListener("mousedown", alClicFuera);
+    document.addEventListener("keydown", alTeclear);
+    return () => {
+      document.removeEventListener("mousedown", alClicFuera);
+      document.removeEventListener("keydown", alTeclear);
+    };
+  }, [abierto]);
+
+  return (
+    <div ref={contenedorRef} className="relative">
+      <button
+        ref={botonRef}
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        aria-controls={ID_MENU_USUARIO}
+        aria-label={`${usuario.nombre}: cuenta y cerrar sesión`}
+        title={usuario.nombre}
+        className="flex h-11 w-11 items-center justify-center rounded-lg transition-colors hover:bg-white/10"
+      >
+        <span
+          aria-hidden="true"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm font-semibold text-white"
+        >
+          {inicial(usuario.nombre)}
+        </span>
+      </button>
+      {abierto ? (
+        <div
+          id={ID_MENU_USUARIO}
+          className="absolute top-full right-0 z-50 mt-2 w-60 rounded-xl bg-white p-3 text-slate-900 shadow-xl ring-1 ring-slate-200"
+        >
+          <p className="px-1 text-sm text-slate-600">
+            <span className="block truncate font-semibold text-slate-900">{usuario.nombre}</span>
+            {ETIQUETA_ROL[usuario.rol]}
+          </p>
+          <BotonSalir className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <IconoSalir className="h-5 w-5" />
+            Cerrar sesión
+          </BotonSalir>
+        </div>
+      ) : null}
+    </div>
   );
 }

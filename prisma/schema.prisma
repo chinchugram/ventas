@@ -294,3 +294,56 @@ model MovimientoStock {
   @@index([ventaId])
   @@map("movimientos_stock")
 }
+
+// ─── Usuarios y sesiones (ola 4) ──────────────────────────────────────────────
+
+enum Rol {
+  DUENO
+  EMPLEADO
+}
+
+/// Persona que entra al sistema. Baja logica (`activo = false`): nunca se borra,
+/// queda en el historial. Sin sesion valida no se ve nada: ver src/lib/auth.ts.
+/// CHECK en la migracion: usuario en minusculas y con formato, nombre no vacio,
+/// hash con formato scrypt, contador de fallos no negativo.
+model Usuario {
+  id        String  @id @default(uuid()) @db.Uuid
+  /// Nombre para entrar, en minusculas. Unico.
+  usuario   String  @unique
+  /// Nombre para mostrar ("Laura", "Mostrador").
+  nombre    String
+  rol       Rol
+  /// `scrypt$ln=..,r=..,p=..$sal$hash` (ver src/lib/auth-pura.ts). Nunca sale del servidor.
+  hashClave String
+  activo    Boolean @default(true)
+
+  // Pausa por intentos fallidos (sobrevive reinicios y sirve con varias instancias).
+  intentosFallidos Int       @default(0)
+  ultimoFalloEn    DateTime? @db.Timestamptz(3)
+  bloqueadoHasta   DateTime? @db.Timestamptz(3)
+
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  sesiones Sesion[]
+
+  @@map("usuarios")
+}
+
+/// Sesion abierta. La cookie lleva un token aleatorio; aca se guarda solo su
+/// SHA-256. Cerrar sesion borra la fila; una fila vencida no vale aunque exista.
+model Sesion {
+  id         String   @id @default(uuid()) @db.Uuid
+  tokenHash  String   @unique
+  usuarioId  String   @db.Uuid
+  creadaEn   DateTime @default(now()) @db.Timestamptz(3)
+  /// Ultima vez que se extendio el vencimiento (a lo sumo una vez por dia).
+  renovadaEn DateTime @default(now()) @db.Timestamptz(3)
+  expiraEn   DateTime @db.Timestamptz(3)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([usuarioId])
+  @@index([expiraEn])
+  @@map("sesiones")
+}
