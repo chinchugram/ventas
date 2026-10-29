@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icono, type NombreIcono } from "@/components/iconos";
@@ -9,8 +9,6 @@ type Seccion = {
   href: string;
   etiqueta: string;
   icono: NombreIcono;
-  /** Solo en la hoja "Mas" del celular: en escritorio no entra en la barra y se llega por otra pantalla. */
-  soloCelular?: boolean;
 };
 
 // Orden y agrupacion de la navegacion. En el celular, las primeras cuatro viven
@@ -19,18 +17,24 @@ const INICIO: Seccion = { href: "/", etiqueta: "Inicio", icono: "inicio" };
 const VENTAS: Seccion = { href: "/ventas", etiqueta: "Ventas", icono: "ventas" };
 const CLIENTES: Seccion = { href: "/clientes", etiqueta: "Clientes", icono: "clientes" };
 const PRINCIPALES: Seccion[] = [INICIO, VENTAS, CLIENTES];
+// Todas son arreglos de datos planos: para ocultar entradas segun permisos basta con filtrarlos
+// antes de pintarlos (ver `ENLACES_ESCRITORIO` y `EN_HOJA_MAS`).
 const SECUNDARIAS: Seccion[] = [
   { href: "/catalogo", etiqueta: "Artículos", icono: "articulos" },
   { href: "/cortes", etiqueta: "Cortes", icono: "articulos" },
   { href: "/materiales", etiqueta: "Materiales", icono: "materiales" },
   { href: "/compras", etiqueta: "Compras", icono: "materiales" },
-  { href: "/reposicion", etiqueta: "Reposición", icono: "materiales", soloCelular: true },
+  { href: "/reposicion", etiqueta: "Reposición", icono: "materiales" },
   { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas" },
   { href: "/reportes", etiqueta: "Reportes", icono: "reportes" },
 ];
 // Se usa poco: en escritorio va como icono junto a "Nueva venta", en el celular al final de "Mas".
 const CONFIGURACION: Seccion = { href: "/configuracion", etiqueta: "Configuración", icono: "configuracion" };
+// Escritorio ancho (lg): todas las secciones en la barra. Entre md y lg no entran: se muestran
+// las principales y el resto va en la hoja "Mas", la misma del celular.
+const ENLACES_ESCRITORIO: Seccion[] = [...PRINCIPALES, ...SECUNDARIAS];
 const EN_HOJA_MAS: Seccion[] = [...SECUNDARIAS, CONFIGURACION];
+const ID_HOJA_MAS = "hoja-mas";
 const NUEVA_VENTA = "/ventas/nueva";
 
 function estaActiva(pathname: string, href: string): boolean {
@@ -43,21 +47,44 @@ function estaActiva(pathname: string, href: string): boolean {
 export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
   const pathname = usePathname() ?? "/";
   const [masAbierto, setMasAbierto] = useState(false);
+  const hojaRef = useRef<HTMLDialogElement>(null);
+  // Boton que abrio la hoja (hay uno en la barra inferior y otro en el encabezado): a el vuelve el foco.
+  const disparadorRef = useRef<HTMLElement | null>(null);
 
-  // Con la hoja abierta la pagina de atras no se desplaza, y Escape la cierra.
+  function abrirMas(e: React.MouseEvent<HTMLElement>) {
+    disparadorRef.current = e.currentTarget;
+    setMasAbierto((v) => !v);
+  }
+
+  // <dialog> modal: showModal() mueve el foco adentro, atrapa Tab, deja inerte la pagina de atras
+  // y Escape lo cierra. El estado de React solo refleja si esta abierto.
+  useEffect(() => {
+    const hoja = hojaRef.current;
+    if (!hoja) return;
+    if (masAbierto && !hoja.open) hoja.showModal();
+    if (!masAbierto && hoja.open) hoja.close();
+  }, [masAbierto]);
+
+  // Al navegar la hoja se cierra, aunque el cambio de ruta no venga de un toque en la hoja.
+  useEffect(() => {
+    setMasAbierto(false);
+  }, [pathname]);
+
+  // Con la hoja abierta la pagina de atras no se desplaza.
   useEffect(() => {
     if (!masAbierto) return;
     const overflowPrevio = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const alTeclear = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMasAbierto(false);
-    };
-    window.addEventListener("keydown", alTeclear);
     return () => {
       document.body.style.overflow = overflowPrevio;
-      window.removeEventListener("keydown", alTeclear);
     };
   }, [masAbierto]);
+
+  // Se dispara al cerrar por cualquier via (Escape, "Cerrar", fondo, navegar): devuelve el foco.
+  function alCerrarHoja() {
+    setMasAbierto(false);
+    disparadorRef.current?.focus();
+  }
 
   const masActivo = EN_HOJA_MAS.some((s) => estaActiva(pathname, s.href));
 
@@ -65,23 +92,30 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
     <>
       {/* Encabezado: negro del logo, igual en celular y escritorio. */}
       <header className="sticky top-0 z-40 w-full bg-tinta shadow-md">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-          <div className="flex min-w-0 items-center gap-4 lg:gap-6">
-            <Link href="/" className="flex shrink-0 items-center" aria-label={`${nombre}, ir al inicio`}>
+        <div className="mx-auto flex h-14 max-w-5xl items-center xl:max-w-6xl justify-between px-4">
+          <div className="flex min-w-0 items-center gap-3 lg:gap-4">
+            <Link
+              href="/"
+              className="flex shrink-0 items-center rounded-lg p-1"
+              aria-label={`${nombre}, ir al inicio`}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={logo} alt={nombre} className="h-10 w-auto" />
             </Link>
 
-            {/* Entre md y lg no entran todas: la fila se desplaza de costado en vez de pisar el logo. */}
-            <nav className="hidden min-w-0 items-center gap-1 overflow-x-auto md:flex" aria-label="Principal">
-              {[...PRINCIPALES, ...SECUNDARIAS.filter((s) => !s.soloCelular)].map((s) => {
+            {/* Desde md: las principales y "Más"; desde lg entran todas las secciones (y desde xl, el
+                encabezado se ensancha para que "Nueva venta" conserve su texto). */}
+            <nav className="hidden min-w-0 items-center gap-1 md:flex" aria-label="Principal">
+              {ENLACES_ESCRITORIO.map((s) => {
                 const activa = estaActiva(pathname, s.href);
+                // Las secundarias solo caben desde lg; antes se llega a ellas por "Mas".
+                const esSecundaria = !PRINCIPALES.includes(s);
                 return (
                   <Link
                     key={s.href}
                     href={s.href}
                     aria-current={activa ? "page" : undefined}
-                    className={`whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-3 ${
+                    className={`${esSecundaria ? "hidden lg:block" : ""} whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
                       activa
                         ? "bg-marca text-tinta"
                         : "text-slate-300 hover:bg-white/10 hover:text-white"
@@ -91,6 +125,21 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
                   </Link>
                 );
               })}
+              <button
+                type="button"
+                onClick={abrirMas}
+                aria-haspopup="dialog"
+                aria-expanded={masAbierto}
+                aria-controls={ID_HOJA_MAS}
+                className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors lg:hidden ${
+                  masActivo
+                    ? "bg-marca text-tinta"
+                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                Más
+                <Icono nombre="mas" className="h-4 w-4" />
+              </button>
             </nav>
           </div>
 
@@ -110,57 +159,69 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
             </Link>
             <Link
               href={NUEVA_VENTA}
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 py-2 text-sm font-semibold text-tinta lg:px-4 transition-transform hover:brightness-105 active:scale-95"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 text-sm font-semibold text-tinta transition-transform hover:brightness-105 active:scale-95 xl:px-4"
             >
               <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
-              <span className="sr-only lg:not-sr-only">Nueva venta</span>
+              <span className="sr-only xl:not-sr-only">Nueva venta</span>
             </Link>
           </div>
         </div>
       </header>
 
-      {/* Hoja "Más" (solo celular). */}
-      {masAbierto && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-            onClick={() => setMasAbierto(false)}
-          />
-          <div
-            role="dialog"
-            aria-label="Más secciones"
-            className="sheet-in absolute inset-x-0 bottom-0 rounded-t-3xl bg-white px-4 pt-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] shadow-2xl"
-          >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-300" />
-            <ul className="space-y-1">
-              {EN_HOJA_MAS.map((s) => {
-                const activa = estaActiva(pathname, s.href);
-                return (
-                  <li key={s.href}>
-                    <Link
-                      href={s.href}
-                      onClick={() => setMasAbierto(false)}
-                      aria-current={activa ? "page" : undefined}
-                      className={`flex items-center gap-3 rounded-xl px-3 py-3.5 text-base font-medium ${
-                        activa ? "bg-marca-claro text-tinta" : "text-slate-700 active:bg-slate-100"
+      {/* Hoja "Más": abajo en el celular, tarjeta centrada desde md. Al tocar el fondo se cierra. */}
+      <dialog
+        ref={hojaRef}
+        id={ID_HOJA_MAS}
+        aria-modal="true"
+        aria-labelledby="hoja-mas-titulo"
+        onClose={alCerrarHoja}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setMasAbierto(false);
+        }}
+        className="sheet-in fixed inset-x-0 bottom-0 top-auto m-0 max-h-[85dvh] w-full max-w-none overflow-y-auto rounded-t-3xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-900/50 backdrop:backdrop-blur-sm md:inset-0 md:m-auto md:h-fit md:max-w-sm md:rounded-3xl"
+      >
+        <div className="px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-300" aria-hidden="true" />
+          <div className="mb-2 flex items-center justify-between">
+            <h2 id="hoja-mas-titulo" className="px-3 text-sm font-semibold text-slate-500">
+              Más secciones
+            </h2>
+            <button
+              type="button"
+              onClick={() => setMasAbierto(false)}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-xl px-3 text-sm font-semibold text-slate-700 active:bg-slate-100"
+            >
+              Cerrar
+            </button>
+          </div>
+          <ul className="space-y-1">
+            {EN_HOJA_MAS.map((s) => {
+              const activa = estaActiva(pathname, s.href);
+              return (
+                <li key={s.href}>
+                  <Link
+                    href={s.href}
+                    onClick={() => setMasAbierto(false)}
+                    aria-current={activa ? "page" : undefined}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-3.5 text-base font-medium ${
+                      activa ? "bg-marca-claro text-tinta" : "text-slate-700 active:bg-slate-100"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+                        activa ? "bg-marca text-tinta" : "bg-slate-100 text-slate-600"
                       }`}
                     >
-                      <span
-                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                          activa ? "bg-marca text-tinta" : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        <Icono nombre={s.icono} className="h-5 w-5" />
-                      </span>
-                      {s.etiqueta}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+                      <Icono nombre={s.icono} className="h-5 w-5" />
+                    </span>
+                    {s.etiqueta}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </div>
-      )}
+      </dialog>
 
       {/* Barra inferior (solo celular): lo que se usa todos los dias, a un pulgar. */}
       <nav
@@ -187,8 +248,10 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
           <li>
             <button
               type="button"
-              onClick={() => setMasAbierto((v) => !v)}
+              onClick={abrirMas}
+              aria-haspopup="dialog"
               aria-expanded={masAbierto}
+              aria-controls={ID_HOJA_MAS}
               className={`flex w-full flex-col items-center gap-0.5 pt-2 pb-1.5 text-xs font-medium ${
                 masActivo || masAbierto ? "text-tinta" : "text-slate-500"
               }`}
