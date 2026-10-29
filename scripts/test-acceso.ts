@@ -930,6 +930,7 @@ const CLASIFICACION_ACCIONES: Record<string, Clase> = {
   "usuarios/actions.ts#cambiarMiClave": "ambos",
   "ventas/actions.ts#registrarVenta": "ambos",
   "ventas/nueva/actions.ts#preciosParaCliente": "ambos",
+  "ventas/nueva/actions.ts#preciosParaPresupuesto": "ambos",
   "ventas/[id]/actions.ts#registrarPago": "ambos",
   "ventas/[id]/actions.ts#marcarEntregada": "ambos",
   "ventas/[id]/actions.ts#anularPago": "dueno",
