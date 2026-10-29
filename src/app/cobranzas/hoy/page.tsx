@@ -1,6 +1,7 @@
 import { Seccion, Vacio } from "@/components/ui";
 import { hoyArgentinaISO } from "@/lib/acciones";
 import { fmtMoneda, sumar } from "@/lib/money";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { getRecordatoriosHoy, type RecordatorioHoy } from "@/lib/queries/recordatorios";
 import { TarjetaRecordatorio } from "./_componentes/tarjeta-recordatorio";
 
@@ -8,6 +9,7 @@ import { TarjetaRecordatorio } from "./_componentes/tarjeta-recordatorio";
 export const dynamic = "force-dynamic";
 
 export default async function RecordatoriosPage() {
+  await requierePermisoPagina("verRecordatorios");
   const lista = await getRecordatoriosHoy();
   const hoy = hoyArgentinaISO();
   const total = sumar(...lista.map((r) => r.saldo));

@@ -2,12 +2,14 @@ import Link from "next/link";
 import { getArticulosParaPresupuesto, getClientesParaPresupuesto } from "@/lib/queries/presupuestos";
 import { Seccion } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { PresupuestoForm } from "../_componentes/presupuesto-form";
 import { SinBase } from "../_componentes/sin-base";
 
 export const dynamic = "force-dynamic";
 
 export default async function NuevoPresupuestoPage() {
+  await requierePermisoPagina("cargarPresupuesto");
   const [clientes, articulos] = await Promise.all([getClientesParaPresupuesto(), getArticulosParaPresupuesto()]);
 
   return (

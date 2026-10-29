@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { getArticulosParaLista, getListaPrecio } from "@/lib/queries/listas-precios";
 import { Seccion } from "@/components/ui";
 import { AdvertenciaBajoCosto } from "../_componentes/advertencia-bajo-costo";
@@ -10,6 +11,7 @@ import { PreciosEspecificos } from "../_componentes/precios-especificos";
 export const dynamic = "force-dynamic";
 
 export default async function ListaPrecioPage({ params }: { params: Promise<{ id: string }> }) {
+  const usuario = await requierePermisoPagina("gestionarListasPrecios");
   const { id } = await params;
   const [lista, articulos] = await Promise.all([getListaPrecio(id), getArticulosParaLista()]);
   if (!lista) notFound();
@@ -40,8 +42,8 @@ export default async function ListaPrecioPage({ params }: { params: Promise<{ id
 
       <ListaForm id={lista.id} inicial={{ nombre: lista.nombre, descuentoPct: lista.descuentoPct.toString().replace(".", ",") }} />
 
-      {/* SOLO DUEÑO (ola 4): usa costos de receta; se calcula en el servidor. */}
-      <AdvertenciaBajoCosto listaId={lista.id} />
+      {/* Usa costos de receta: solo con `verCostos`, y ni se consultan sin ese permiso. */}
+      {puede(usuario, "verCostos") ? <AdvertenciaBajoCosto listaId={lista.id} /> : null}
 
       <PreciosEspecificos
         listaId={lista.id}

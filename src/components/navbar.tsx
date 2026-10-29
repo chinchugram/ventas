@@ -32,10 +32,9 @@ const SECUNDARIAS: Seccion[] = [
   { href: "/materiales", etiqueta: "Materiales", icono: "materiales", acciones: ["verStock"] },
   { href: "/compras", etiqueta: "Compras", icono: "materiales", acciones: ["registrarCompra", "verCostos"] },
   { href: "/reposicion", etiqueta: "Reposición", icono: "materiales", acciones: ["verReposicion"] },
-  // Provisorio hasta 8.1: las acciones propias de la ola 7 se agregan a `permisos-pura.ts` en esa tarea.
-  { href: "/presupuestos", etiqueta: "Presupuestos", icono: "ventas", acciones: ["verVentas"] },
+  { href: "/presupuestos", etiqueta: "Presupuestos", icono: "ventas", acciones: ["verPresupuestos"] },
   { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas", acciones: ["verCobranzas"] },
-  { href: RUTA_RECORDATORIOS, etiqueta: "Recordatorios", icono: "cobranzas", acciones: ["verCobranzas"] },
+  { href: RUTA_RECORDATORIOS, etiqueta: "Recordatorios", icono: "cobranzas", acciones: ["verRecordatorios"] },
   { href: "/reportes", etiqueta: "Reportes", icono: "reportes", acciones: ["verReportes", "verCostos", "verMargenes"] },
 ];
 // Se usan poco: en el celular van al final de "Mas". En escritorio, las listas de precios y la
@@ -53,7 +52,7 @@ const LISTAS_PRECIOS: Seccion = {
   href: "/listas-precios",
   etiqueta: "Listas de precios",
   icono: "articulos",
-  acciones: ["verCostos"],
+  acciones: ["gestionarListasPrecios"],
 };
 const ADMINISTRACION: Seccion[] = [LISTAS_PRECIOS, USUARIOS, CONFIGURACION];
 const ICONOS_ESCRITORIO: Seccion[] = [LISTAS_PRECIOS, CONFIGURACION];

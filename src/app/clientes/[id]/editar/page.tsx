@@ -3,19 +3,20 @@ import { notFound } from "next/navigation";
 import { getCliente } from "@/lib/queries/clientes";
 import { formatearCuit } from "@/lib/cuit";
 import { getListaDeCliente, getListasParaElegir } from "@/lib/queries/listas-precios";
-import { requierePermisoPagina } from "@/lib/permisos";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { Seccion } from "@/components/ui";
 import { ClienteForm } from "../../_componentes/cliente-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditarClientePage({ params }: { params: Promise<{ id: string }> }) {
-  await requierePermisoPagina("editarClientes");
+  const usuario = await requierePermisoPagina("editarClientes");
   const { id } = await params;
   const cliente = await getCliente(id);
   if (!cliente) notFound();
-  const actual = await getListaDeCliente(cliente.id);
-  const listas = await getListasParaElegir(actual?.id ?? null);
+  // La lista de precios es una decision de precios: sin `gestionarListasPrecios` ni se consultan las listas.
+  const actual = puede(usuario, "gestionarListasPrecios") ? await getListaDeCliente(cliente.id) : null;
+  const listas = puede(usuario, "gestionarListasPrecios") ? await getListasParaElegir(actual?.id ?? null) : undefined;
 
   return (
     <>
@@ -34,7 +35,7 @@ export default async function EditarClientePage({ params }: { params: Promise<{ 
       <ClienteForm
         id={cliente.id}
         esModoDemo={cliente.esDemo}
-        listas={listas.map((l) => ({ valor: l.id, etiqueta: l.activo ? l.nombre : `${l.nombre} (de baja)` }))}
+        listas={listas?.map((l) => ({ valor: l.id, etiqueta: l.activo ? l.nombre : `${l.nombre} (de baja)` }))}
         inicial={{
           nombre: cliente.nombre,
           cuit: formatearCuit(cliente.cuit),

@@ -206,13 +206,14 @@ async function main() {
 
   console.log("--- Permisos ---");
   // La matriz completa rol × accion, escrita a mano, esta en `npm run test:permisos`.
-  comprobar("22 acciones (12 del contrato + 10 del mostrador)", String(ACCIONES.length), "22");
+  comprobar("28 acciones (13 solo del dueno + 15 del mostrador)", String(ACCIONES.length), "28");
   comprobar("el dueno puede todo", String(ACCIONES.every((a) => puede({ rol: "DUENO" }, a))), "true");
   const DEL_CONTRATO: Accion[] = [
     "verCostos", "verMargenes", "anularVenta", "anularPago", "ajustarStock", "registrarCompra",
     "editarCatalogo", "editarMateriales", "verReportes", "exportarCsv", "configuracion", "gestionarUsuarios",
+    "gestionarListasPrecios", // ola 7
   ];
-  comprobar("el empleado ninguna de las 12 del contrato", String(DEL_CONTRATO.some((a) => puede({ rol: "EMPLEADO" }, a))), "false");
+  comprobar("el empleado ninguna de las 13 solo del dueno", String(DEL_CONTRATO.some((a) => puede({ rol: "EMPLEADO" }, a))), "false");
   comprobar("sin usuario, nada", String(ACCIONES.some((a) => puede(null, a))), "false");
   comprobar("accion desconocida, nada", String(puede({ rol: "EMPLEADO" }, "toString" as Accion)), "false");
   comprobar("accion desconocida, nada (tampoco el dueno)", String(puede({ rol: "DUENO" }, "toString" as Accion)), "false");

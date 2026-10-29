@@ -4,6 +4,7 @@ import { ESTILO_ESTADO, ETIQUETA_ESTADO, numeroPresupuesto } from "@/lib/presupu
 import { filtroValido, getPresupuestos, type FiltroPresupuesto } from "@/lib/queries/presupuestos";
 import { Seccion, Vacio } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { SinBase } from "./_componentes/sin-base";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ const FILTROS: { clave: FiltroPresupuesto; etiqueta: string }[] = [
 ];
 
 export default async function PresupuestosPage({ searchParams }: { searchParams: Promise<{ estado?: string }> }) {
+  const usuario = await requierePermisoPagina("verPresupuestos");
   const filtro = filtroValido((await searchParams).estado);
   const presupuestos = await getPresupuestos(filtro);
 
@@ -35,12 +37,15 @@ export default async function PresupuestosPage({ searchParams }: { searchParams:
         titulo="Presupuestos"
         descripcion="Precios acordados con el cliente, listos para convertir en venta"
         accion={
-          <Link
-            href="/presupuestos/nuevo"
-            className="inline-flex min-h-11 items-center rounded-lg bg-marca px-4 text-sm font-semibold text-tinta"
-          >
-            Nuevo presupuesto
-          </Link>
+          // El boton de lo que el usuario no puede hacer ni se pinta (la pagina y la accion lo vuelven a exigir).
+          puede(usuario, "cargarPresupuesto") ? (
+            <Link
+              href="/presupuestos/nuevo"
+              className="inline-flex min-h-11 items-center rounded-lg bg-marca px-4 text-sm font-semibold text-tinta"
+            >
+              Nuevo presupuesto
+            </Link>
+          ) : undefined
         }
       />
 
@@ -62,7 +67,7 @@ export default async function PresupuestosPage({ searchParams }: { searchParams:
       {presupuestos.length === 0 ? (
         <Vacio
           mensaje={filtro === "todos" ? "Todavía no hay presupuestos" : "No hay presupuestos con ese estado"}
-          hint={filtro === "todos" ? "Armá el primero con el botón de arriba." : undefined}
+          hint={filtro === "todos" && puede(usuario, "cargarPresupuesto") ? "Armá el primero con el botón de arriba." : undefined}
         />
       ) : (
         <ul className="space-y-2">

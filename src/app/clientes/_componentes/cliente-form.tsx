@@ -35,12 +35,15 @@ export const CLIENTE_VACIO: ValoresCliente = {
 export function ClienteForm({
   id,
   inicial = CLIENTE_VACIO,
-  listas = [],
+  listas,
   esModoDemo = false,
 }: {
   id?: string;
   inicial?: ValoresCliente;
-  /** Listas de precios que se pueden elegir. */
+  /**
+   * Listas de precios que se pueden elegir. Sin esto (quien no puede gestionar
+   * listas de precios) el selector no se muestra y el formulario no envia la lista.
+   */
   listas?: Opcion[];
   esModoDemo?: boolean;
 }) {
@@ -66,7 +69,7 @@ export function ClienteForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        const datos = { ...valores, listaPrecioId: valores.listaPrecioId || null };
+        const datos = listas ? { ...valores, listaPrecioId: valores.listaPrecioId || null } : { ...valores, listaPrecioId: undefined };
         if (id) editar.enviar(datos, () => router.push(`/clientes/${id}`));
         else crear.enviar(datos, (r) => router.push(`/clientes/${r.id}`));
       }}
@@ -117,14 +120,16 @@ export function ClienteForm({
         maxLength={200}
         autoComplete="off"
       />
-      <CampoSelect
-        etiqueta="Lista de precios"
-        valor={valores.listaPrecioId}
-        alCambiar={cambiar("listaPrecioId")}
-        opciones={listas}
-        placeholder="Sin lista (precio de catálogo)"
-        ayuda="Las ventas nuevas de este cliente usan los precios de la lista."
-      />
+      {listas ? (
+        <CampoSelect
+          etiqueta="Lista de precios"
+          valor={valores.listaPrecioId}
+          alCambiar={cambiar("listaPrecioId")}
+          opciones={listas}
+          placeholder="Sin lista (precio de catálogo)"
+          ayuda="Las ventas nuevas de este cliente usan los precios de la lista."
+        />
+      ) : null}
       <CampoNotas
         etiqueta="Notas"
         valor={valores.notas}

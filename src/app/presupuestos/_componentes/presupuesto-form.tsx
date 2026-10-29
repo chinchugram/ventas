@@ -7,7 +7,7 @@ import { d, fmtMoneda, fmtNumero, type Dinero } from "@/lib/money";
 import { decimalOCero } from "@/lib/acciones";
 import { totalizarPresupuesto, subtotalLinea, VALIDEZ_POR_DEFECTO } from "@/lib/presupuestos";
 import { BloqueError, BotonEnviar, CampoDecimal, CampoNotas, CampoSelect, useAccion } from "@/components/form";
-import { preciosParaCliente, type PreciosCliente } from "@/app/ventas/nueva/actions";
+import { preciosParaPresupuesto, type PreciosCliente } from "@/app/ventas/nueva/actions";
 import { crearPresupuesto, editarPresupuesto } from "../actions";
 
 /**
@@ -16,7 +16,7 @@ import { crearPresupuesto, editarPresupuesto } from "../actions";
  *
  * Los precios que se ven son informativos: al guardar, el servidor los resuelve
  * de nuevo (`resolverPrecio`) y no confia en nada que venga de aca. Al elegir
- * cliente se piden con `preciosParaCliente`. Al editar, las lineas que ya
+ * cliente se piden con `preciosParaPresupuesto`. Al editar, las lineas que ya
  * estaban conservan su precio congelado mientras el cliente no cambie.
  */
 
@@ -71,11 +71,11 @@ export function PresupuestoForm({
   const porId = useMemo(() => new Map(articulos.map((a) => [a.id, a])), [articulos]);
   const guardadas = useMemo(() => new Map((inicial?.lineas ?? []).map((l) => [l.articuloId, l])), [inicial]);
 
-  // Precios del cliente elegido (solo precios de venta, ver `preciosParaCliente`).
+  // Precios del cliente elegido (solo precios de venta, ver `preciosParaPresupuesto`).
   useEffect(() => {
     if (!clienteId) return;
     let vigente = true;
-    preciosParaCliente({ clienteId, articuloIds: articulos.map((a) => a.id) })
+    preciosParaPresupuesto({ clienteId, articuloIds: articulos.map((a) => a.id) })
       .then((r) => vigente && setCargados({ ...r, clienteId }))
       .catch(() => vigente && setCargados({ ok: false, error: "No se pudo conectar con el servidor.", clienteId }));
     return () => {

@@ -1,15 +1,19 @@
 import { fmtMoneda } from "@/lib/money";
+import { usuarioActual } from "@/lib/auth";
+import { puede } from "@/lib/permisos";
 import { getPreciosBajoCosto } from "@/lib/queries/listas-precios";
 
 /**
- * SOLO DUEÑO (ola 4)
- *
  * Avisa cuando algun precio de la lista (especifico o con el descuento general)
  * queda por debajo del costo de receta. Es un Server Component: el costo se
- * calcula aca y nunca viaja a un componente cliente. Cuando llegue la ola 4,
- * la pantalla lo muestra solo si el usuario es el dueño.
+ * calcula aca y nunca viaja a un componente cliente.
+ *
+ * Solo para quien puede `verCostos`. La pagina ya decide si lo pinta, pero el
+ * componente lo vuelve a verificar ANTES de consultar: sin permiso ni se leen
+ * las recetas ni los costos, aunque alguien lo monte en otra pantalla.
  */
 export async function AdvertenciaBajoCosto({ listaId }: { listaId: string }) {
+  if (!puede(await usuarioActual(), "verCostos")) return null;
   const bajoCosto = await getPreciosBajoCosto(listaId);
   if (bajoCosto.length === 0) return null;
 

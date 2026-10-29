@@ -6,6 +6,7 @@ import { mensajeWhatsAppPresupuesto, numeroPresupuesto } from "@/lib/presupuesto
 import { getMarca } from "@/lib/marca";
 import { getPresupuesto } from "@/lib/queries/presupuestos";
 import { estadoDemo } from "@/lib/respaldo";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { BotonImprimir } from "../../_componentes/boton-imprimir";
 import { SinBase } from "../../_componentes/sin-base";
 
@@ -29,6 +30,7 @@ const CSS_IMPRESION = `
  * internas, ni datos de otros clientes.
  */
 export default async function ImprimirPresupuestoPage({ params }: { params: Promise<{ id: string }> }) {
+  await requierePermisoPagina("verPresupuestos");
   const { id } = await params;
   const [p, marca] = await Promise.all([getPresupuesto(id), getMarca()]);
   if (!p) {
