@@ -214,10 +214,13 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 **Lo que falta para que sea usable (siguiente paso):**
 
 - [x] Guardado real de la venta: numeración correlativa por año, ítems, costo congelado y descuento de stock
-- [ ] Formularios de alta/edición de clientes, artículos, materiales y recetas
-- [ ] Registro de pagos y cambio de estado de la venta
-- [ ] Página de configuración (costo/hora de mano de obra, IVA, margen objetivo)
-- [ ] Backup automático diario
+- [ ] Formularios de alta/edición de clientes, artículos, materiales y recetas (ola 1 de `docs/04-checklist-olas.md`)
+- [ ] Registro de pagos sobre ventas existentes y cambio de estado (ola 2)
+- [ ] Página de configuración (costo/hora de mano de obra, IVA, margen objetivo) (ola 1)
+- [ ] Backup automático diario (ola 2)
+
+El plan completo, por olas y pensado para repartir a subagentes en paralelo, está en
+`docs/04-checklist-olas.md`.
 
 ---
 
