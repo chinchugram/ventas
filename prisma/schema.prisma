@@ -60,6 +60,8 @@ model Cliente {
   ventas Venta[]
   pagos  Pago[]
 
+  contactosCobranza ContactoCobranza[]
+
   @@index([activo])
   @@index([nombre])
   @@index([listaPrecioId])
@@ -335,4 +337,22 @@ model MovimientoStock {
   @@index([compraId])
   @@index([ventaId])
   @@map("movimientos_stock")
+}
+
+/// Llamado o mensaje de cobranza a un cliente. Solo guarda lo que pasó (fecha,
+/// nota) y lo que se prometió (próximo contacto): el saldo y la antigüedad de la
+/// deuda se calculan desde ventas y pagos, nunca se guardan acá.
+/// Sin `usuarioId`: todavía no hay autenticación.
+model ContactoCobranza {
+  id              String    @id @default(uuid()) @db.Uuid
+  clienteId       String    @db.Uuid
+  fecha           DateTime  @db.Date
+  nota            String
+  proximoContacto DateTime? @db.Date
+  creadoEn        DateTime  @default(now()) @db.Timestamptz(3)
+
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+
+  @@index([clienteId, fecha])
+  @@map("contactos_cobranza")
 }
