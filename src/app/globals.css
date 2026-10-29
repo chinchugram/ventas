@@ -23,18 +23,23 @@ body {
   font-size: 16px;
 }
 
-/* Los inputs de formulario se listenan a mano y con buen contraste. */
-input,
-select,
-textarea {
-  @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900;
-  @apply focus:border-marca focus:ring-2 focus:ring-marca/30 focus:outline-none;
-  /* 16px minimo: por debajo, iOS Safari hace zoom al hacer foco. */
-  font-size: 16px;
-}
+/*
+ * Estilos base de formulario. Van en la capa `base` para que las utilidades
+ * (pl-7, w-5, text-xs...) les ganen al usarlas en un campo puntual.
+ */
+@layer base {
+  input,
+  select,
+  textarea {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900;
+    @apply focus:border-marca focus:ring-2 focus:ring-marca/30 focus:outline-none;
+    /* 16px minimo: por debajo, iOS Safari hace zoom al hacer foco. */
+    font-size: 16px;
+  }
 
-label {
-  @apply mb-1 block text-sm font-medium text-slate-700;
+  label {
+    @apply mb-1 block text-sm font-medium text-slate-700;
+  }
 }
 
 /* Entrada de la hoja "Mas" en mobile. */

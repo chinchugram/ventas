@@ -26,6 +26,7 @@ import type { VentaRow } from "@/lib/queries/ventas";
 export const DEMO_CONFIG: Record<string, string> = {
   nombreNegocio: "HL Laser",
   costoHoraManoObra: "3500",
+  ivaPorDefecto: "21",
   margenObjetivo: "40",
 };
 
@@ -35,11 +36,11 @@ const IVA_PCT = d(21);
 // ─── Clientes ─────────────────────────────────────────────────────────────────
 
 const CLIENTES = [
-  { id: "c1", nombre: "Ferretería El Tornillo", cuit: "30-71234567-8", telefono: "351 455-6677" },
-  { id: "c2", nombre: "Café La Esquina", cuit: "20-34567890-1", telefono: "351 411-2233" },
+  { id: "c1", nombre: "Ferretería El Tornillo", cuit: "30-71234567-1", telefono: "351 455-6677" },
+  { id: "c2", nombre: "Café La Esquina", cuit: "20-34567890-6", telefono: "351 411-2233" },
   { id: "c3", nombre: "Estudio Weber", cuit: null, telefono: "351 622-0981" },
-  { id: "c4", nombre: "Gimnasio Fuerza Total", cuit: "30-55555555-5", telefono: "351 733-4410" },
-  { id: "c5", nombre: "Cervecería Patagonia", cuit: "30-68991234-9", telefono: "351 590-8812" },
+  { id: "c4", nombre: "Gimnasio Fuerza Total", cuit: "30-55555555-1", telefono: "351 733-4410" },
+  { id: "c5", nombre: "Cervecería Patagonia", cuit: "30-68991234-2", telefono: "351 590-8812" },
 ] as const;
 
 // ─── Materiales y maquinas ────────────────────────────────────────────────────

@@ -81,13 +81,13 @@ Deja listo lo compartido para que la ola 1 no se pise. Migraciones reservadas: `
 Sin esto el dueño no puede cargar nada propio. Cada tarea es dueña de su carpeta.
 Migraciones reservadas: `20260120…` (solo si hace falta, p. ej. para índices).
 
-- [ ] **1.1 Clientes**: alta, edición y baja lógica; CUIT único (índice parcial ya existe), validación de CUIT.
+- [x] **1.1 Clientes**: alta, edición y baja lógica; CUIT único (índice parcial ya existe), validación de CUIT.
       Ficha del cliente con ventas, saldo y pagos. Dueña de `src/app/clientes/**`, `src/lib/queries/clientes.ts`.
-- [ ] **1.2 Materiales**: alta, edición, baja lógica; unidad, mínimo, costo, precio de venta. Al editar el
+- [x] **1.2 Materiales**: alta, edición, baja lógica; unidad, mínimo, costo, precio de venta. Al editar el
       costo, mostrar qué artículos cambian de margen. Dueña de `src/app/materiales/**` (salvo `[id]` de movimientos).
-- [ ] **1.3 Artículos y recetas**: alta/edición de artículo y editor de receta (materiales, máquinas, mano de
+- [x] **1.3 Artículos y recetas**: alta/edición de artículo y editor de receta (materiales, máquinas, mano de
       obra, override de costo), con costo y margen en vivo usando `costing.ts`. Dueña de `src/app/catalogo/**`.
-- [ ] **1.4 Configuración y máquinas**: página de configuración (nombre del negocio, costo/hora de mano de obra,
+- [x] **1.4 Configuración y máquinas**: página de configuración (nombre del negocio, costo/hora de mano de obra,
       IVA por defecto, margen objetivo) y ABM de máquinas. Dueña de `src/app/configuracion/**`.
 
 Al integrar: reemplazar en `demo-data.ts` lo que cada tarea haya dejado como parche pendiente.
