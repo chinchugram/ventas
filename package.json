@@ -42,6 +42,7 @@
     "test:reposicion": "tsx scripts/verificar-reposicion.ts",
     "test:respaldo": "tsx scripts/verificar-respaldo.ts",
     "test:stock-reporte": "tsx scripts/verificar-stock-reporte.ts",
+    "test:consumo": "tsx scripts/verificar-consumo.ts",
     "test:respaldo:restaurar": "sh scripts/probar-restauracion.sh"
   },
   "dependencies": {
