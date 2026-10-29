@@ -83,7 +83,6 @@ Respuesta directa a *"¿cómo va el mes?"*:
 ## Fuera del alcance del MVP (explícitamente)
 
 - Facturación electrónica AFIP/ARCA (decisión tomada: solo comprobantes internos).
-- Multi-usuario, login, roles y permisos.
 - Órdenes de compra y gestión real de stock (entradas por compra).
 - Remitos, notas de crédito, listas de precios por cliente.
 - Contas corrientes de títulos (cheques, pagarés).
@@ -100,7 +99,7 @@ Estado al día de hoy. El detalle de tareas y su orden de ejecución está en `d
 | Etapa | Estado | Qué resuelve | Por qué |
 |---|---|---|---|
 | **2 — Stock real** | **Hecha.** Compras, libro de movimientos, ajuste por conteo, ventas que descuentan stock y anulación, lista de reposición sugerida | Compras, movimientos de entrada/salida, alertas por stock mínimo | Hoy el dueño compra a ciegas. El MVP solo le avisa si el stock *virtual* baja del mínimo. |
-| **3 — Multi-usuario** | Pendiente (ola 4) | Login, registro de quién hizo cada venta | Cuando el negocio crezca o para no perder trazabilidad. |
+| **3 — Multi-usuario** | **Hecha.** Login con usuarios y roles (`DUENO` / `EMPLEADO`), sesiones en base, permisos por rol, trazabilidad (quién cargó cada venta, cobro, compra y movimiento de stock) y administración de usuarios | Login, roles y registro de quién hizo cada cosa | Cuando el negocio crezca o para no perder trazabilidad. |
 | **4 — Facturación electrónica** | Pendiente (ola 5) | Factura A/B ante ARCA, CAE, certificado digital | Requisito legal/comercial. El modelo ya está preparado: falta el emisor. |
 | **5 — Productividad** | Pendiente (ola 6) | Costeo real por máquina/consumo medido, tiempos por arte | Pasa de margen estimado a margen real. Es el salto de calidad. |
 | **6 — Comercial** | Pendiente (ola 7) | Listas de precios, presupuestos que se convierten en venta, recordatorios de cobranza | Antes de perder un cliente por no llamar al que debe. |
@@ -108,6 +107,22 @@ Estado al día de hoy. El detalle de tareas y su orden de ejecución está en `d
 Las **altas y ediciones** (clientes, materiales, artículos, recetas, configuración) y los **cobros
 sobre ventas existentes**, que hacían falta antes de las etapas 3 a 6, ya están hechos (olas 1 y 2
 del checklist).
+
+**Etapa 3 (hecha, ola 4) incluye:**
+
+- Dos roles: `DUENO` (todo) y `EMPLEADO` (cargar ventas, registrar cobros, marcar entregada, clientes,
+  stock en cantidades y reposición sin costos). Su pantalla de inicio es `/ventas/nueva`.
+- Login en `/login` con sesiones guardadas en la base (revocables), claves con hash, pausa creciente tras
+  fallos y cookie `httpOnly` (`Secure` en producción).
+- Permisos por rol en cada pantalla, acción y exportación. Los costos y márgenes no llegan al navegador
+  del empleado.
+- Trazabilidad: "Registrado por" en ventas, cobros, compras y movimientos de stock.
+- Administración de usuarios por el dueño: alta, baja lógica y reactivación, cambio de rol y reinicio de
+  clave. Cada usuario cambia su propia clave.
+
+**Queda fuera de la etapa 3** (ver `docs/seguridad-ola-4-auth.md`): 2FA, recuperación de clave (hoy la
+cambia otro dueño o un comando del servidor), límite de intentos por IP, auditoría de logins y listado o
+cierre remoto de sesiones.
 
 
 ---
