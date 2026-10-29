@@ -59,7 +59,7 @@ async function resumenMesDesdeBase(fechaReferencia: Date): Promise<ResumenMes> {
       _sum: { totalBruto: true, totalNeto: true, totalIVA: true, costoTotal: true },
     }),
     prisma.pago.aggregate({
-      where: { fecha: { gte: desde, lt: hasta } },
+      where: { fecha: { gte: desde, lt: hasta }, anuladoEn: null, venta: { estado: { not: "ANULADA" } } },
       _sum: { monto: true },
     }),
   ]);
@@ -100,7 +100,12 @@ export const pendienteTotal = cache(
           where: { estado: { not: "ANULADA" } },
           _sum: { totalBruto: true },
         }),
-        prisma.pago.aggregate({ _sum: { monto: true } }),
+        // Solo pagos vigentes de ventas vigentes: lo cobrado de una venta anulada
+        // no descuenta deuda de las demas.
+        prisma.pago.aggregate({
+          where: { anuladoEn: null, venta: { estado: { not: "ANULADA" } } },
+          _sum: { monto: true },
+        }),
       ]);
 
       const saldo = d(facturado._sum.totalBruto).minus(d(pagado._sum.monto));
@@ -139,7 +144,7 @@ async function ultimasVentasDesdeBase(limite: number): Promise<VentaListada[]> {
     take: limite,
     include: {
       cliente: { select: { id: true, nombre: true } },
-      pagos: { select: { monto: true } },
+      pagos: { where: { anuladoEn: null }, select: { monto: true } },
     },
   });
 
@@ -186,7 +191,7 @@ async function deudasDesdeBase(): Promise<DeudaCliente[]> {
       fecha: true,
       totalBruto: true,
       cliente: { select: { nombre: true, telefono: true } },
-      pagos: { select: { monto: true } },
+      pagos: { where: { anuladoEn: null }, select: { monto: true } },
     },
     orderBy: { fecha: "asc" },
   });

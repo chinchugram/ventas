@@ -212,6 +212,11 @@ model Pago {
   metodo    MetodoPago @default(EFECTIVO)
   notas     String?
 
+  // Baja logica: un pago nunca se borra. Anulado no cuenta en ningun saldo.
+  // CHECK en la migracion: si esta anulado, el motivo es obligatorio.
+  anuladoEn       DateTime? @db.Timestamptz(3)
+  motivoAnulacion String?
+
   creadoEn      DateTime @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 

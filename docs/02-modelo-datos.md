@@ -139,6 +139,8 @@ Restricción de integridad (CHECK en SQL de Prisma):
 | `monto` | decimal(14,2) | Siempre > 0 |
 | `metodo` | enum | `EFECTIVO`, `TRANSFERENCIA`, `TARJETA`, `OTRO` |
 | `notas` | text? | |
+| `anuladoEn` | timestamptz? | Baja lógica: el pago anulado se muestra y no cuenta en ningún saldo |
+| `motivoAnulacion` | text? | Obligatorio si está anulado (CHECK) |
 
 No se modelan pagos sin venta (anticipos a cuenta) en el MVP: el pedido puede tener
 `estado = PENDIENTE` y el saldo a favor se maneja fuera del sistema hasta la etapa 2.

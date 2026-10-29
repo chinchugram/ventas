@@ -99,22 +99,16 @@ Estado al día de hoy. El detalle de tareas y su orden de ejecución está en `d
 
 | Etapa | Estado | Qué resuelve | Por qué |
 |---|---|---|---|
-| **2 — Stock real** | **Casi hecha.** Hecho: compras, libro de movimientos, ajuste por conteo, ventas que descuentan stock y anulación. Falta: lista de reposición sugerida | Compras, movimientos de entrada/salida, alertas por stock mínimo | Hoy el dueño compra a ciegas. El MVP solo le avisa si el stock *virtual* baja del mínimo. |
+| **2 — Stock real** | **Hecha.** Compras, libro de movimientos, ajuste por conteo, ventas que descuentan stock y anulación, lista de reposición sugerida | Compras, movimientos de entrada/salida, alertas por stock mínimo | Hoy el dueño compra a ciegas. El MVP solo le avisa si el stock *virtual* baja del mínimo. |
 | **3 — Multi-usuario** | Pendiente (ola 4) | Login, registro de quién hizo cada venta | Cuando el negocio crezca o para no perder trazabilidad. |
 | **4 — Facturación electrónica** | Pendiente (ola 5) | Factura A/B ante ARCA, CAE, certificado digital | Requisito legal/comercial. El modelo ya está preparado: falta el emisor. |
 | **5 — Productividad** | Pendiente (ola 6) | Costeo real por máquina/consumo medido, tiempos por arte | Pasa de margen estimado a margen real. Es el salto de calidad. |
 | **6 — Comercial** | Pendiente (ola 7) | Listas de precios, presupuestos que se convierten en venta, recordatorios de cobranza | Antes de perder un cliente por no llamar al que debe. |
 
-Antes de las etapas 3 a 6 faltan las **altas y ediciones** (clientes, materiales, artículos, recetas,
-configuración) y los **cobros sobre ventas existentes**: sin eso el sistema no se puede cargar solo.
-Están en las olas 1 y 2 del checklist.
+Las **altas y ediciones** (clientes, materiales, artículos, recetas, configuración) y los **cobros
+sobre ventas existentes**, que hacían falta antes de las etapas 3 a 6, ya están hechos (olas 1 y 2
+del checklist).
 
----|---|---|
-| **2 — Stock real** *(en curso: compras, libro de movimientos y ajuste por conteo hechos; ventas persistidas con descuento de stock y anulación; falta la lista de reposición sugerida)* | Compras, movimientos de entrada/salida, alertas por stock mínimo | Hoy el dueño compra a ciegas. El MVP solo le avisa si el stock *virtual* baja del mínimo. |
-| **3 — Multi-usuario** | Login, registro de quién hizo cada venta | Cuando el negocio crezca o para no perder trazabilidad. |
-| **4 — Facturación electrónica** | Factura A/B ante ARCA, CAE, certificado digital | Requisito legal/comercial. El modelo ya está preparado: falta el emisor. |
-| **5 — Productividad** | Costeo real por máquina/consumo medido, tiempos por arte | Pasa de margen estimado a margen real. Es el salto de calidad. |
-| **6 — Comercial** | Listas de precios, presupuestos que se convierten en venta, recordatorios de cobranza | Antes de perder un cliente por no llamar al que debe. |
 
 ---
 

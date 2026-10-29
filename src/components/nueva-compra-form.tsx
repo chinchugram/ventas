@@ -13,7 +13,18 @@ type Linea = { clave: number; materialId: string; cantidad: string; costoUnitari
 const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 const numero = (v: string) => (/^\d+([.,]\d+)?$/.test(v.trim()) ? v.trim().replace(",", ".") : "0");
 
-export function NuevaCompraForm({ materiales, esModoDemo }: { materiales: MaterialOpcion[]; esModoDemo: boolean }) {
+export type LineaInicial = { materialId: string; cantidad: string };
+
+export function NuevaCompraForm({
+  materiales,
+  lineasIniciales = [],
+  esModoDemo,
+}: {
+  materiales: MaterialOpcion[];
+  /** Lineas sugeridas (por ejemplo, desde Reposicion); el costo sale del material. */
+  lineasIniciales?: LineaInicial[];
+  esModoDemo: boolean;
+}) {
   const router = useRouter();
   const [pendiente, iniciar] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -21,8 +32,16 @@ export function NuevaCompraForm({ materiales, esModoDemo }: { materiales: Materi
   const [proveedor, setProveedor] = useState("");
   const [comprobante, setComprobante] = useState("");
   const [actualizarCosto, setActualizarCosto] = useState(true);
-  const [siguiente, setSiguiente] = useState(2);
-  const [lineas, setLineas] = useState<Linea[]>([{ clave: 1, materialId: "", cantidad: "", costoUnitario: "" }]);
+  const [lineas, setLineas] = useState<Linea[]>(() => {
+    const precargadas = lineasIniciales.flatMap((l, i) => {
+      const material = materiales.find((m) => m.id === l.materialId);
+      if (!material) return [];
+      // Con coma, como lo tipearia el dueño.
+      return [{ clave: i + 1, materialId: l.materialId, cantidad: l.cantidad.replace(".", ","), costoUnitario: material.costoUnitario }];
+    });
+    return precargadas.length > 0 ? precargadas : [{ clave: 1, materialId: "", cantidad: "", costoUnitario: "" }];
+  });
+  const [siguiente, setSiguiente] = useState(() => Math.max(...lineas.map((l) => l.clave)) + 1);
 
   const cambiar = (clave: number, cambios: Partial<Linea>) =>
     setLineas((ls) => ls.map((l) => (l.clave === clave ? { ...l, ...cambios } : l)));

@@ -44,7 +44,8 @@ async function ventasDesdeBase(limite: number): Promise<VentaRow[]> {
     take: limite,
     include: {
       cliente: { select: { id: true, nombre: true } },
-      pagos: { select: { monto: true } },
+      // Los pagos anulados no cuentan en el saldo.
+      pagos: { where: { anuladoEn: null }, select: { monto: true } },
       _count: { select: { items: true } },
     },
   });
@@ -117,7 +118,16 @@ export type VentaDetalle = {
   saldo: Dinero;
   estadoPago: EstadoPago;
   items: { id: string; descripcion: string; cantidad: Dinero; precioUnitario: Dinero; subtotalBruto: Dinero }[];
-  pagos: { id: string; fecha: Date; monto: Dinero; metodo: string }[];
+  /** Todos los pagos, tambien los anulados (se muestran tachados y no cuentan). */
+  pagos: {
+    id: string;
+    fecha: Date;
+    monto: Dinero;
+    metodo: string;
+    notas: string | null;
+    anuladoEn: Date | null;
+    motivoAnulacion: string | null;
+  }[];
 };
 
 /** Una venta con sus items y pagos. Sin base no hay detalle: las ventas demo no se abren. */
@@ -130,11 +140,11 @@ export const getVenta = cache(
           include: {
             cliente: { select: { id: true, nombre: true } },
             items: { orderBy: { id: "asc" } },
-            pagos: { orderBy: { fecha: "asc" } },
+            pagos: { orderBy: [{ fecha: "asc" }, { creadoEn: "asc" }] },
           },
         });
         if (!v) return null;
-        const pagado = sumar(...v.pagos.map((p) => p.monto));
+        const pagado = sumar(...v.pagos.filter((p) => p.anuladoEn === null).map((p) => p.monto));
         return {
           id: v.id,
           numero: v.numero,
@@ -159,7 +169,15 @@ export const getVenta = cache(
             precioUnitario: i.precioUnitario,
             subtotalBruto: i.subtotalBruto,
           })),
-          pagos: v.pagos.map((p) => ({ id: p.id, fecha: p.fecha, monto: p.monto, metodo: p.metodo })),
+          pagos: v.pagos.map((p) => ({
+            id: p.id,
+            fecha: p.fecha,
+            monto: p.monto,
+            metodo: p.metodo,
+            notas: p.notas,
+            anuladoEn: p.anuladoEn,
+            motivoAnulacion: p.motivoAnulacion,
+          })),
         };
       },
       () => null,

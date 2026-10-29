@@ -3,11 +3,12 @@ import { getMateriales } from "@/lib/queries/materiales";
 import { NuevaCompraForm } from "@/components/nueva-compra-form";
 import { Seccion } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
+import { leerPrecarga } from "@/lib/reposicion";
 
 export const dynamic = "force-dynamic";
 
-export default async function NuevaCompraPage() {
-  const materiales = await getMateriales();
+export default async function NuevaCompraPage({ searchParams }: { searchParams: Promise<{ m?: string | string[] }> }) {
+  const [materiales, { m: precarga }] = await Promise.all([getMateriales(), searchParams]);
   const opciones = materiales.map((m) => ({
     id: m.id,
     nombre: m.nombre,
@@ -15,11 +16,21 @@ export default async function NuevaCompraPage() {
     costoUnitario: m.costoUnitario.toString(),
   }));
 
+  // Precarga desde la lista de reposicion (`?m=<id>:<cantidad>,...`): solo una
+  // sugerencia editable. Los materiales que no existen o estan de baja se
+  // ignoran, y el costo es siempre el vigente.
+  const activos = new Set(opciones.map((o) => o.id));
+  const lineasIniciales = leerPrecarga(precarga).filter((l) => activos.has(l.materialId));
+
   return (
     <>
       <Seccion
         titulo="Nueva compra"
-        descripcion="Suma stock y actualiza el costo de cada material"
+        descripcion={
+          lineasIniciales.length > 0
+            ? "Cargada desde Reposición: revisá cantidades y precios antes de guardar"
+            : "Suma stock y actualiza el costo de cada material"
+        }
         accion={
           <Link
             href="/compras"
@@ -29,7 +40,7 @@ export default async function NuevaCompraPage() {
           </Link>
         }
       />
-      <NuevaCompraForm materiales={opciones} esModoDemo={estadoDemo().activo} />
+      <NuevaCompraForm materiales={opciones} lineasIniciales={lineasIniciales} esModoDemo={estadoDemo().activo} />
     </>
   );
 }
