@@ -48,7 +48,8 @@
     "test:consumo": "tsx scripts/verificar-consumo.ts",
     "test:respaldo:restaurar": "sh scripts/probar-restauracion.sh",
     "test:auth": "tsx scripts/verificar-auth.ts",
-    "test:auth:db": "tsx scripts/test-auth.ts"
+    "test:auth:db": "tsx scripts/test-auth.ts",
+    "test:usuarios": "tsx scripts/test-usuarios.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",
