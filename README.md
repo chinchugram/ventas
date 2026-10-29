@@ -213,7 +213,7 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 
 **Lo que falta para que sea usable (siguiente paso):**
 
-- [ ] Guardado real de la venta: numeración correlativa por año, ítems, costo congelado y descuento de stock
+- [x] Guardado real de la venta: numeración correlativa por año, ítems, costo congelado y descuento de stock
 - [ ] Formularios de alta/edición de clientes, artículos, materiales y recetas
 - [ ] Registro de pagos y cambio de estado de la venta
 - [ ] Página de configuración (costo/hora de mano de obra, IVA, margen objetivo)
