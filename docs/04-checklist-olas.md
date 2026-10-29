@@ -4,8 +4,9 @@ Plan de trabajo para que un agente orquestador reparta tareas a subagentes en pa
 Cada **ola** es un conjunto de tareas **independientes entre sí** (no tocan los mismos archivos):
 se lanzan juntas y, cuando todas terminan y se integran, empieza la ola siguiente.
 
-Estado al día de hoy: **Etapa 1 (MVP), Etapa 2 (stock real) y Etapa 3 (multi-usuario) hechas, olas 0 a 4 y ola 7 (comercial) cerradas**.
-Esta lista cubre lo que falta para las etapas 4 a 6 de `docs/01-alcance-funcional.md`.
+Estado al día de hoy: **etapas 1, 2, 3 y comercial (ola 7) hechas; olas 0 a 4 y 7 cerradas.**
+Pendiente de las etapas 4 a 6 de `docs/01-alcance-funcional.md`: ola 5 (facturación, etapa 4) y
+ola 6 (productividad, etapa 5).
 
 Leyenda: `[x]` hecho · `[ ]` pendiente · `(R)` toca archivos compartidos, ver "Reglas".
 
@@ -152,8 +153,8 @@ Migraciones: `20260401…`.
 
 ## Ola 7 — Etapa 6: comercial (paralela, 3 tareas)
 
-Migraciones: `20260501…` (7.1), `20260510…` (7.2), `20260515…` (7.3). Hecha **sin** la ola 4: no hay
-auth, roles ni `usuarioId` todavía.
+Migraciones: `20260501…` (7.1), `20260510…` (7.2), `20260515…` (7.3), `20260520…` (trazabilidad de la
+ola 7, 8.2). Integrada con la ola 4 en "Integración 4+7".
 
 - [x] **7.1 Listas de precios por cliente**: `ListaPrecio`, `ListaPrecioItem`, `resolverPrecio`
       (`src/lib/precios.ts`), override de precio en `registrarVentaEnTx`, pantallas `/listas-precios/**`.
@@ -163,19 +164,22 @@ auth, roles ni `usuarioId` todavía.
       hoy, por antigüedad y monto, con enlace de WhatsApp.
 - [x] **7.4 Documentación**.
 
-### Pendientes de la ola 7 para la ola 4
-- **7.0a Permisos**: agregar `gestionarListasPrecios` (solo `DUENO`), `verPresupuestos`, `cargarPresupuesto`,
-  `convertirPresupuesto`, `verRecordatorios`, `registrarContactoCobranza` (`DUENO` y `EMPLEADO`) y ponerles
-  `requierePermiso` como primera línea de las server actions de `src/app/listas-precios`, `src/app/presupuestos`,
-  `src/app/cobranzas/hoy` y `preciosParaCliente`; `requierePermisoPagina` en sus páginas.
-- **7.0b `npm run test:acceso`**: clasificar las rutas nuevas (`/listas-precios/**`, `/presupuestos/**`,
-  `/cobranzas/hoy`) en la matriz.
-- **`usuarioId` nullable** en `Presupuesto`, `ContactoCobranza` (y quien cargue listas), como en las demás tablas de la ola 4.
-- **Costos al navegador**: la advertencia "precio bajo el costo" (`AdvertenciaBajoCosto`, Server Component en
-  `/listas-precios/[id]`) está marcada `// SOLO DUEÑO (ola 4)`; hoy se ve para todos. `src/app/ventas/nueva/page.tsx`
-  ya enviaba costos al componente cliente antes de esta ola (hallazgo preexistente para la 4.3).
-- **Límite conocido**: si cambia el IVA de un artículo entre el presupuesto y la conversión, el total coincide
-  pero el desglose neto/IVA usa el IVA actual (la conversión avisa).
+> Límite conocido (7.2): si cambia el IVA de un artículo entre el presupuesto y la conversión, el total
+> coincide pero el desglose neto/IVA usa el IVA actual (la conversión avisa).
+
+## Integración 4+7 (hecha)
+
+Ola 4 (multi-usuario) y ola 7 (comercial) unidas en `integracion-4-7`.
+
+- [x] **8.1 Permisos de la ola 7**: `gestionarListasPrecios` (solo `DUENO`), `verPresupuestos`, `cargarPresupuesto`,
+      `convertirPresupuesto`, `verRecordatorios` y `registrarContactoCobranza` (`DUENO` y `EMPLEADO`), en
+      `src/lib/permisos-pura.ts`. Cada server action y página de listas, presupuestos y `/cobranzas/hoy` las exige.
+      La asignación de lista de precios a un cliente también la exige: el empleado no ve ese selector.
+- [x] **8.2 Trazabilidad de la ola 7**: `usuarioId` nullable en `Presupuesto`, `ContactoCobranza` y `ListaPrecio`
+      (migración `20260520000000_trazabilidad_ola7`). Histórico en `NULL`, se muestra "—".
+- [x] **8.3 `npm run test:acceso`**: regresión de autorización por HTTP contra `next build && next start`, con
+      una base descartable. Cubre las rutas de la ola 7 y que el empleado no reciba costos ni márgenes.
+- [x] **8.4 Documentación**: README, modelo de datos, esta lista y `docs/seguridad-ola-4-auth.md`.
 
 ---
 

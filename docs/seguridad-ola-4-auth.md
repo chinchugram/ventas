@@ -95,8 +95,8 @@ Tres capas, de afuera hacia adentro:
    - cualquier otro método → 303 a `/login`.
    La única ruta atendida sin sesión es `/login`. Una server action ajena invocada por POST a
    `/login` con su ID: Next la reenvía internamente a la ruta de su página con un pedido HTTP nuevo,
-   que vuelve a pasar por el proxy y recibe 401 (probado: `registrarVenta` sin cookie, por `/login`
-   y por `/ventas/nueva`, no guarda nada).
+   que vuelve a pasar por el proxy. Ese reenvío falla: el cliente recibe 200 con cuerpo `{}`, y la
+   acción NO corre ni escribe en la base (comprobado con `npm run test:acceso` para cada server action).
    `/_next/image`: `images.unoptimized` en `next.config.ts` (la app no usa `next/image`) y ya no se
    excluye del `matcher`.
 2. **`usuarioActual()` / `requiereUsuario()` / `requierePermiso()` en cada página y acción.** El
@@ -120,6 +120,11 @@ Tres capas, de afuera hacia adentro:
    verifica sesión y permisos. Sin `AUTH_ESTRICTO` los hallazgos son avisos. `npm run test:permisos`
    comprueba además la matriz rol × acción, invoca cada acción prohibida con un empleado real
    (sin cambios en la base) y verifica que las consultas del empleado no traen costos.
+
+`npm run test:acceso` es la prueba de punta a punta de estas tres capas: levanta `next build && next start`
+contra una base descartable (`ventas_acceso`) y pide cada ruta por HTTP, sin cookie, con un empleado, con
+sesión expirada y con un usuario dado de baja. Verifica también que el HTML y el RSC que recibe el empleado
+no traigan ningún costo ni margen sembrado.
 
 Sin base o sin usuarios: en producción, sin base, el proxy responde **503** (nunca queda abierto);
 con base pero **sin ningún usuario**, 503 con la instrucción `npm run usuarios:crear-dueno` (en

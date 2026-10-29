@@ -54,8 +54,10 @@ Se entra por `/login` con usuario y clave. Hay dos roles:
 
 - **`DUENO`**: todo.
 - **`EMPLEADO`**: carga ventas, registra cobros, marca ventas como entregadas, ve y edita clientes,
-  ve el stock (solo cantidades) y la lista de reposición (sin costos). No ve costos ni márgenes y no
-  puede anular, tocar el catálogo, cargar compras ni ver reportes. Su pantalla de inicio es
+  ve el stock (solo cantidades) y la lista de reposición (sin costos), cotiza y convierte presupuestos
+  (con precios, sin costos) y registra contactos de cobranza en `/cobranzas/hoy`. No ve costos ni
+  márgenes y no puede anular, tocar el catálogo, cargar compras, ver reportes ni gestionar listas de
+  precios (ni asignarlas a un cliente: ese selector no le aparece). Su pantalla de inicio es
   `/ventas/nueva`.
 
 **Primer dueño:** `npm run usuarios:crear-dueno` pide usuario, nombre y clave (la clave no se ve al
@@ -68,6 +70,10 @@ dado de baja: los demás usuarios se crean desde `/usuarios`.
 - **En producción sin base de datos** responde 503.
 - **En producción se exige HTTPS.** La cookie de sesión es `Secure` y se llama
   `__Host-ventas_sesion`: por HTTP el navegador la descarta y el login vuelve siempre a `/login`.
+- **En producción conviene limitar `POST /login` en el proxy** con `limit_req` de nginx (o el
+  equivalente de Caddy / Cloudflare). La app no limita por IP, y cada intento cuesta un scrypt. La pausa
+  por usuario ya acota la fuerza bruta. Ver "Fuera de alcance" en
+  [`docs/seguridad-ola-4-auth.md`](docs/seguridad-ola-4-auth.md).
 - **En desarrollo**, `npm run db:seed` crea `dueno` / `dueno-de-ejemplo` y `empleado` /
   `empleado-de-ejemplo`. Solo fuera de producción.
 - **Sin base de datos en desarrollo** (modo demo) se entra como "Demo", un dueño simulado. Las
@@ -166,7 +172,8 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 
 - **Listas de precios.** Cada cliente puede tener una lista asignada, desde su ficha. Tiene un
   descuento general sobre el catálogo y, si hace falta, precios específicos por artículo. Si la
-  lista se da de baja, sus clientes pagan precio de catálogo hasta que se reactive.
+  lista se da de baja, sus clientes pagan precio de catálogo hasta que se reactive. Solo el dueño
+  gestiona las listas y las asigna a un cliente (permiso `gestionarListasPrecios`).
 - **Precios congelados.** Un presupuesto guarda el precio de cada línea al crearlo (o al agregar
   una línea al editarlo). Si después cambian el catálogo o la lista, el presupuesto no se mueve:
   para cotizar con precios de hoy hay que duplicarlo.
@@ -188,7 +195,7 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 | `/ventas` | Historial de ventas con margen y estado de pago |
 | `/ventas/nueva` | Carga de venta: calcula en vivo y guarda (descuenta stock) |
 | `/ventas/[id]` | Detalle de una venta, pagos y anulación |
-| `/clientes` | Quién es cada cliente y cuánto debe; alta, edición y baja con CUIT validado. Cada cliente puede tener una lista de precios |
+| `/clientes` | Quién es cada cliente y cuánto debe; alta, edición y baja con CUIT validado. Cada cliente puede tener una lista de precios (la asigna solo el dueño) |
 | `/clientes/[id]` | Ficha: ventas, pagos y saldo del cliente |
 | `/catalogo` | Costo por receta, precio, margen y precio necesario para la meta |
 | `/catalogo/nuevo`, `/catalogo/[id]` | Alta y edición de artículo con editor de receta y costo/margen en vivo |
@@ -197,12 +204,14 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 | `/reposicion` | Materiales en o bajo el mínimo: cuánto comprar (mínimo × factor), costo estimado y botón que arma la compra |
 | `/cobranzas` | Quién debe, cuánto y desde cuándo; pagos recientes |
 | `/cobranzas/hoy` | A quién llamar hoy, ordenado por antigüedad y monto; registrar contacto y enlace de WhatsApp |
-| `/listas-precios` | Listas de precios: descuento general y precios por artículo; alta, edición y baja |
-| `/listas-precios/nueva`, `/listas-precios/[id]` | Alta y edición de una lista, con advertencia de precios por debajo del costo |
+| `/listas-precios` | Listas de precios: descuento general y precios por artículo; alta, edición y baja (solo `DUENO`) |
+| `/listas-precios/nueva`, `/listas-precios/[id]` | Alta y edición de una lista, con advertencia de precios por debajo del costo (solo `DUENO`) |
 | `/presupuestos` | Presupuestos, con filtro por estado (abiertos, vencidos, convertidos, anulados) |
 | `/presupuestos/nuevo`, `/presupuestos/[id]`, `/presupuestos/[id]/editar`, `/presupuestos/[id]/imprimir` | Alta, detalle (convertir en venta, duplicar, anular), edición mientras esté abierto y vigente, y vista para imprimir o mandar por WhatsApp |
 | `/materiales/nuevo`, `/materiales/[id]/editar` | Alta y edición; al cambiar el costo muestra qué artículos cambian de margen |
-| `/configuracion` | Nombre del negocio, costo/hora de mano de obra, IVA por defecto, margen objetivo y máquinas |
+| `/cortes` | Calculadora de cortes: precio de una medida a partir del precio de la plancha entera (solo `DUENO`, usa costos) |
+| `/configuracion` | Nombre del negocio, costo/hora de mano de obra, IVA por defecto, margen objetivo y máquinas (solo `DUENO`) |
+| `/configuracion/maquinas/nueva`, `/configuracion/maquinas/[id]` | Alta y edición de una máquina con su costo por hora (solo `DUENO`) |
 | `/compras` | Historial de compras; `/compras/nueva` registra una (suma stock y actualiza el costo) |
 | `/reportes` | Resumen, ganancia por producto, más rentables, deuda por cliente y consumo de materiales; filtro por mes o rango de fechas en la URL y botón "Exportar CSV" por reporte |
 | `/reportes/stock` | Valorización del stock, materiales sin movimiento, consumo real vs teórico y rotación; mismo filtro de fechas |
@@ -213,8 +222,9 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 | `/usuarios/mi-clave` | Cambiar la clave propia; la pide cualquier rol |
 
 Desde la ola 4, el detalle de una venta (y cada cobro) y el libro de movimientos de un material
-muestran "Registrado por" con quién lo cargó, y el listado de compras también. Lo anterior a los
-usuarios muestra "—".
+muestran "Registrado por" con quién lo cargó, y el listado de compras también. Desde la ola 7 (integrada
+con la 4), el detalle de un presupuesto y cada contacto de `/cobranzas/hoy` muestran "Registrado por", y
+la ficha de una lista de precios muestra "Creada por". Lo anterior a los usuarios muestra "—".
 
 Todas mobile-first: en celular las tablas se convierten en tarjetas apiladas. El dueño atiende
 el mostrador con el teléfono en la mano.
@@ -257,6 +267,7 @@ el mostrador con el teléfono en la mano.
 | `npm run test:auth` / `test:auth:db` | Login sin base (claves, pausa por fallos, sesiones, cookies, y que cada página y acción verifica sesión) / el mismo núcleo contra Postgres real, con el alta del dueño |
 | `npm run test:permisos` | Matriz rol × acción y qué permiso exige cada acción y página, más acciones reales invocadas con un empleado contra Postgres |
 | `npm run test:usuarios` | Administración de usuarios (alta, baja, rol, reinicio de clave, clave propia) contra Postgres de desarrollo o de prueba; se niega con `NODE_ENV=production` |
+| `npm run test:acceso` | Autorización por HTTP contra la app de producción (`next build && next start` en el puerto 3103) y una base descartable `ventas_acceso`: rutas sin sesión, empleado, sesión expirada o de baja, y que el HTML y el RSC del empleado no traigan costos ni márgenes. Reconstruye `.next`. Ver el encabezado de `scripts/test-acceso.ts` |
 
 ---
 
@@ -319,17 +330,17 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 - [x] Presupuestos que se convierten en venta (ola 7.2)
 - [x] Recordatorios de cobranza: a quién llamar hoy (ola 7.3)
 - [x] Login con usuarios y roles, permisos por rol, trazabilidad (quién cargó cada venta, cobro, compra y movimiento) y administración de usuarios (ola 4)
+- [x] Integración 4+7 (rama `integracion-4-7`): permisos de las pantallas de la ola 7, trazabilidad de presupuestos, contactos de cobranza y listas de precios, y `npm run test:acceso`
 
 El plan completo, por olas y pensado para repartir a subagentes en paralelo, está en
 `docs/04-checklist-olas.md`.
 
-**La ola 7 se hizo antes que la ola 4.** Las pantallas nuevas (listas de precios, presupuestos y
-cobranzas) todavía no tienen roles ni `usuarioId`: hoy quien entra con la contraseña básica puede
-hacer todo esto. Cuando se haga la ola 4, hay que clasificarlas en la matriz de permisos. Permisos
-previstos: `gestionarListasPrecios`, solo dueño; `verPresupuestos`, `cargarPresupuesto`,
-`convertirPresupuesto`, `verRecordatorios` y `registrarContactoCobranza`, dueño y empleado. Además,
-la advertencia de precios por debajo del costo en `/listas-precios/[id]` usa costos de receta y por
-ahora se muestra a todos.
+**Las olas 4 y 7 están integradas**, con las pantallas de la ola 7 clasificadas en la matriz de
+permisos: `gestionarListasPrecios`, solo dueño; `verPresupuestos`, `cargarPresupuesto`,
+`convertirPresupuesto`, `verRecordatorios` y `registrarContactoCobranza`, dueño y empleado. Las
+tablas de la ola 7 tienen `usuarioId` (nullable, histórico en "—"). La advertencia de precios por debajo
+del costo en `/listas-precios/[id]` usa costos de receta: como la pantalla es solo del dueño, solo la ve él.
+`npm run test:acceso` verifica por HTTP que el empleado no reciba costos ni márgenes en las rutas que clasifica.
 
 ---
 
