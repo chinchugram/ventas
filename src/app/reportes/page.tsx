@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { fmtFecha, fmtMoneda, fmtMonedaCorta, fmtNumero, fmtPorcentaje, sumar } from "@/lib/money";
 import {
   getConsumoMateriales,
@@ -42,7 +43,18 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <Seccion titulo="Reportes" descripcion={`Período: ${rango.etiqueta}`} />
+      <Seccion
+        titulo="Reportes"
+        descripcion={`Período: ${rango.etiqueta}`}
+        accion={
+          <Link
+            href="/reportes/stock"
+            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
+          >
+            Reporte de stock
+          </Link>
+        }
+      />
 
       <FiltroFechas rango={rango} />
 

@@ -159,7 +159,8 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 | `/materiales/nuevo`, `/materiales/[id]/editar` | Alta y edición; al cambiar el costo muestra qué artículos cambian de margen |
 | `/configuracion` | Nombre del negocio, costo/hora de mano de obra, IVA por defecto, margen objetivo y máquinas |
 | `/compras` | Historial de compras; `/compras/nueva` registra una (suma stock y actualiza el costo) |
-| `/reportes` | Ganancia por producto, más rentables, deuda por cliente, materiales |
+| `/reportes` | Resumen, ganancia por producto, más rentables, deuda por cliente y consumo de materiales; filtro por mes o rango de fechas en la URL y botón "Exportar CSV" por reporte |
+| `/reportes/stock` | Valorización del stock, materiales sin movimiento, consumo real vs teórico y rotación; mismo filtro de fechas |
 
 Todas mobile-first: en celular las tablas se convierten en tarjetas apiladas. El dueño atiende
 el mostrador con el teléfono en la mano.
@@ -188,6 +189,9 @@ el mostrador con el teléfono en la mano.
 | `npm run test:integridad` | Verifica que los CHECK constraints rechazan datos inválidos |
 | `npm run test:acciones` | Compra, venta, anulación y ajuste contra Postgres real (en transacciones que se deshacen) |
 | `npm run test:cuit` / `test:recetas` / `test:materiales` / `test:configuracion` | Lógica pura de cada pantalla de altas |
+| `npm run test:rango-fechas` / `test:reportes-rango` | Rango de fechas (zona Argentina, bordes de mes y bisiestos) / totales de los reportes contra SQL con filtros del seed |
+| `npm run test:csv` | Armado del CSV (separador `;`, decimales con coma, BOM, escape y neutralización de fórmulas) |
+| `npm run test:stock-reporte` / `test:consumo` | Valorización, rotación y sin movimiento / consumo real vs teórico, con números armados a mano |
 | `npm run test:clientes` / `test:articulos` / `test:materiales:db` / `test:configuracion:db` | Las mismas altas contra Postgres real, sin dejar rastro |
 
 ---
@@ -240,6 +244,7 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 - [x] Página de configuración (costo/hora de mano de obra, IVA, margen objetivo) y máquinas (ola 1)
 - [x] Backup automático diario (ola 2): servicio `backup` del compose, restauración probada y aviso en pantalla. Ver `docs/05-respaldos.md`
 - [x] Lista de reposición sugerida (ola 2): cierra la etapa 2
+- [x] Reportes con filtro de fechas y exportación a CSV, reporte de stock y auditoría de accesibilidad (ola 3). Hallazgos pendientes en `docs/auditoria-ola-3.md`
 
 El plan completo, por olas y pensado para repartir a subagentes en paralelo, está en
 `docs/04-checklist-olas.md`.
