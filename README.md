@@ -46,6 +46,21 @@ coherentes entre sí. Sirve para mostrar el mockup en una reunión sin Docker.
 Con base disponible, siempre se usan los datos reales: el respaldo solo entra cuando la base no
 responde o la consulta falla (por ejemplo, migraciones pendientes).
 
+### Acceso con contraseña (obligatorio al publicarlo)
+
+La app no tiene login propio, así que `src/proxy.ts` pide usuario y contraseña (HTTP Basic) en
+todo el sitio. Se configura con variables de entorno:
+
+| Variable | Qué es |
+|---|---|
+| `BASIC_AUTH_USER` | Usuario. Por defecto `demo`. |
+| `BASIC_AUTH_PASSWORD` | Contraseña. |
+
+- **En producción, sin `BASIC_AUTH_PASSWORD` el sitio responde 503**: un deploy con la variable
+  olvidada no queda público.
+- En desarrollo, sin contraseña, el sitio queda abierto.
+- Para probarlo en local con contraseña: definirla en `.env` y correr `npm run dev`.
+
 ### Probarlo desde el celular
 
 Con la PC y el celular en la misma Wi-Fi:
