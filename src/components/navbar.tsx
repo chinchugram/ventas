@@ -15,6 +15,7 @@ const CLIENTES: Seccion = { href: "/clientes", etiqueta: "Clientes", icono: "cli
 const PRINCIPALES: Seccion[] = [INICIO, VENTAS, CLIENTES];
 const SECUNDARIAS: Seccion[] = [
   { href: "/catalogo", etiqueta: "Artículos", icono: "articulos" },
+  { href: "/cortes", etiqueta: "Cortes", icono: "articulos" },
   { href: "/materiales", etiqueta: "Materiales", icono: "materiales" },
   { href: "/reportes", etiqueta: "Reportes", icono: "reportes" },
 ];
