@@ -28,7 +28,9 @@
     "test:integridad": "sh scripts/test-integridad.sh",
     "test:acciones": "tsx scripts/test-acciones.ts",
     "test:cuit": "tsx scripts/verificar-cuit.ts",
-    "test:clientes": "tsx scripts/test-clientes.ts"
+    "test:clientes": "tsx scripts/test-clientes.ts",
+    "test:materiales": "tsx scripts/verificar-materiales.ts",
+    "test:materiales:db": "tsx scripts/test-materiales.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
