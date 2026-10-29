@@ -103,7 +103,7 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
       </Reporte>
 
       <Reporte
-        titulo="5. Productos más rentables"
+        titulo="3. Productos más rentables"
         descripcion="Ordenados por ganancia, no por unidades"
         badge="Por período"
         exportar={conRango("/reportes/export/productos-rentables", rango)}
@@ -120,7 +120,7 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
       </Reporte>
 
       <Reporte
-        titulo="3. Deuda por cliente"
+        titulo="4. Deuda por cliente"
         descripcion="Quién debe, cuánto y desde cuándo. Es el saldo de hoy de todas las ventas, sin importar la fecha: no cambia con el período."
         badge="A hoy"
         exportar="/reportes/export/deuda-por-cliente"
@@ -149,7 +149,7 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
       </Reporte>
 
       <Reporte
-        titulo="4. Consumo de materiales"
+        titulo="5. Consumo de materiales"
         descripcion="Lo que salió del stock por las ventas del período. El costo se estima con el costo actual de cada material."
         badge="Por período"
         exportar={conRango("/reportes/export/consumo-materiales", rango)}
@@ -179,7 +179,7 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
 function TopItem({ posicion, producto: p }: { posicion: number; producto: TopProducto }) {
   return (
     <li className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-      <span className="w-6 text-center text-sm font-bold text-slate-400">{posicion}</span>
+      <span className="w-6 text-center text-sm font-bold text-slate-500">{posicion}</span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-slate-900">{p.nombre}</p>
         <p className="text-xs text-slate-500">
@@ -226,7 +226,7 @@ function Reporte({
           </a>
         ) : null}
       </div>
-      {descripcion ? <p className="mb-3 text-sm text-slate-500">{descripcion}</p> : null}
+      {descripcion ? <p className="mb-3 text-sm text-slate-600">{descripcion}</p> : null}
       {children}
     </section>
   );
