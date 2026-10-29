@@ -19,7 +19,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "db:reset": "prisma migrate reset --force",
+    "db:reset": "prisma migrate reset --force && prisma db seed",
     "db:studio": "prisma studio",
     "db:backup": "sh scripts/backup.sh",
     "test:costeo": "tsx scripts/verificar-costeo.ts",
