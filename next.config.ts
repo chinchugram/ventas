@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
   // Sin esto Next bloquea los recursos de dev (incluido el JS que hidrata la app)
   // y los botones no responden. Si cambia la IP de la PC, actualizarla aca.
   allowedDevOrigins: ["192.168.1.8"],
+  // La app no usa `next/image`. Sin optimizador, `/_next/image` no procesa nada
+  // (menos superficie: recomendacion 4.2 de docs/auditoria-ola-3.md) y, como
+  // cualquier otra ruta, pide sesion (el proxy ya no la excluye).
+  images: { unoptimized: true },
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { Navbar } from "@/components/navbar";
 import { getMarca } from "@/lib/marca";
+import { usuarioActual } from "@/lib/auth";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -27,7 +28,9 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const marca = await getMarca();
+  // Solo para pintar la navegacion: no protege nada (el layout no se vuelve a
+  // ejecutar en las navegaciones del cliente). Protegen el proxy y cada pagina.
+  const [marca, usuario] = await Promise.all([getMarca(), usuarioActual()]);
 
   return (
     <html lang="es-AR" className={inter.variable}>
@@ -38,9 +41,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         >
           Saltar al contenido
         </a>
-        <Navbar nombre={marca.nombre} logo={marca.logo} />
+        {/* Sin sesion (la pantalla de /login) no hay navegacion. Al cliente solo viajan nombre y rol. */}
+        {usuario ? (
+          <Navbar nombre={marca.nombre} logo={marca.logo} usuario={{ nombre: usuario.nombre, rol: usuario.rol }} />
+        ) : null}
 
-        <main id="contenido" className="mx-auto max-w-5xl px-4 pt-5 pb-32 md:pb-10">{children}</main>
+        <main id="contenido" className={`mx-auto max-w-5xl px-4 pt-5 ${usuario ? "pb-32 md:pb-10" : "pb-10"}`}>
+          {children}
+        </main>
       </body>
     </html>
   );
