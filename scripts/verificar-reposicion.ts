@@ -30,7 +30,8 @@ comprobar("agotado, minimo 2, factor 2", cantidadSugerida(d("0"), d("2"), dos).t
 comprobar("2,4 de minimo 3, factor 1,5", cantidadSugerida(d("2.4"), d("3"), d("1.5")).toString(), "2.1");
 comprobar("factor 1: justo hasta el minimo", cantidadSugerida(d("2.4"), d("3"), d(1)).toString(), "0.6");
 comprobar("sobre el minimo: nada", cantidadSugerida(d("38"), d("10"), dos).toString(), "0");
-comprobar("justo en el minimo: nada", cantidadSugerida(d("10"), d("10"), dos).toString(), "0");
+comprobar("justo en el minimo: repone (igual que la alerta de /materiales)", cantidadSugerida(d("10"), d("10"), dos).toString(), "10");
+comprobar("justo en el minimo con factor 1: nada", cantidadSugerida(d("10"), d("10"), d(1)).toString(), "0");
 comprobar("sin minimo cargado: nada", cantidadSugerida(d("0"), d("0"), dos).toString(), "0");
 comprobar("redondea hacia arriba a 3 decimales", cantidadSugerida(d("0.1"), d("1.3333"), dos).toString(), "2.567");
 comprobar("unidades enteras: hacia arriba", cantidadSugerida(d("1.5"), d("3"), d("1.5"), "HOJA").toString(), "3");

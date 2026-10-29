@@ -8,7 +8,8 @@ import { subtotalCompra, totalizarCompra } from "@/lib/stock";
 // Prisma ni Next): la usan la pantalla `/reposicion`, la precarga de `Nueva
 // compra` y `scripts/verificar-reposicion.ts`.
 //
-// Regla: un material con minimo cargado y stock por debajo se repone hasta
+// Regla: un material con minimo cargado y stock en el minimo o por debajo (el
+// mismo criterio que la alerta de /materiales) se repone hasta
 // `minimo × factor`. El factor vive en `Configuracion` (clave `factorReposicion`)
 // y por defecto es 2: comprar el doble del minimo evita volver a quedar justo.
 
@@ -53,8 +54,8 @@ const UNIDADES_ENTERAS = new Set(["U", "HOJA", "ROLLO"]);
 
 /**
  * Cuanto comprar para volver a `minimo × factor`. 0 si no hay minimo cargado o
- * si el stock no esta por debajo del minimo (estar justo en el minimo no pide
- * compra todavia).
+ * si el stock esta por encima del minimo. Justo en el minimo ya pide compra,
+ * igual que la alerta "Bajo minimo" de /materiales.
  *
  * Se redondea siempre hacia arriba: a 3 decimales (la precision del stock) o al
  * entero en unidades que se compran enteras (u, hoja, rollo).
@@ -65,7 +66,7 @@ export function cantidadSugerida(
   factor: Dinero,
   unidad?: string,
 ): Dinero {
-  if (stockMinimo.lte(0) || stockActual.gte(stockMinimo)) return CERO;
+  if (stockMinimo.lte(0) || stockActual.gt(stockMinimo)) return CERO;
   const falta = stockMinimo.times(factor).minus(stockActual);
   if (falta.lte(0)) return CERO;
   const decimales = unidad && UNIDADES_ENTERAS.has(unidad) ? 0 : 3;

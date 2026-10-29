@@ -5,7 +5,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icono, type NombreIcono } from "@/components/iconos";
 
-type Seccion = { href: string; etiqueta: string; icono: NombreIcono };
+type Seccion = {
+  href: string;
+  etiqueta: string;
+  icono: NombreIcono;
+  /** Solo en la hoja "Mas" del celular: en escritorio no entra en la barra y se llega por otra pantalla. */
+  soloCelular?: boolean;
+};
 
 // Orden y agrupacion de la navegacion. En el celular, las primeras cuatro viven
 // en la barra inferior y el resto en "Mas": son las que se usan todos los dias.
@@ -18,6 +24,7 @@ const SECUNDARIAS: Seccion[] = [
   { href: "/cortes", etiqueta: "Cortes", icono: "articulos" },
   { href: "/materiales", etiqueta: "Materiales", icono: "materiales" },
   { href: "/compras", etiqueta: "Compras", icono: "materiales" },
+  { href: "/reposicion", etiqueta: "Reposición", icono: "materiales", soloCelular: true },
   { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas" },
   { href: "/reportes", etiqueta: "Reportes", icono: "reportes" },
 ];
@@ -67,14 +74,14 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
 
             {/* Entre md y lg no entran todas: la fila se desplaza de costado en vez de pisar el logo. */}
             <nav className="hidden min-w-0 items-center gap-1 overflow-x-auto md:flex" aria-label="Principal">
-              {[...PRINCIPALES, ...SECUNDARIAS].map((s) => {
+              {[...PRINCIPALES, ...SECUNDARIAS.filter((s) => !s.soloCelular)].map((s) => {
                 const activa = estaActiva(pathname, s.href);
                 return (
                   <Link
                     key={s.href}
                     href={s.href}
                     aria-current={activa ? "page" : undefined}
-                    className={`whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors lg:px-3 ${
+                    className={`whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-3 ${
                       activa
                         ? "bg-marca text-tinta"
                         : "text-slate-300 hover:bg-white/10 hover:text-white"

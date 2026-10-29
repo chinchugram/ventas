@@ -26,6 +26,9 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
 
   const acciones = (
     <div className="flex flex-wrap gap-2">
+      <Link href="/reposicion" className={BOTON_SECUNDARIO}>
+        Reposición
+      </Link>
       <Link href="/compras/nueva" className={BOTON_SECUNDARIO}>
         Registrar compra
       </Link>
@@ -82,6 +85,13 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
           titulo="Necesitan reposición"
           valor={fmtNumero(alertas.length)}
           tono={alertas.length > 0 ? "aviso" : "ok"}
+          detalle={
+            alertas.length > 0 ? (
+              <Link href="/reposicion" className="underline underline-offset-2">
+                Ver qué comprar
+              </Link>
+            ) : undefined
+          }
         />
       </div>
 
