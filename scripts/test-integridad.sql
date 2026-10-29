@@ -34,7 +34,7 @@ UPDATE materiales SET "stockActual" = -5 WHERE id = (SELECT id FROM materiales L
 \echo ''
 \echo '--- 7. dos clientes con el mismo CUIT -> debe FALLAR (indice parcial cuit_unico)'
 INSERT INTO clientes (id, nombre, cuit, "creadoEn", "actualizadoEn")
-VALUES (gen_random_uuid(), 'Cliente duplicado', '30712345678', NOW(), NOW());
+VALUES (gen_random_uuid(), 'Cliente duplicado', '30712345671', NOW(), NOW());
 
 \echo ''
 \echo '--- 8. numero de venta repetido en el mismo anio -> debe FALLAR (UNIQUE anio,numero)'
@@ -47,6 +47,9 @@ INSERT INTO ventas (id, numero, anio, "clienteId", fecha, "totalNeto", "totalIVA
 SELECT gen_random_uuid(), 9999, 1800, v."clienteId", CURRENT_DATE, 0, 0, 100, 0, NOW() FROM ventas v LIMIT 1;
 
 \echo ''
+\echo '--- 9b. pago anulado sin motivo -> debe FALLAR (CHECK pagos_anulacion_con_motivo)'
+UPDATE pagos SET "anuladoEn" = NOW() WHERE id = (SELECT id FROM pagos LIMIT 1);
+
 \echo '--- 10. linea de receta MATERIAL valida -> debe ACEPTAR [OK]'
 -- Se usa un id fijo para poder borrar exactamente la fila de prueba y no tocar
 -- las recetas que ya estaban cargadas.

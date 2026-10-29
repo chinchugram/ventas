@@ -34,7 +34,9 @@
     "test:recetas": "tsx scripts/verificar-recetas.ts",
     "test:articulos": "tsx scripts/test-articulos.ts",
     "test:configuracion": "tsx scripts/verificar-configuracion.ts",
-    "test:configuracion:db": "tsx scripts/test-configuracion.ts"
+    "test:configuracion:db": "tsx scripts/test-configuracion.ts",
+    "test:cobranzas": "tsx scripts/verificar-cobranzas.ts",
+    "test:cobranzas:db": "tsx scripts/test-cobranzas.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
