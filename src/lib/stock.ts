@@ -1,6 +1,6 @@
 import { aMoneda, CERO, d, type Dinero, sumar } from "@/lib/money";
 
-export type LineaCompra = { cantidad: string; costoUnitario: string };
+export type LineaCompra = { cantidad: Dinero | string; costoUnitario: Dinero | string };
 
 /** Subtotal de una linea de compra, redondeado a centavos como se guarda. */
 export function subtotalCompra(cantidad: Dinero | string, costoUnitario: Dinero | string): Dinero {

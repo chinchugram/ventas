@@ -63,17 +63,17 @@ No usar `pkill -f` / `pgrep -f` con texto del comando: matan la propia shell. Us
 
 Deja listo lo compartido para que la ola 1 no se pise. Migraciones reservadas: `20260110…`.
 
-- [ ] **0.1 Navegación y rutas pre-armadas (R)**: agregar al navbar las entradas que usarán las olas
+- [x] **0.1 Navegación y rutas pre-armadas (R)**: agregar al navbar las entradas que usarán las olas
       siguientes (Configuración, Cobranzas), apuntando a páginas stub. Archivo: `navbar.tsx`.
-- [ ] **0.2 Biblioteca de formularios (R)**: componentes reutilizables en `src/components/form/`
+- [x] **0.2 Biblioteca de formularios (R)**: componentes reutilizables en `src/components/form/`
       (campo de texto, número decimal, select, checkbox, botón de envío con estado, bloque de error)
       y un helper de acciones (`src/lib/acciones.ts`) con `Resultado`, `SIN_BASE`, parseo de decimales
       con coma, fecha de hoy en Argentina. Hoy cada formulario repite estas piezas.
-- [ ] **0.3 Pruebas de acciones contra base real**: script `scripts/test-acciones.ts` (`npm run test:acciones`)
+- [x] **0.3 Pruebas de acciones contra base real**: script `scripts/test-acciones.ts` (`npm run test:acciones`)
       que levanta lo mínimo para llamar a la lógica de dominio contra Postgres y verifica compra, venta,
       anulación y ajuste. Hoy esos flujos solo se probaron a mano. Extraer la lógica de las acciones a
       funciones que reciban un `tx` para poder llamarlas sin Next.
-- [ ] **0.4 Datos de ejemplo del stock**: que el seed deje compras y movimientos coherentes con el stock
+- [x] **0.4 Datos de ejemplo del stock**: que el seed deje compras y movimientos coherentes con el stock
       inicial (hoy el libro de movimientos arranca vacío). Archivo: `prisma/seed.ts`.
 
 ## Ola 1 — Altas y ediciones (paralela, 4 tareas independientes)

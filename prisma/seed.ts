@@ -10,6 +10,9 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import Decimal from "decimal.js";
+import { registrarCompraEnTx } from "../src/lib/dominio/compras";
+import { ajustarStockEnTx } from "../src/lib/dominio/stock";
+import { registrarVentaEnTx } from "../src/lib/dominio/ventas";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -62,14 +65,14 @@ async function main() {
     data: { nombre: "Viniladora", costoHora: d(1500) },
   });
 
+  // Los materiales arrancan en 0: el stock y el costo salen de las compras de
+  // abajo, asi el libro de movimientos explica cada unidad que hay en el taller.
   console.log("Creando materiales...");
   const vinilo = await prisma.material.create({
     data: {
       nombre: "Vinil adhesivo brillante",
       unidad: "M2",
-      stockActual: d("45"),
       stockMinimo: d("10"),
-      costoUnitario: d("4200"),
       precioVenta: d("9500"),
     },
   });
@@ -77,36 +80,28 @@ async function main() {
     data: {
       nombre: "Transportador (vinil transfer)",
       unidad: "M2",
-      stockActual: d("38"),
       stockMinimo: d("10"),
-      costoUnitario: d("1400"),
     },
   });
   const lamina = await prisma.material.create({
     data: {
       nombre: "Laminación brillante",
       unidad: "M2",
-      stockActual: d("30"),
       stockMinimo: d("8"),
-      costoUnitario: d("2100"),
     },
   });
   const mdf = await prisma.material.create({
     data: {
       nombre: "MDF 3mm",
       unidad: "M2",
-      stockActual: d("22"),
       stockMinimo: d("6"),
-      costoUnitario: d("8500"),
     },
   });
   const acrílico = await prisma.material.create({
     data: {
       nombre: "Acrílico opalino 3mm",
       unidad: "M2",
-      stockActual: d("12"),
       stockMinimo: d("4"),
-      costoUnitario: d("24000"),
       precioVenta: d("38000"),
     },
   });
@@ -258,142 +253,113 @@ async function main() {
   });
   void diseno;
 
-  console.log("Creando ventas de ejemplo...");
-
-  const costoDe = async (articuloId: string): Promise<Decimal> => {
-    const receta = await prisma.receta.findUnique({
-      where: { articuloId },
-      include: { componentes: { include: { material: true, maquina: true } } },
-    });
-    if (!receta) return d(0);
-    const costoHora = d("3500");
-    return receta.componentes.reduce((acc, c) => {
-      if (c.costoUnitarioOverride) return acc.plus(c.cantidad.times(c.costoUnitarioOverride));
-      if (c.tipo === "MATERIAL") return acc.plus(c.cantidad.times(c.material?.costoUnitario ?? 0));
-      if (c.tipo === "MAQUINA") return acc.plus(c.cantidad.times(c.maquina?.costoHora ?? 0));
-      return acc.plus(c.cantidad.times(costoHora));
-    }, d(0));
-  };
-
   const hoy = new Date();
   const dia = (offset: number) => {
     const f = new Date(hoy);
     f.setDate(f.getDate() - offset);
     return new Date(Date.UTC(f.getFullYear(), f.getMonth(), f.getDate()));
   };
+  // Hora del movimiento de stock: media mañana del dia de la operacion.
+  const momento = (offset: number) => new Date(dia(offset).getTime() + 13 * 3600_000);
 
-  // (cliente, [[articulo, cantidad]], cobrada?, offsetDias)
-  const ventasDemo: {
-    cliente: number;
-    items: [string, number][];
-    cobrada: boolean;
-    parcial: boolean;
-    offset: number;
-  }[] = [
-    { cliente: 0, items: [[sticker.id, 200]], cobrada: true, parcial: false, offset: 2 },
-    { cliente: 1, items: [[vinilMetro.id, 3]], cobrada: true, parcial: false, offset: 4 },
-    { cliente: 0, items: [[cartel.id, 6]], cobrada: false, parcial: false, offset: 6 },
-    { cliente: 2, items: [[rotulo.id, 2], [sticker.id, 40]], cobrada: false, parcial: true, offset: 8 },
-    { cliente: 3, items: [[vinilMetro.id, 8]], cobrada: true, parcial: false, offset: 11 },
-    { cliente: 1, items: [[sticker.id, 120], [rotulo.id, 1]], cobrada: false, parcial: false, offset: 15 },
-    { cliente: 0, items: [[rotulo.id, 4]], cobrada: true, parcial: false, offset: 20 },
-  ];
-
-  let numero = 1;
-  const anio = hoy.getFullYear();
-
-  for (const v of ventasDemo) {
-    let totalBruto = d(0);
-    let totalNeto = d(0);
-    let totalIVA = d(0);
-    let costoTotal = d(0);
-
-    const itemsCreate: {
-      articuloId: string;
-      descripcion: string;
-      cantidad: Decimal;
-      precioUnitario: Decimal;
-      ivaPct: Decimal;
-      subtotalNeto: Decimal;
-      subtotalIVA: Decimal;
-      subtotalBruto: Decimal;
-      costoUnitarioSnapshot: Decimal;
-      costoTotalSnapshot: Decimal;
-    }[] = [];
-
-    for (const [articuloId, cantidad] of v.items) {
-      const articulo = await prisma.articulo.findUniqueOrThrow({ where: { id: articuloId } });
-      const subtotalBruto = d(cantidad).times(articulo.precioVenta).toDecimalPlaces(2);
-      const subtotalNeto = subtotalBruto.div(d(1).plus(articulo.ivaPct.div(100))).toDecimalPlaces(2);
-      const subtotalIVA = subtotalBruto.minus(subtotalNeto);
-
-      const costo = await costoDe(articuloId);
-      const costoTotalItem = d(cantidad).times(costo).toDecimalPlaces(2);
-
-      totalBruto = totalBruto.plus(subtotalBruto);
-      totalNeto = totalNeto.plus(subtotalNeto);
-      totalIVA = totalIVA.plus(subtotalIVA);
-      costoTotal = costoTotal.plus(costoTotalItem);
-
-      itemsCreate.push({
-        articuloId,
-        descripcion: articulo.nombre,
-        cantidad: d(cantidad),
-        precioUnitario: articulo.precioVenta,
-        ivaPct: articulo.ivaPct,
-        subtotalNeto,
-        subtotalIVA,
-        subtotalBruto,
-        costoUnitarioSnapshot: costo,
-        costoTotalSnapshot: costoTotalItem,
+  // Todo pasa por la misma logica que usan las pantallas (src/lib/dominio), asi
+  // stock, movimientos, costos congelados y numeracion quedan coherentes.
+  await prisma.$transaction(
+    async (tx) => {
+      console.log("Creando compras...");
+      await registrarCompraEnTx(tx, {
+        fecha: dia(30),
+        proveedor: "Distribuidora Gráfica Centro",
+        comprobante: "FC A 0003-00012840",
+        notas: "Stock inicial del taller",
+        actualizarCosto: true,
+        momento: momento(30),
+        items: [
+          { materialId: vinilo.id, cantidad: d(40), costoUnitario: d(4000) },
+          { materialId: transportador.id, cantidad: d(40), costoUnitario: d(1400) },
+          { materialId: lamina.id, cantidad: d(30), costoUnitario: d(2100) },
+          { materialId: mdf.id, cantidad: d(20), costoUnitario: d(8500) },
+          { materialId: acrílico.id, cantidad: d(12), costoUnitario: d(24000) },
+        ],
       });
-    }
+      // Reposicion con aumento del vinilo: las ventas anteriores conservan el
+      // costo de $4.000; las posteriores ya salen con $4.200.
+      await registrarCompraEnTx(tx, {
+        fecha: dia(12),
+        proveedor: "Distribuidora Gráfica Centro",
+        comprobante: "FC A 0003-00013377",
+        notas: null,
+        actualizarCosto: true,
+        momento: momento(12),
+        items: [
+          { materialId: vinilo.id, cantidad: d(25), costoUnitario: d(4200) },
+          { materialId: mdf.id, cantidad: d(4), costoUnitario: d(8500) },
+        ],
+      });
 
-    const venta = await prisma.venta.create({
-      data: {
-        numero,
-        anio,
-        clienteId: clientes[v.cliente]!.id,
-        fecha: dia(v.offset),
-        estado: v.offset <= 4 ? "PENDIENTE" : "ENTREGADA",
-        totalNeto,
-        totalIVA,
-        totalBruto,
-        costoTotal,
-        items: { create: itemsCreate },
-      },
-    });
+      console.log("Creando ventas de ejemplo...");
+      // (cliente, [[articulo, cantidad]], cobro, dias atras). Se cargan de la mas
+      // vieja a la mas nueva, como habrian entrado de verdad.
+      const ventasDemo: {
+        cliente: number;
+        items: [string, number][];
+        cobro: "total" | "mitad" | "nada";
+        offset: number;
+      }[] = [
+        { cliente: 0, items: [[rotulo.id, 4]], cobro: "total", offset: 20 },
+        { cliente: 1, items: [[sticker.id, 120], [rotulo.id, 1]], cobro: "nada", offset: 15 },
+        { cliente: 3, items: [[vinilMetro.id, 8]], cobro: "total", offset: 11 },
+        { cliente: 2, items: [[rotulo.id, 2], [sticker.id, 40]], cobro: "mitad", offset: 8 },
+        { cliente: 0, items: [[cartel.id, 6]], cobro: "nada", offset: 6 },
+        { cliente: 1, items: [[vinilMetro.id, 3]], cobro: "total", offset: 4 },
+        { cliente: 0, items: [[sticker.id, 200]], cobro: "total", offset: 2 },
+      ];
 
-    if (v.cobrada) {
-      await prisma.pago.create({
-        data: {
-          ventaId: venta.id,
-          clienteId: clientes[v.cliente]!.id,
+      for (const v of ventasDemo) {
+        const cliente = clientes[v.cliente]!;
+        const venta = await registrarVentaEnTx(tx, {
+          clienteId: cliente.id,
           fecha: dia(v.offset),
-          monto: totalBruto,
-          metodo: "EFECTIVO",
-        },
-      });
-    } else if (v.parcial) {
-      // Cobro parcial: la mitad. El estado de pago tiene que salir "Parcial".
-      await prisma.pago.create({
-        data: {
-          ventaId: venta.id,
-          clienteId: clientes[v.cliente]!.id,
-          fecha: dia(v.offset - 1),
-          monto: totalBruto.div(2).toDecimalPlaces(2),
-          metodo: "TRANSFERENCIA",
-          notas: "Anticipo 50%",
-        },
-      });
-    }
+          observaciones: null,
+          entregada: v.offset > 4,
+          items: v.items.map(([articuloId, cantidad]) => ({ articuloId, cantidad: d(cantidad) })),
+          pago: null,
+          momento: momento(v.offset),
+        });
+        if (venta.advertencias.length > 0) throw new Error(`El seed se quedo sin stock: ${venta.advertencias.join("; ")}`);
 
-    numero += 1;
-  }
+        if (v.cobro === "total") {
+          await tx.pago.create({
+            data: { ventaId: venta.id, clienteId: cliente.id, fecha: dia(v.offset), monto: venta.totalBruto, metodo: "EFECTIVO" },
+          });
+        } else if (v.cobro === "mitad") {
+          // Cobro parcial al dia siguiente: el estado de pago tiene que salir "Parcial".
+          await tx.pago.create({
+            data: {
+              ventaId: venta.id,
+              clienteId: cliente.id,
+              fecha: dia(v.offset - 1),
+              monto: venta.totalBruto.div(2).toDecimalPlaces(2),
+              metodo: "TRANSFERENCIA",
+              notas: "Anticipo 50%",
+            },
+          });
+        }
+      }
+
+      console.log("Ajustando stock por conteo...");
+      await ajustarStockEnTx(tx, {
+        materialId: lamina.id,
+        stockContado: d("29.5"),
+        motivo: "Conteo: medio metro dañado al cortar",
+      });
+    },
+    { timeout: 60_000 },
+  );
 
   console.log("");
   console.log("Listo.");
-  console.log("  4 clientes, 5 articulos, 5 materiales, 3 maquinas, 7 ventas");
+  console.log("  4 clientes, 5 articulos, 5 materiales, 3 maquinas, 2 compras, 7 ventas, 1 ajuste");
   console.log("  Para verlo: npm run dev");
 }
 

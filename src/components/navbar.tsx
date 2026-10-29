@@ -18,8 +18,12 @@ const SECUNDARIAS: Seccion[] = [
   { href: "/cortes", etiqueta: "Cortes", icono: "articulos" },
   { href: "/materiales", etiqueta: "Materiales", icono: "materiales" },
   { href: "/compras", etiqueta: "Compras", icono: "materiales" },
+  { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas" },
   { href: "/reportes", etiqueta: "Reportes", icono: "reportes" },
 ];
+// Se usa poco: en escritorio va como icono junto a "Nueva venta", en el celular al final de "Mas".
+const CONFIGURACION: Seccion = { href: "/configuracion", etiqueta: "Configuración", icono: "configuracion" };
+const EN_HOJA_MAS: Seccion[] = [...SECUNDARIAS, CONFIGURACION];
 const NUEVA_VENTA = "/ventas/nueva";
 
 function estaActiva(pathname: string, href: string): boolean {
@@ -48,20 +52,21 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
     };
   }, [masAbierto]);
 
-  const masActivo = SECUNDARIAS.some((s) => estaActiva(pathname, s.href));
+  const masActivo = EN_HOJA_MAS.some((s) => estaActiva(pathname, s.href));
 
   return (
     <>
       {/* Encabezado: negro del logo, igual en celular y escritorio. */}
       <header className="sticky top-0 z-40 w-full bg-tinta shadow-md">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-          <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center" aria-label={`${nombre}, ir al inicio`}>
+          <div className="flex min-w-0 items-center gap-4 lg:gap-6">
+            <Link href="/" className="flex shrink-0 items-center" aria-label={`${nombre}, ir al inicio`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={logo} alt={nombre} className="h-10 w-auto" />
             </Link>
 
-            <nav className="hidden items-center gap-1 md:flex" aria-label="Principal">
+            {/* Entre md y lg no entran todas: la fila se desplaza de costado en vez de pisar el logo. */}
+            <nav className="hidden min-w-0 items-center gap-1 overflow-x-auto md:flex" aria-label="Principal">
               {[...PRINCIPALES, ...SECUNDARIAS].map((s) => {
                 const activa = estaActiva(pathname, s.href);
                 return (
@@ -69,7 +74,7 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
                     key={s.href}
                     href={s.href}
                     aria-current={activa ? "page" : undefined}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors lg:px-3 ${
                       activa
                         ? "bg-marca text-tinta"
                         : "text-slate-300 hover:bg-white/10 hover:text-white"
@@ -82,13 +87,28 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
             </nav>
           </div>
 
-          <Link
-            href={NUEVA_VENTA}
-            className="hidden items-center gap-1.5 rounded-lg bg-marca px-4 py-2 text-sm font-semibold text-tinta transition-transform hover:brightness-105 active:scale-95 md:flex"
-          >
-            <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
-            Nueva venta
-          </Link>
+          <div className="hidden shrink-0 items-center gap-2 md:flex">
+            <Link
+              href={CONFIGURACION.href}
+              aria-label={CONFIGURACION.etiqueta}
+              title={CONFIGURACION.etiqueta}
+              aria-current={estaActiva(pathname, CONFIGURACION.href) ? "page" : undefined}
+              className={`rounded-lg p-2 transition-colors ${
+                estaActiva(pathname, CONFIGURACION.href)
+                  ? "bg-marca text-tinta"
+                  : "text-slate-300 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              <Icono nombre={CONFIGURACION.icono} className="h-5 w-5" />
+            </Link>
+            <Link
+              href={NUEVA_VENTA}
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 py-2 text-sm font-semibold text-tinta lg:px-4 transition-transform hover:brightness-105 active:scale-95"
+            >
+              <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
+              <span className="sr-only lg:not-sr-only">Nueva venta</span>
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -106,7 +126,7 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
           >
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-300" />
             <ul className="space-y-1">
-              {SECUNDARIAS.map((s) => {
+              {EN_HOJA_MAS.map((s) => {
                 const activa = estaActiva(pathname, s.href);
                 return (
                   <li key={s.href}>
