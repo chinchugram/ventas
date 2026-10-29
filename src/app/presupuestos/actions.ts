@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { d } from "@/lib/money";
 import {
   esDecimal,
@@ -82,9 +83,14 @@ export async function crearPresupuesto(datos: DatosPresupuesto): Promise<Resulta
   const parsed = esquemaPresupuesto.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
-    const r = await prisma.$transaction((tx) => crearPresupuestoEnTx(tx, datosDeDominio(parsed.data), hoyArgentina()));
+    const r = await prisma.$transaction((tx) =>
+      crearPresupuestoEnTx(tx, datosDeDominio(parsed.data), hoyArgentina(), usuarioId),
+    );
     revalidarPresupuestos();
     return { ok: true, ...r };
   } catch (error) {
@@ -131,9 +137,12 @@ export async function duplicarPresupuesto(datos: z.input<typeof esquemaId>): Pro
   const parsed = esquemaId.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
-    const r = await prisma.$transaction((tx) => duplicarPresupuestoEnTx(tx, parsed.data.id, hoyArgentina()));
+    const r = await prisma.$transaction((tx) => duplicarPresupuestoEnTx(tx, parsed.data.id, hoyArgentina(), usuarioId));
     revalidarPresupuestos();
     return { ok: true, ...r };
   } catch (error) {
@@ -148,15 +157,19 @@ export type ResultadoConversion =
 
 /**
  * Convierte en venta con los precios congelados. Todo en una transaccion con el
- * presupuesto bloqueado: no se puede convertir dos veces.
+ * presupuesto bloqueado: no se puede convertir dos veces. La venta queda a
+ * nombre de quien convierte.
  */
 export async function convertirPresupuesto(datos: z.input<typeof esquemaId>): Promise<ResultadoConversion> {
   const parsed = esquemaId.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
-    const r = await prisma.$transaction((tx) => convertirPresupuestoEnTx(tx, parsed.data.id, hoyArgentina()), {
+    const r = await prisma.$transaction((tx) => convertirPresupuestoEnTx(tx, parsed.data.id, hoyArgentina(), usuarioId), {
       timeout: 15_000,
     });
     revalidarPresupuestos(parsed.data.id);

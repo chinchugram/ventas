@@ -38,13 +38,19 @@ async function main() {
   await prisma.compra.deleteMany();
   await prisma.pago.deleteMany();
   await prisma.ventaItem.deleteMany();
+  // Ola 7: presupuestos (antes que las ventas en las que se convirtieron) y contactos de cobranza.
+  await prisma.presupuestoItem.deleteMany();
+  await prisma.presupuesto.deleteMany();
+  await prisma.contactoCobranza.deleteMany();
   await prisma.venta.deleteMany();
   await prisma.recetaComponente.deleteMany();
   await prisma.receta.deleteMany();
+  await prisma.listaPrecioItem.deleteMany();
   await prisma.articulo.deleteMany();
   await prisma.material.deleteMany();
   await prisma.maquina.deleteMany();
   await prisma.cliente.deleteMany();
+  await prisma.listaPrecio.deleteMany();
   if (!PRODUCCION) {
     // Las sesiones antes que los usuarios (FK). Al final: lo de arriba no depende de usuarios.
     await prisma.sesion.deleteMany();

@@ -33,6 +33,7 @@ export function TarjetaRecordatorio({ recordatorio: r, hoyISO }: { recordatorio:
           {r.ultimaNota.proximoContacto ? (
             <p className="mt-1 text-xs text-slate-600">Prometió volver a contactar el {fmtFecha(r.ultimaNota.proximoContacto)}</p>
           ) : null}
+          <p className="mt-1 text-xs text-slate-600">Registrado por {r.ultimaNota.registradoPor ?? "—"}</p>
         </div>
       ) : null}
 

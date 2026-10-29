@@ -6,7 +6,8 @@
  * Alta con lista de precios, numeracion, edicion (precios congelados), anulacion,
  * duplicado, conversion con precios congelados (el total de la venta es el del
  * presupuesto aunque el catalogo cambie), los casos en que NO se puede
- * convertir, los CHECK de la base y la concurrencia.
+ * convertir, los CHECK de la base, la trazabilidad (`usuarioId`: quien crea,
+ * duplica y convierte; FK y RESTRICT) y la concurrencia.
  *
  * No deja rastro: los escenarios corren en una transaccion que se deshace al
  * final; la concurrencia necesita transacciones reales, asi que usa un anio
@@ -139,6 +140,15 @@ async function leer(tx: Tx, id: string) {
   const linea = (articuloId: string) => p.items.find((i) => i.articuloId === articuloId)!;
   const total = totalizarPresupuesto(p.items.map((i) => ({ cantidad: d(i.cantidad), precioUnitario: d(i.precioUnitario), ivaPct: d(i.ivaPct) }))).totalBruto;
   return { p, linea, total };
+}
+
+const HASH_DE_PRUEBA = `scrypt$ln=14,r=8,p=1$${"a".repeat(22)}$${"b".repeat(43)}`;
+
+/** Usuario real de prueba (dentro de la transaccion del escenario: se deshace con ella). */
+async function usuarioDePrueba(tx: Tx, nombre: string) {
+  return tx.usuario.create({
+    data: { usuario: `zz-${Math.random().toString(36).slice(2, 10)}`, nombre, rol: "EMPLEADO", hashClave: HASH_DE_PRUEBA },
+  });
 }
 
 /** Crea el cliente, los articulos y el presupuesto base de varios escenarios. */
@@ -500,6 +510,58 @@ async function main() {
     await rechaza("presupuesto inexistente", "no existe", () => convertirPresupuestoEnTx(tx, "00000000-0000-4000-8000-000000000011", HOY));
   });
 
+  await escenario("Trazabilidad (8.2): quién creó, duplicó y convirtió", async (tx) => {
+    const t = await preparar(tx);
+    const ana = await usuarioDePrueba(tx, "Ana de prueba");
+    const beto = await usuarioDePrueba(tx, "Beto de prueba");
+    const carla = await usuarioDePrueba(tx, "Carla de prueba");
+    const items = [{ articuloId: t.x.id, cantidad: 2 }, { articuloId: t.y.id, cantidad: 1 }];
+    const creador = async (id: string) => (await tx.presupuesto.findUniqueOrThrow({ where: { id } })).usuarioId;
+
+    const r = await crearPresupuestoEnTx(tx, datos(t.conLista.id, items), HOY, ana.id);
+    comprobar("crear guarda el usuario", String((await creador(r.id)) === ana.id), "true");
+    const leido = await tx.presupuesto.findUniqueOrThrow({ where: { id: r.id }, include: { usuario: { select: { nombre: true } } } });
+    comprobar("se lee el nombre para mostrar", String(leido.usuario?.nombre), "Ana de prueba");
+
+    const sinUsuario = await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY, null);
+    comprobar("con null queda NULL", String(await creador(sinUsuario.id)), "null");
+    const omitido = await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY);
+    comprobar("sin pasar usuario queda NULL", String(await creador(omitido.id)), "null");
+
+    // El creador se fija al crear: editar (con el mismo flujo de siempre) no lo cambia.
+    await editarPresupuestoEnTx(tx, r.id, datos(t.conLista.id, [{ articuloId: t.x.id, cantidad: 3 }]), HOY);
+    comprobar("editar no cambia quién lo creó", String((await creador(r.id)) === ana.id), "true");
+    await anularPresupuestoEnTx(tx, sinUsuario.id);
+    comprobar("anular no le inventa un creador", String(await creador(sinUsuario.id)), "null");
+
+    // El duplicado queda a nombre de quien duplica, el original no cambia.
+    const copia = await duplicarPresupuestoEnTx(tx, r.id, HOY, beto.id);
+    comprobar("duplicar: a nombre de quien duplica", String((await creador(copia.id)) === beto.id), "true");
+    comprobar("duplicar: el original sigue de su creador", String((await creador(r.id)) === ana.id), "true");
+    const copiaSin = await duplicarPresupuestoEnTx(tx, r.id, HOY, null);
+    comprobar("duplicar sin usuario: NULL (no hereda el del original)", String(await creador(copiaSin.id)), "null");
+
+    // Convertir: la venta, su movimiento de stock y el presupuesto, cada cual con su dato.
+    const conv = await convertirPresupuestoEnTx(tx, r.id, HOY, carla.id);
+    const venta = await tx.venta.findUniqueOrThrow({ where: { id: conv.ventaId }, include: { usuario: { select: { nombre: true } } } });
+    const movimientos = await tx.movimientoStock.findMany({ where: { ventaId: conv.ventaId } });
+    comprobar("convertir: la venta queda a nombre de quien convierte", String(venta.usuarioId === carla.id), "true");
+    comprobar("convertir: nombre de la venta", String(venta.usuario?.nombre), "Carla de prueba");
+    comprobar("convertir: hay movimientos de stock", String(movimientos.length > 0), "true");
+    comprobar("convertir: los movimientos también", String(movimientos.every((m) => m.usuarioId === carla.id)), "true");
+    comprobar("convertir: el presupuesto conserva a su creador", String((await creador(r.id)) === ana.id), "true");
+
+    const conv2 = await convertirPresupuestoEnTx(tx, copiaSin.id, HOY);
+    comprobar("convertir sin usuario: la venta queda NULL", String((await tx.venta.findUniqueOrThrow({ where: { id: conv2.ventaId } })).usuarioId), "null");
+
+    // La base: FK y RESTRICT (cada violacion en su savepoint).
+    await violaLaBase(tx, "FK: un usuario inexistente se rechaza", () =>
+      crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY, "00000000-0000-4000-8000-0000000000dd"),
+    );
+    await violaLaBase(tx, "RESTRICT: no se borra un usuario con presupuestos", () => tx.usuario.delete({ where: { id: ana.id } }));
+    comprobar("el usuario sigue ahí", String((await tx.usuario.count({ where: { id: ana.id } })) === 1), "true");
+  });
+
   await lockDistinto();
 
   await concurrencia();
@@ -557,7 +619,7 @@ async function lockDistinto() {
 
 type Cuentas = Record<string, number>;
 async function contarTodo(cliente: PrismaClient): Promise<Cuentas> {
-  const [presupuestos, items, ventas, ventaItems, movimientos, clientes, articulos, materiales, listas] = await Promise.all([
+  const [presupuestos, items, ventas, ventaItems, movimientos, clientes, articulos, materiales, listas, usuarios] = await Promise.all([
     cliente.presupuesto.count(),
     cliente.presupuestoItem.count(),
     cliente.venta.count(),
@@ -567,8 +629,9 @@ async function contarTodo(cliente: PrismaClient): Promise<Cuentas> {
     cliente.articulo.count(),
     cliente.material.count(),
     cliente.listaPrecio.count(),
+    cliente.usuario.count(),
   ]);
-  return { presupuestos, items, ventas, ventaItems, movimientos, clientes, articulos, materiales, listas };
+  return { presupuestos, items, ventas, ventaItems, movimientos, clientes, articulos, materiales, listas, usuarios };
 }
 
 // ─── Concurrencia ─────────────────────────────────────────────────────────────

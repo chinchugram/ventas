@@ -110,6 +110,8 @@ export type PresupuestoDetalle = {
   totales: TotalesPresupuesto;
   venta: { id: string; numero: number; anio: number; anulada: boolean } | null;
   duplicadoDe: { id: string; numero: number; anio: number } | null;
+  /** Nombre para mostrar de quien lo creo; null = historico o sin usuario ("—"). */
+  registradoPor: string | null;
 };
 
 export const getPresupuesto = cache(
@@ -124,6 +126,8 @@ export const getPresupuesto = cache(
             items: { orderBy: { id: "asc" } },
             venta: { select: { id: true, numero: true, anio: true, estado: true } },
             duplicadoDe: { select: { id: true, numero: true, anio: true } },
+            // Solo el nombre para mostrar: nunca el hash ni datos de sesion.
+            usuario: { select: { nombre: true } },
           },
         });
         if (!p) return null;
@@ -148,6 +152,7 @@ export const getPresupuesto = cache(
           totales: totalizarPresupuesto(items),
           venta: p.venta ? { id: p.venta.id, numero: p.venta.numero, anio: p.venta.anio, anulada: p.venta.estado === "ANULADA" } : null,
           duplicadoDe: p.duplicadoDe,
+          registradoPor: p.usuario?.nombre ?? null,
         };
       },
       () => null,

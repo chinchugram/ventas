@@ -20,7 +20,7 @@ export default async function ListaPrecioPage({ params }: { params: Promise<{ id
     <div className="space-y-4">
       <Seccion
         titulo={lista.nombre}
-        descripcion={`${lista.clientes} ${lista.clientes === 1 ? "cliente la tiene" : "clientes la tienen"} asignada`}
+        descripcion={`${lista.clientes} ${lista.clientes === 1 ? "cliente la tiene" : "clientes la tienen"} asignada · Creada por ${lista.creadaPor ?? "—"}`}
         accion={
           <Link
             href="/listas-precios"

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { dbDisponible, prisma } from "@/lib/prisma";
 import {
   fechaDesdeISO,
@@ -45,6 +46,9 @@ export async function registrarContacto(datos: DatosContacto): Promise<Resultado
     if (problema) return { ok: false, error: problema };
   }
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
     await prisma.$transaction((tx) =>
@@ -53,6 +57,7 @@ export async function registrarContacto(datos: DatosContacto): Promise<Resultado
         fecha: hoyArgentina(),
         nota,
         proximoContacto: proximoContacto ? fechaDesdeISO(proximoContacto) : null,
+        usuarioId,
       }),
     );
   } catch (error) {

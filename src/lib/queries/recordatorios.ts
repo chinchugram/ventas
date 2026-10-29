@@ -22,6 +22,8 @@ export type UltimaNota = {
   fecha: Date;
   nota: string;
   proximoContacto: Date | null;
+  /** Nombre para mostrar de quien lo registro; null = historico o sin usuario ("—"). */
+  registradoPor: string | null;
 };
 
 export type RecordatorioHoy = {
@@ -47,12 +49,26 @@ async function recordatoriosDesdeBase(): Promise<RecordatorioHoy[]> {
   const contactos = deudas.length
     ? await prisma.contactoCobranza.findMany({
         where: { clienteId: { in: deudas.map((x) => x.clienteId) } },
-        select: { clienteId: true, fecha: true, nota: true, proximoContacto: true, creadoEn: true },
+        // Del usuario solo el nombre para mostrar: nunca el hash ni datos de sesion.
+        select: {
+          clienteId: true,
+          fecha: true,
+          nota: true,
+          proximoContacto: true,
+          creadoEn: true,
+          usuario: { select: { nombre: true } },
+        },
       })
     : [];
 
+  // `recordatoriosDeHoy` devuelve el mismo objeto de contacto que recibe: por eso
+  // el autor se busca por identidad, sin tocar el tipo puro `ContactoRegistrado`.
+  const autores = new Map<ContactoRegistrado, string | null>();
   const porCliente = new Map<string, ContactoRegistrado[]>();
-  for (const { clienteId, ...c } of contactos) porCliente.set(clienteId, [...(porCliente.get(clienteId) ?? []), c]);
+  for (const { clienteId, usuario, ...c } of contactos) {
+    autores.set(c, usuario?.nombre ?? null);
+    porCliente.set(clienteId, [...(porCliente.get(clienteId) ?? []), c]);
+  }
 
   return aRecordatorios(
     deudas.map((x) => ({
@@ -63,6 +79,7 @@ async function recordatoriosDesdeBase(): Promise<RecordatorioHoy[]> {
       desde: x.desde,
       contactos: porCliente.get(x.clienteId) ?? [],
     })),
+    autores,
   );
 }
 
@@ -77,7 +94,7 @@ function recordatoriosDemo(): RecordatorioHoy[] {
   );
 }
 
-function aRecordatorios(deudores: Deudor[]): RecordatorioHoy[] {
+function aRecordatorios(deudores: Deudor[], autores: ReadonlyMap<ContactoRegistrado, string | null> = new Map()): RecordatorioHoy[] {
   return recordatoriosDeHoy(deudores, hoyArgentina()).map((r) => ({
     id: r.clienteId,
     nombre: r.nombre,
@@ -87,7 +104,12 @@ function aRecordatorios(deudores: Deudor[]): RecordatorioHoy[] {
     tramo: r.tramo,
     tramoEtiqueta: etiquetaTramo(r.tramo),
     ultimaNota: r.ultimoContacto
-      ? { fecha: r.ultimoContacto.fecha, nota: r.ultimoContacto.nota, proximoContacto: r.ultimoContacto.proximoContacto }
+      ? {
+          fecha: r.ultimoContacto.fecha,
+          nota: r.ultimoContacto.nota,
+          proximoContacto: r.ultimoContacto.proximoContacto,
+          registradoPor: autores.get(r.ultimoContacto) ?? null,
+        }
       : null,
   }));
 }
