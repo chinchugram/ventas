@@ -140,6 +140,24 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 
 ---
 
+## Presupuestos y listas de precios
+
+- **Listas de precios.** Cada cliente puede tener una lista asignada, desde su ficha. Tiene un
+  descuento general sobre el catálogo y, si hace falta, precios específicos por artículo. Si la
+  lista se da de baja, sus clientes pagan precio de catálogo hasta que se reactive.
+- **Precios congelados.** Un presupuesto guarda el precio de cada línea al crearlo (o al agregar
+  una línea al editarlo). Si después cambian el catálogo o la lista, el presupuesto no se mueve:
+  para cotizar con precios de hoy hay que duplicarlo.
+- **Validez.** 15 días por defecto (se puede cambiar, hasta 365). Vale hasta `fecha + validez`,
+  inclusive. "Vencido" no se guarda: se calcula cuando sigue abierto y pasó el plazo. Un vencido no
+  se edita ni se convierte: se duplica.
+- **Conversión en venta.** "Convertir en venta" crea la venta con los precios congelados, en una
+  sola transacción, así que el total es el del presupuesto. La venta queda pendiente y sin pago, y
+  el presupuesto pasa a *convertido* con el enlace a la venta. No se convierte dos veces: si
+  llegan dos conversiones a la vez, la segunda falla con un mensaje y no crea otra venta.
+
+---
+
 ## Pantallas
 
 | Ruta | Qué resuelve |
@@ -148,7 +166,7 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 | `/ventas` | Historial de ventas con margen y estado de pago |
 | `/ventas/nueva` | Carga de venta: calcula en vivo y guarda (descuenta stock) |
 | `/ventas/[id]` | Detalle de una venta, pagos y anulación |
-| `/clientes` | Quién es cada cliente y cuánto debe; alta, edición y baja con CUIT validado |
+| `/clientes` | Quién es cada cliente y cuánto debe; alta, edición y baja con CUIT validado. Cada cliente puede tener una lista de precios |
 | `/clientes/[id]` | Ficha: ventas, pagos y saldo del cliente |
 | `/catalogo` | Costo por receta, precio, margen y precio necesario para la meta |
 | `/catalogo/nuevo`, `/catalogo/[id]` | Alta y edición de artículo con editor de receta y costo/margen en vivo |
@@ -156,6 +174,11 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 | `/materiales/[id]` | Libro de movimientos del material y ajuste por conteo físico |
 | `/reposicion` | Materiales en o bajo el mínimo: cuánto comprar (mínimo × factor), costo estimado y botón que arma la compra |
 | `/cobranzas` | Quién debe, cuánto y desde cuándo; pagos recientes |
+| `/cobranzas/hoy` | A quién llamar hoy, ordenado por antigüedad y monto; registrar contacto y enlace de WhatsApp |
+| `/listas-precios` | Listas de precios: descuento general y precios por artículo; alta, edición y baja |
+| `/listas-precios/nueva`, `/listas-precios/[id]` | Alta y edición de una lista, con advertencia de precios por debajo del costo |
+| `/presupuestos` | Presupuestos, con filtro por estado (abiertos, vencidos, convertidos, anulados) |
+| `/presupuestos/nuevo`, `/presupuestos/[id]`, `/presupuestos/[id]/editar`, `/presupuestos/[id]/imprimir` | Alta, detalle (convertir en venta, duplicar, anular), edición mientras esté abierto y vigente, y vista para imprimir o mandar por WhatsApp |
 | `/materiales/nuevo`, `/materiales/[id]/editar` | Alta y edición; al cambiar el costo muestra qué artículos cambian de margen |
 | `/configuracion` | Nombre del negocio, costo/hora de mano de obra, IVA por defecto, margen objetivo y máquinas |
 | `/compras` | Historial de compras; `/compras/nueva` registra una (suma stock y actualiza el costo) |
@@ -186,13 +209,19 @@ el mostrador con el teléfono en la mano.
 | `npm run test:cobranzas` / `test:cobranzas:db` / `test:reposicion` | Cobros y lista de reposición |
 | `npm run test:costeo` | Verifica el motor de costeo contra 15 números conocidos |
 | `npm run test:stock` | Verifica las cuentas de compras y stock contra números conocidos |
-| `npm run test:integridad` | Verifica que los CHECK constraints rechazan datos inválidos |
+| `npm run test:integridad` | Verifica que los CHECK constraints rechazan datos inválidos. `scripts/test-integridad.sql` ahora espera 12 errores (uno por restricción) y 1 INSERT aceptado |
 | `npm run test:acciones` | Compra, venta, anulación y ajuste contra Postgres real (en transacciones que se deshacen) |
 | `npm run test:cuit` / `test:recetas` / `test:materiales` / `test:configuracion` | Lógica pura de cada pantalla de altas |
 | `npm run test:rango-fechas` / `test:reportes-rango` | Rango de fechas (zona Argentina, bordes de mes y bisiestos) / totales de los reportes contra SQL con filtros del seed |
 | `npm run test:csv` | Armado del CSV (separador `;`, decimales con coma, BOM, escape y neutralización de fórmulas) |
 | `npm run test:stock-reporte` / `test:consumo` | Valorización, rotación y sin movimiento / consumo real vs teórico, con números armados a mano |
 | `npm run test:clientes` / `test:articulos` / `test:materiales:db` / `test:configuracion:db` | Las mismas altas contra Postgres real, sin dejar rastro |
+| `npm run test:precios` | Verifica `resolverPrecio` sin base: precio específico, descuento general, lista inactiva y catálogo |
+| `npm run test:precios:db` | Lo mismo contra Postgres real: venta de un cliente con lista, override de precio y ABM de listas (en transacciones que se deshacen) |
+| `npm run test:presupuestos` | Lógica pura de presupuestos: vencimiento y sus bordes de fecha, totales, precios al editar, cantidades y mensaje de WhatsApp |
+| `npm run test:presupuestos:db` | Presupuestos contra Postgres real: alta, numeración, edición, conversión en venta (incluida la concurrencia) y los CHECK. Borra lo que crea |
+| `npm run test:recordatorios` | Lógica pura de recordatorios: a quién llamar hoy, orden por tramo y monto, teléfonos argentinos y enlace de WhatsApp |
+| `npm run test:recordatorios:db` | Registro de contactos y la consulta "a quién llamar hoy" contra Postgres real. Borra sus datos de prueba al terminar |
 
 ---
 
@@ -219,6 +248,12 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
    renderizan, no saben SQL.
 7. **Código en inglés, dominio en español.** `costoTotalSnapshot`, `stockMinimo`, `saldoCliente`.
    Lo que hay que entender sin traducciones es el dominio.
+8. **El precio de una línea de venta lo decide el servidor.** Sale de `resolverPrecio`
+   (`src/lib/precios.ts`), en este orden: precio específico del cliente para ese artículo →
+   precio de catálogo menos el descuento general de su lista → precio de catálogo. Una lista
+   inactiva se ignora por completo. El navegador manda solo artículo y cantidad: al confirmar,
+   el servidor recalcula el precio. La única excepción es convertir un presupuesto, que usa los
+   precios congelados en él.
 
 ---
 
@@ -226,14 +261,14 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 
 **Andamiaje completo y verificado:**
 
-- Esquema Prisma migrado, con 9 `CHECK` constraints, 2 índices parciales y configuración sembrada.
+- Esquema Prisma migrado, con 25 `CHECK` constraints, 2 índices parciales y configuración sembrada.
 - `prisma/seed.ts` con datos de ejemplo de un comercio de láser.
 - `src/lib/costing.ts`: motor de costeo y margen, puro y sin dependencias de infraestructura.
 - `src/lib/money.ts`: aritmética decimal y formateo es-AR.
 - Consultas del dashboard, catálogo, clientes, materiales, ventas y reportes.
 - Las 6 pantallas renderizan con datos reales.
 - `/ventas/nueva`: carga de venta que guarda, congela costos y descuenta stock; `/ventas/[id]` permite anularla.
-- `npm run test:costeo` (15 comprobaciones) y `npm run test:integridad` (10 casos) pasan.
+- `npm run test:costeo` (15 comprobaciones) pasa, y `npm run test:integridad` espera 12 errores y 1 INSERT aceptado.
 - `npm run build` y `npm run typecheck` limpios.
 
 **Lo que falta para que sea usable (siguiente paso):**
@@ -245,9 +280,20 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 - [x] Backup automático diario (ola 2): servicio `backup` del compose, restauración probada y aviso en pantalla. Ver `docs/05-respaldos.md`
 - [x] Lista de reposición sugerida (ola 2): cierra la etapa 2
 - [x] Reportes con filtro de fechas y exportación a CSV, reporte de stock y auditoría de accesibilidad (ola 3). Hallazgos pendientes en `docs/auditoria-ola-3.md`
+- [x] Listas de precios por cliente (ola 7.1)
+- [x] Presupuestos que se convierten en venta (ola 7.2)
+- [x] Recordatorios de cobranza: a quién llamar hoy (ola 7.3)
 
 El plan completo, por olas y pensado para repartir a subagentes en paralelo, está en
 `docs/04-checklist-olas.md`.
+
+**La ola 7 se hizo antes que la ola 4.** Las pantallas nuevas (listas de precios, presupuestos y
+cobranzas) todavía no tienen roles ni `usuarioId`: hoy quien entra con la contraseña básica puede
+hacer todo esto. Cuando se haga la ola 4, hay que clasificarlas en la matriz de permisos. Permisos
+previstos: `gestionarListasPrecios`, solo dueño; `verPresupuestos`, `cargarPresupuesto`,
+`convertirPresupuesto`, `verRecordatorios` y `registrarContactoCobranza`, dueño y empleado. Además,
+la advertencia de precios por debajo del costo en `/listas-precios/[id]` usa costos de receta y por
+ahora se muestra a todos.
 
 ---
 
