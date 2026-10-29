@@ -14,7 +14,7 @@ export default async function ComprasPage() {
         titulo="Compras"
         descripcion="Lo que entra al taller, a quién y a qué costo"
         accion={
-          <Link href="/compras/nueva" className="rounded-lg bg-marca px-3 py-2 text-sm font-semibold text-tinta">
+          <Link href="/compras/nueva" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta">
             Nueva compra
           </Link>
         }

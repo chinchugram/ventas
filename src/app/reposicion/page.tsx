@@ -21,7 +21,7 @@ export default async function ReposicionPage() {
         accion={
           <Link
             href="/materiales"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
           >
             Materiales
           </Link>
@@ -82,7 +82,7 @@ function LineaTarjeta({ linea: l }: { linea: LineaReposicion<MaterialReposicion>
       <div className="flex items-start justify-between gap-3">
         <Link
           href={`/materiales/${l.id}`}
-          className="min-w-0 font-medium text-slate-900 underline-offset-2 hover:underline"
+          className="inline-flex min-h-11 min-w-0 items-center font-medium text-slate-900 underline-offset-2 hover:underline"
         >
           {l.nombre}
         </Link>

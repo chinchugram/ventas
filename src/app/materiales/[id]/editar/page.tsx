@@ -19,7 +19,7 @@ export default async function EditarMaterialPage({ params }: { params: Promise<{
   const unidad = ETIQUETA_UNIDAD[material.unidad] ?? material.unidad;
   const usos = material.articulos.length;
   const textoUsos = usos === 1 ? "1 artículo activo lo usa" : `${usos} artículos activos lo usan`;
-  const boton = "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700";
+  const boton = "inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700";
 
   return (
     <>

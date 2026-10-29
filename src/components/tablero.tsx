@@ -101,7 +101,7 @@ export function VentasPorDia({ dias }: { dias: DiaVentas[] }) {
               </div>
             ))}
           </div>
-          <div className="mt-1.5 flex justify-between text-[11px] text-slate-400 tabular-nums">
+          <div className="mt-1.5 flex justify-between text-xs text-slate-500 tabular-nums">
             <span>{dias[0]?.dia}</span>
             <span>{dias[Math.floor(dias.length / 2)]?.dia}</span>
             <span>hoy</span>

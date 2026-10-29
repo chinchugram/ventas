@@ -66,7 +66,7 @@ export default async function CobranzasPage({ searchParams }: { searchParams: Pr
                 key={clave}
                 href={clave === "clientes" ? "/cobranzas" : "/cobranzas?vista=antiguedad"}
                 aria-current={vista === clave ? "page" : undefined}
-                className={`rounded-md py-2 text-center ${vista === clave ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
+                className={`rounded-md py-3 text-center ${vista === clave ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
               >
                 {texto}
               </Link>
@@ -81,7 +81,7 @@ export default async function CobranzasPage({ searchParams }: { searchParams: Pr
                     <div className="min-w-0">
                       <p className="font-semibold break-words text-slate-900">
                         {conDetalle ? (
-                          <Link href={`/clientes/${c.clienteId}`} className="underline-offset-2 hover:underline">
+                          <Link href={`/clientes/${c.clienteId}`} className="underline underline-offset-2">
                             {c.nombre}
                           </Link>
                         ) : (
@@ -93,7 +93,7 @@ export default async function CobranzasPage({ searchParams }: { searchParams: Pr
                         {c.telefono ? (
                           <>
                             {" · "}
-                            <a href={`tel:${c.telefono}`} className="underline underline-offset-2">
+                            <a href={`tel:${c.telefono}`} className="inline-flex min-h-11 items-center underline underline-offset-2">
                               {c.telefono}
                             </a>
                           </>
@@ -122,7 +122,7 @@ export default async function CobranzasPage({ searchParams }: { searchParams: Pr
                     <p className={`shrink-0 font-semibold tabular-nums ${ESTILO_TRAMO[t.clave]}`}>{fmtMoneda(t.saldo)}</p>
                   </div>
                   {t.ventas.length === 0 ? (
-                    <p className="border-t border-slate-100 p-4 pt-2 text-sm text-slate-400">Sin deuda en este tramo</p>
+                    <p className="border-t border-slate-100 p-4 pt-2 text-sm text-slate-500">Sin deuda en este tramo</p>
                   ) : (
                     <ul className="divide-y divide-slate-100 border-t border-slate-100">
                       {t.ventas.map((v) => (
@@ -151,7 +151,7 @@ export default async function CobranzasPage({ searchParams }: { searchParams: Pr
               <li key={p.id}>
                 <Link href={`/ventas/${p.ventaId}`} className="flex items-start justify-between gap-3 p-4 text-sm">
                   <div className="min-w-0">
-                    <p className={`break-words ${noCuenta ? "text-slate-400" : "text-slate-900"}`}>
+                    <p className={`break-words ${noCuenta ? "text-slate-500" : "text-slate-900"}`}>
                       {p.clienteNombre} · #{p.ventaNumero}/{p.ventaAnio}
                     </p>
                     <p className="text-slate-500">
@@ -165,7 +165,7 @@ export default async function CobranzasPage({ searchParams }: { searchParams: Pr
                     ) : null}
                   </div>
                   <p
-                    className={`shrink-0 font-semibold tabular-nums ${noCuenta ? "text-slate-400 line-through" : "text-emerald-700"}`}
+                    className={`shrink-0 font-semibold tabular-nums ${noCuenta ? "text-slate-500 line-through" : "text-emerald-700"}`}
                   >
                     {fmtMoneda(p.monto)}
                   </p>

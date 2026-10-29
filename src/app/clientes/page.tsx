@@ -11,7 +11,7 @@ export default async function ClientesPage() {
 
   const deudores = clientes.filter((c) => c.saldo.cmp(0) > 0);
   const botonNuevo = (
-    <Link href="/clientes/nuevo" className="rounded-lg bg-marca px-3 py-2 text-sm font-semibold text-tinta">
+    <Link href="/clientes/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta">
       Nuevo cliente
     </Link>
   );
@@ -86,7 +86,7 @@ export default async function ClientesPage() {
 
       {bajas.length > 0 ? (
         <details className="mt-6">
-          <summary className="cursor-pointer text-sm font-medium text-slate-600">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-slate-600">
             Dados de baja ({bajas.length})
           </summary>
           <ul className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
@@ -94,7 +94,7 @@ export default async function ClientesPage() {
               <li key={c.id}>
                 <Link href={`/clientes/${c.id}`} className="block p-4">
                   <p className="font-medium text-slate-500">{c.nombre}</p>
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm text-slate-500">
                     {c.telefono ?? "sin teléfono"}
                     {c.cuit ? (
                       <>

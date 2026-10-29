@@ -20,7 +20,7 @@ export function AnularPagoBoton({ pagoId }: { pagoId: string }) {
       <button
         type="button"
         onClick={() => setAbierto(true)}
-        className="rounded-md px-2 py-1 text-xs font-semibold text-red-700 underline-offset-2 hover:underline"
+        className="inline-flex min-h-11 items-center rounded-md px-3 text-xs font-semibold text-red-700 underline-offset-2 hover:underline"
       >
         Anular
       </button>

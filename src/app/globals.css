@@ -31,8 +31,8 @@ body {
   input,
   select,
   textarea {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900;
-    @apply focus:border-marca focus:ring-2 focus:ring-marca/30 focus:outline-none;
+    @apply w-full rounded-lg border border-slate-500 bg-white px-3 py-2.5 text-slate-900;
+    @apply focus:border-marca-texto focus:ring-2 focus:ring-marca-texto focus:outline-none;
     /* 16px minimo: por debajo, iOS Safari hace zoom al hacer foco. */
     font-size: 16px;
   }

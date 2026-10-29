@@ -24,6 +24,9 @@
     "db:backup": "sh scripts/backup.sh",
     "db:restore": "sh scripts/restaurar.sh",
     "test:costeo": "tsx scripts/verificar-costeo.ts",
+    "test:rango-fechas": "tsx scripts/verificar-rango-fechas.ts",
+    "test:reportes-rango": "tsx scripts/verificar-reportes-rango.ts",
+    "test:csv": "tsx scripts/verificar-csv.ts",
     "demo:video": "tsx scripts/grabar-demo.ts",
     "test:stock": "tsx scripts/verificar-stock.ts",
     "test:integridad": "sh scripts/test-integridad.sh",
@@ -40,6 +43,8 @@
     "test:cobranzas:db": "tsx scripts/test-cobranzas.ts",
     "test:reposicion": "tsx scripts/verificar-reposicion.ts",
     "test:respaldo": "tsx scripts/verificar-respaldo.ts",
+    "test:stock-reporte": "tsx scripts/verificar-stock-reporte.ts",
+    "test:consumo": "tsx scripts/verificar-consumo.ts",
     "test:respaldo:restaurar": "sh scripts/probar-restauracion.sh"
   },
   "dependencies": {

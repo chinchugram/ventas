@@ -4,7 +4,7 @@ Plan de trabajo para que un agente orquestador reparta tareas a subagentes en pa
 Cada **ola** es un conjunto de tareas **independientes entre sí** (no tocan los mismos archivos):
 se lanzan juntas y, cuando todas terminan y se integran, empieza la ola siguiente.
 
-Estado al día de hoy: **Etapa 1 (MVP) y Etapa 2 (stock real) hechas, olas 0 a 2 cerradas**, en la rama
+Estado al día de hoy: **Etapa 1 (MVP) y Etapa 2 (stock real) hechas, olas 0 a 3 cerradas**, en la rama
 `etapa-2-stock-real`. Esta lista cubre lo que falta para que sea usable en el día a día y las
 etapas 3 a 6 de `docs/01-alcance-funcional.md`.
 
@@ -106,13 +106,13 @@ Migraciones reservadas: `20260130…`.
       compose), prueba de restauración documentada y aviso en pantalla si el último respaldo es viejo.
       Dueña de `scripts/**`, `docker-compose.yml`, `src/lib/respaldo-estado.ts`.
 
-## Ola 3 — Reportes y calidad (paralela, 3 tareas)
+## Ola 3 — Reportes y calidad (paralela, 8 tareas en 3 bloques)
 
-- [ ] **3.1 Reportes con filtros**: rango de fechas y mes elegible en los 5 reportes, exportar a CSV.
+- [x] **3.1 Reportes con filtros** (3.1a rango de fechas, 3.1b filtro en los reportes, 3.1c CSV): rango de fechas y mes elegible en los 5 reportes, exportar a CSV.
       Dueña de `src/app/reportes/**`, `src/lib/queries/dashboard.ts`.
-- [ ] **3.2 Reporte de stock**: valorización, rotación y materiales sin movimiento; consumo real (movimientos)
+- [x] **3.2 Reporte de stock** (3.2a valorización/rotación, 3.2b real vs teórico, 3.2c pantalla): valorización, rotación y materiales sin movimiento; consumo real (movimientos)
       contra consumo teórico (recetas). Dueña de `src/app/reportes/stock/**`.
-- [ ] **3.3 Calidad**: auditoría de accesibilidad y mobile (375 px) de todas las pantallas, `npm run build`
+- [x] **3.3 Calidad** (informe en `docs/auditoria-ola-3.md`; correcciones menores aplicadas, mayores pendientes): auditoría de accesibilidad y mobile (375 px) de todas las pantallas, `npm run build`
       limpio, revisar `npm audit` y documentar. Reporta hallazgos; las correcciones a pantallas ajenas
       las aplica el orquestador.
 

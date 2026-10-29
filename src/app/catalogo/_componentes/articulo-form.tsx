@@ -337,7 +337,7 @@ function LineaReceta({
         <button
           type="button"
           onClick={alQuitar}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600"
+          className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm text-slate-600"
           aria-label={`Quitar línea ${numero}`}
         >
           Quitar

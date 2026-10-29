@@ -26,13 +26,13 @@ export default async function MaterialPage({ params }: { params: Promise<{ id: s
           <div className="flex gap-2">
             <Link
               href={`/materiales/${material.id}/editar`}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+              className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
             >
               Editar
             </Link>
             <Link
               href="/materiales"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+              className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
             >
               Volver
             </Link>

@@ -39,14 +39,14 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
           <div className="flex gap-2">
             <Link
               href="/clientes"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+              className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
             >
               Volver
             </Link>
             {!c.esDemo ? (
               <Link
                 href={`/clientes/${c.id}/editar`}
-                className="rounded-lg bg-marca px-3 py-2 text-sm font-semibold text-tinta"
+                className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta"
               >
                 Editar
               </Link>
@@ -102,13 +102,13 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
             const contenido = (
               <div className="flex items-start justify-between gap-3 p-4">
                 <div className="min-w-0">
-                  <p className={`font-medium ${anulada ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                  <p className={`font-medium ${anulada ? "text-slate-500 line-through" : "text-slate-900"}`}>
                     #{v.numero}/{v.anio}
                   </p>
                   <p className="text-sm text-slate-500">{fmtFecha(v.fecha)}</p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className={`font-semibold tabular-nums ${anulada ? "text-slate-400" : "text-slate-900"}`}>
+                  <p className={`font-semibold tabular-nums ${anulada ? "text-slate-500" : "text-slate-900"}`}>
                     {fmtMoneda(v.totalBruto)}
                   </p>
                   {anulada ? (
@@ -152,7 +152,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
                   {p.notas ? ` · ${p.notas}` : ""}
                 </p>
               </div>
-              <p className={`shrink-0 font-semibold tabular-nums ${p.ventaAnulada || p.anulado ? "text-slate-400 line-through" : "text-slate-900"}`}>
+              <p className={`shrink-0 font-semibold tabular-nums ${p.ventaAnulada || p.anulado ? "text-slate-500 line-through" : "text-slate-900"}`}>
                 {fmtMoneda(p.monto)}
               </p>
             </li>
