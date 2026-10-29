@@ -19,5 +19,27 @@ services:
       timeout: 5s
       retries: 5
 
+  # Respaldo diario automatico (docs/05-respaldos.md). Corre scripts/respaldo-programado.sh:
+  # cada hora revisa si el ultimo respaldo tiene mas de 24 h y, si es asi, hace un
+  # pg_dump comprimido a ./backups y deja los 30 mas recientes.
+  backup:
+    image: postgres:17-alpine
+    container_name: ventas-backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://ventas:ventas@db:5432/ventas
+      BACKUP_DIR: /backups
+      BACKUP_CADA_HORAS: "24"
+      BACKUP_CONSERVAR: "30"
+      TZ: America/Argentina/Buenos_Aires
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./backups:/backups
+    working_dir: /app
+    entrypoint: ["sh", "scripts/respaldo-programado.sh"]
+
 volumes:
   ventas-db-data:
