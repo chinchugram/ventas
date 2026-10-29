@@ -77,6 +77,7 @@ const { registrarVentaEnTx } = require("../src/lib/dominio/ventas") as typeof im
 const { registrarPagoEnTx } = require("../src/lib/dominio/pagos") as typeof import("../src/lib/dominio/pagos");
 const { d } = require("../src/lib/money") as typeof import("../src/lib/money");
 const { hoyArgentina, hoyArgentinaISO } = require("../src/lib/acciones") as typeof import("../src/lib/acciones");
+const { crearPresupuestoEnTx } = require("../src/lib/dominio/presupuestos") as typeof import("../src/lib/dominio/presupuestos");
 const { requierePermisoPagina } = require("../src/lib/permisos") as typeof import("../src/lib/permisos");
 const { generarToken } = require("../src/lib/auth-pura") as typeof import("../src/lib/auth-pura");
 
@@ -89,12 +90,22 @@ const materialesA = require("../src/app/materiales/actions") as typeof import(".
 const materialesIdA = require("../src/app/materiales/[id]/actions") as typeof import("../src/app/materiales/[id]/actions");
 const configuracionA = require("../src/app/configuracion/actions") as typeof import("../src/app/configuracion/actions");
 const reposicionA = require("../src/app/reposicion/actions") as typeof import("../src/app/reposicion/actions");
+const listasA = require("../src/app/listas-precios/actions") as typeof import("../src/app/listas-precios/actions");
+const presupuestosA = require("../src/app/presupuestos/actions") as typeof import("../src/app/presupuestos/actions");
+const contactoA = require("../src/app/cobranzas/hoy/actions") as typeof import("../src/app/cobranzas/hoy/actions");
+const ventasNuevaA = require("../src/app/ventas/nueva/actions") as typeof import("../src/app/ventas/nueva/actions");
 const rutaCsv = require("../src/app/reportes/export/[reporte]/route") as typeof import("../src/app/reportes/export/[reporte]/route");
 const qVentas = require("../src/lib/queries/ventas") as typeof import("../src/lib/queries/ventas");
 const qMateriales = require("../src/lib/queries/materiales") as typeof import("../src/lib/queries/materiales");
 const qReposicion = require("../src/lib/queries/reposicion") as typeof import("../src/lib/queries/reposicion");
 const qCatalogo = require("../src/lib/queries/catalogo") as typeof import("../src/lib/queries/catalogo");
 const qCompras = require("../src/lib/queries/compras") as typeof import("../src/lib/queries/compras");
+const qPresupuestos = require("../src/lib/queries/presupuestos") as typeof import("../src/lib/queries/presupuestos");
+const qRecordatorios = require("../src/lib/queries/recordatorios") as typeof import("../src/lib/queries/recordatorios");
+// Paginas y componentes de servidor de la ola 7 (se llaman como funciones: devuelven el arbol de elementos).
+type Pagina = (props?: unknown) => Promise<unknown>;
+const pagina = (ruta: string) => (require(`../src/app/${ruta}/page`) as { default: Pagina }).default;
+const { AdvertenciaBajoCosto } = require("../src/app/listas-precios/_componentes/advertencia-bajo-costo") as typeof import("../src/app/listas-precios/_componentes/advertencia-bajo-costo");
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 nombreCookie = COOKIE_SESION;
@@ -166,29 +177,52 @@ async function conSesion<T>(token: string | undefined, fn: () => Promise<T>): Pr
 }
 
 /** Todas las claves de un objeto, a cualquier profundidad (arreglos y Decimal incluidos). */
-function claves(valor: unknown, salida = new Set<string>()): Set<string> {
+function claves(valor: unknown, salida = new Set<string>(), visto = new WeakSet<object>()): Set<string> {
+  // `visto` corta los ciclos (un arbol de elementos de React puede tenerlos).
+  if (valor && typeof valor === "object") {
+    if (visto.has(valor)) return salida;
+    visto.add(valor);
+  }
   if (Array.isArray(valor)) {
-    for (const v of valor) claves(v, salida);
+    for (const v of valor) claves(v, salida, visto);
   } else if (valor && typeof valor === "object" && !(valor instanceof Date) && typeof (valor as { toFixed?: unknown }).toFixed !== "function") {
     for (const [k, v] of Object.entries(valor)) {
       salida.add(k);
-      claves(v, salida);
+      claves(v, salida, visto);
     }
   }
   return salida;
 }
 
-const texto = (valor: unknown) => JSON.stringify(valor);
+/** JSON del valor; las referencias circulares (arboles de React) se cortan en la segunda visita. */
+const texto = (valor: unknown) => {
+  const visto = new WeakSet<object>();
+  return JSON.stringify(valor, (_clave, v) => {
+    if (v && typeof v === "object") {
+      if (visto.has(v)) return undefined;
+      visto.add(v);
+    }
+    return v;
+  });
+};
 
 // ─── Limpieza ─────────────────────────────────────────────────────────────────
 
 async function borrarRastros(prefijo: string) {
   const like = `${prefijo}%`;
+  // Presupuestos primero: apuntan a clientes, articulos, ventas y (los duplicados) a otro presupuesto.
+  const deLosClientes = `SELECT id FROM clientes WHERE nombre LIKE '${like}'`;
+  await prisma.$executeRawUnsafe(`UPDATE presupuestos SET "duplicadoDeId" = NULL WHERE "clienteId" IN (${deLosClientes})`);
+  await prisma.$executeRawUnsafe(`DELETE FROM presupuestos WHERE "clienteId" IN (${deLosClientes})`);
+  await prisma.$executeRawUnsafe(`DELETE FROM contactos_cobranza WHERE "clienteId" IN (${deLosClientes})`);
   await prisma.$executeRaw`DELETE FROM movimientos_stock WHERE "materialId" IN (SELECT id FROM materiales WHERE nombre LIKE ${like})
     OR "compraId" IN (SELECT id FROM compras WHERE proveedor LIKE ${like})
     OR "ventaId" IN (SELECT id FROM ventas WHERE "clienteId" IN (SELECT id FROM clientes WHERE nombre LIKE ${like}))`;
   await prisma.$executeRaw`DELETE FROM compras WHERE proveedor LIKE ${like}`;
   await prisma.$executeRaw`DELETE FROM ventas WHERE "clienteId" IN (SELECT id FROM clientes WHERE nombre LIKE ${like})`;
+  // Las listas se sueltan de sus clientes y se borran (con sus precios) antes que los articulos.
+  await prisma.$executeRaw`UPDATE clientes SET "listaPrecioId" = NULL WHERE nombre LIKE ${like}`;
+  await prisma.$executeRaw`DELETE FROM listas_precios WHERE nombre LIKE ${like}`;
   await prisma.$executeRaw`DELETE FROM articulos WHERE nombre LIKE ${like}`;
   await prisma.$executeRaw`DELETE FROM materiales WHERE nombre LIKE ${like}`;
   await prisma.$executeRaw`DELETE FROM maquinas WHERE nombre LIKE ${like}`;
@@ -249,6 +283,32 @@ async function main() {
   const hoy = hoyArgentinaISO();
   comprobar("fixtures creados", String(Boolean(cliente.id && articulo.id && material.id && maquina.id && v1.id && v2.id && v3.id && pagoV3.id)), "true");
 
+  // Ola 7: un articulo con receta (costo conocido), listas de precios (una con un precio por debajo de ese costo),
+  // un cliente con lista asignada y presupuestos.
+  const articuloReceta = await prisma.articulo.create({
+    data: {
+      nombre: `${MARCA} con receta`,
+      precioVenta: "20000",
+      ivaPct: "21",
+      receta: { create: { componentes: { create: [{ tipo: "MATERIAL", materialId: material.id, cantidad: "1" }] } } },
+    },
+  });
+  const lista = await prisma.listaPrecio.create({
+    data: {
+      nombre: `${MARCA} lista`,
+      descuentoPct: "10",
+      items: { create: [{ articuloId: articuloReceta.id, precio: "100" }, { articuloId: articulo.id, precio: "900" }] },
+    },
+  });
+  const listaOtra = await prisma.listaPrecio.create({ data: { nombre: `${MARCA} lista otra`, descuentoPct: "5" } });
+  const clienteConLista = await prisma.cliente.create({ data: { nombre: `${MARCA} cliente con lista`, listaPrecioId: lista.id } });
+  const presupuestoNuevo = (clienteId: string) =>
+    prisma.$transaction((tx) =>
+      crearPresupuestoEnTx(tx, { clienteId, validezDias: 15, observaciones: null, items: [{ articuloId: articulo.id, cantidad: d("1") }] }, hoyArgentina()),
+    );
+  const pBase = await presupuestoNuevo(cliente.id); // lo usan los intentos sin permiso
+  comprobar("fixtures de la ola 7 creados", String(Boolean(articuloReceta.id && lista.id && listaOtra.id && clienteConLista.id && pBase.id)), "true");
+
   // ── Acciones prohibidas para el empleado: datos validos y basura ─────────────
   const PROHIBIDAS: { nombre: string; accion: unknown; validos: unknown }[] = [
     { nombre: "anularVenta", accion: ventasIdA.anularVenta, validos: { ventaId: v2.id } },
@@ -285,6 +345,12 @@ async function main() {
     { nombre: "editarMaquina", accion: configuracionA.editarMaquina, validos: { id: maquina.id, nombre: `${MARCA} hack`, costoHora: "1" } },
     { nombre: "cambiarActivoMaquina", accion: configuracionA.cambiarActivoMaquina, validos: { id: maquina.id, activo: false } },
     { nombre: "guardarFactorReposicion", accion: reposicionA.guardarFactorReposicion, validos: { factor: "9" } },
+    // Ola 7: las listas de precios son solo del dueno.
+    { nombre: "crearLista", accion: listasA.crearLista, validos: { nombre: `${MARCA} lista hack`, descuentoPct: "10" } },
+    { nombre: "editarLista", accion: listasA.editarLista, validos: { id: lista.id, nombre: `${MARCA} lista hack`, descuentoPct: "99" } },
+    { nombre: "cambiarActivoLista", accion: listasA.cambiarActivoLista, validos: { id: lista.id, activo: false } },
+    { nombre: "guardarPrecioLista", accion: listasA.guardarPrecioLista, validos: { listaId: lista.id, articuloId: articulo.id, precio: "1" } },
+    { nombre: "quitarPrecioLista", accion: listasA.quitarPrecioLista, validos: { listaId: lista.id, articuloId: articuloReceta.id } },
   ];
   const BASURA: unknown[] = [{}, null, undefined, "texto", [], { id: 1 }];
 
@@ -324,6 +390,15 @@ async function main() {
     ["crearCliente", clientesA.crearCliente, { nombre: `${MARCA} sin sesion` }],
     ["editarCliente", clientesA.editarCliente, { id: cliente.id, nombre: `${MARCA} hack` }],
     ["cambiarActivoCliente", clientesA.cambiarActivoCliente, { id: cliente.id, activo: false }],
+    // Ola 7: presupuestos, contacto de cobranza y lectura de precios.
+    ["crearPresupuesto", presupuestosA.crearPresupuesto, { clienteId: cliente.id, validezDias: "15", observaciones: "", items: [{ articuloId: articulo.id, cantidad: "1" }] }],
+    ["editarPresupuesto", presupuestosA.editarPresupuesto, { id: pBase.id, clienteId: cliente.id, validezDias: "30", observaciones: "hack", items: [{ articuloId: articulo.id, cantidad: "5" }] }],
+    ["anularPresupuesto", presupuestosA.anularPresupuesto, { id: pBase.id }],
+    ["duplicarPresupuesto", presupuestosA.duplicarPresupuesto, { id: pBase.id }],
+    ["convertirPresupuesto", presupuestosA.convertirPresupuesto, { id: pBase.id }],
+    ["registrarContacto", contactoA.registrarContacto, { clienteId: cliente.id, nota: "hack", proximoContacto: "" }],
+    ["preciosParaCliente", ventasNuevaA.preciosParaCliente, { clienteId: clienteConLista.id, articuloIds: [articulo.id] }],
+    ["preciosParaPresupuesto", ventasNuevaA.preciosParaPresupuesto, { clienteId: clienteConLista.id, articuloIds: [articulo.id] }],
   ];
   for (const [nombre, accion, datos] of PERMITIDAS_SIN_SESION) {
     for (const [titulo, token] of [["sin cookie", undefined], ["token inexistente", tFalso], ["empleado dado de baja", tBaja]] as const) {
@@ -363,6 +438,61 @@ async function main() {
   comprobar("  el nombre cambio", String((await prisma.cliente.findUnique({ where: { id: idNuevo } }))?.nombre), `${MARCA} cliente editado`);
   comprobar("empleado: cambiarActivoCliente", String((await invocar(tEmp, clientesA.cambiarActivoCliente, { id: idNuevo, activo: false })).ok), "true");
   comprobar("  el cliente quedo dado de baja", String((await prisma.cliente.findUnique({ where: { id: idNuevo } }))?.activo), "false");
+
+  // ── Ola 7: lo que el empleado SI puede (presupuestos, contacto de cobranza, precios) ──
+  console.log("--- Acciones permitidas (ola 7): empleado ---");
+  // Los ids (uuid) llevan digitos al azar: antes de buscar un monto de costo se reemplazan, para no tener falsos positivos.
+  const sinIds = (valor: unknown) => texto(valor).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<id>");
+  // Ojo: "total" no esta en la lista porque un presupuesto o una deuda tienen un total de VENTA.
+  const CLAVES_DE_COSTO = ["costoTotal", "ganancia", "costoUnitario", "costoUnitarioSnapshot", "costoTotalSnapshot", "costoEstimado", "valorInventario", "receta", "recetaConfiable", "margen", "costo"];
+  const sinCostos = (etiqueta: string, valor: unknown) => {
+    comprobar(`${etiqueta}: sin claves de costo`, [...claves(valor)].filter((c) => CLAVES_DE_COSTO.includes(c)).join(",") || "ninguna", "ninguna");
+    // 7777 es el costo del material de la receta del articulo de prueba.
+    comprobar(`${etiqueta}: sin el costo de receta (7777)`, String(/(^|[^0-9.])7777($|[^0-9])/.test(sinIds(valor))), "false");
+  };
+
+  const precios = await invocar(tEmp, ventasNuevaA.preciosParaCliente, { clienteId: clienteConLista.id, articuloIds: [articulo.id, articuloReceta.id] });
+  comprobar("empleado: preciosParaCliente", String(precios.ok), "true");
+  comprobar("  trae el precio de la lista (900) y el especifico (100)", `${JSON.stringify((precios.precios as Record<string, { precio: string }>)?.[articulo.id]?.precio)}/${JSON.stringify((precios.precios as Record<string, { precio: string }>)?.[articuloReceta.id]?.precio)}`, '"900"/"100"');
+  sinCostos("  preciosParaCliente", precios);
+  const preciosP = await invocar(tEmp, ventasNuevaA.preciosParaPresupuesto, { clienteId: clienteConLista.id, articuloIds: [articulo.id] });
+  comprobar("empleado: preciosParaPresupuesto", `${preciosP.ok}/${JSON.stringify((preciosP.precios as Record<string, { precio: string }>)?.[articulo.id]?.precio)}`, 'true/"900"');
+  sinCostos("  preciosParaPresupuesto", preciosP);
+
+  const datosPresupuesto = { clienteId: clienteConLista.id, validezDias: "15", observaciones: "", items: [{ articuloId: articulo.id, cantidad: "2" }] };
+  const presupuestosAntes = await prisma.presupuesto.count({ where: { clienteId: clienteConLista.id } });
+  const pCreado = await invocar(tEmp, presupuestosA.crearPresupuesto, datosPresupuesto);
+  comprobar("empleado: crearPresupuesto", String(pCreado.ok), "true");
+  comprobar("  quedo guardado y el servidor congelo el precio de la lista (900)", `${await prisma.presupuesto.count({ where: { clienteId: clienteConLista.id } }) - presupuestosAntes}/${(await prisma.presupuestoItem.findFirst({ where: { presupuestoId: String(pCreado.id) } }))?.precioUnitario.toFixed(0)}`, "1/900");
+  comprobar("empleado: editarPresupuesto", String((await invocar(tEmp, presupuestosA.editarPresupuesto, { ...datosPresupuesto, id: String(pCreado.id), validezDias: "30" })).ok), "true");
+  comprobar("  la validez cambio", String((await prisma.presupuesto.findUnique({ where: { id: String(pCreado.id) } }))?.validezDias), "30");
+  const pCopia = await invocar(tEmp, presupuestosA.duplicarPresupuesto, { id: String(pCreado.id) });
+  comprobar("empleado: duplicarPresupuesto", `${pCopia.ok}/${(await prisma.presupuesto.findUnique({ where: { id: String(pCopia.id) } }))?.duplicadoDeId === pCreado.id}`, "true/true");
+  comprobar("empleado: anularPresupuesto", String((await invocar(tEmp, presupuestosA.anularPresupuesto, { id: String(pCopia.id) })).ok), "true");
+  comprobar("  el presupuesto quedo ANULADO", String((await prisma.presupuesto.findUnique({ where: { id: String(pCopia.id) } }))?.estado), "ANULADO");
+  const ventasAntes = await prisma.venta.count();
+  const pConv = await invocar(tEmp, presupuestosA.convertirPresupuesto, { id: String(pCreado.id) });
+  comprobar("empleado: convertirPresupuesto", String(pConv.ok), "true");
+  comprobar("  se creo una venta y el presupuesto quedo CONVERTIDO", `${(await prisma.venta.count()) - ventasAntes}/${(await prisma.presupuesto.findUnique({ where: { id: String(pCreado.id) } }))?.estado}`, "1/CONVERTIDO");
+
+  const contactosAntes = await prisma.contactoCobranza.count({ where: { clienteId: cliente.id } });
+  const contacto = await invocar(tEmp, contactoA.registrarContacto, { clienteId: cliente.id, nota: `${MARCA} llamado`, proximoContacto: "" });
+  comprobar("empleado: registrarContacto", String(contacto.ok), "true");
+  comprobar("  el contacto quedo registrado", String((await prisma.contactoCobranza.count({ where: { clienteId: cliente.id } })) - contactosAntes), "1");
+
+  // La lista de precios de un cliente es una decision de precios: el empleado edita el cliente pero no la lista.
+  console.log("--- Lista de precios de un cliente: el empleado no la toca ---");
+  const listaDe = async (id: string) => (await prisma.cliente.findUnique({ where: { id } }))?.listaPrecioId ?? null;
+  const editarComoEmpleado = (listaPrecioId: unknown, extra: object = {}) =>
+    invocar(tEmp, clientesA.editarCliente, { id: clienteConLista.id, nombre: `${MARCA} cliente con lista`, ...extra, listaPrecioId });
+  for (const [etiqueta, valor] of [["null (quitarla)", null], ["otra lista", listaOtra.id], ["un id que no es uuid", "no-es-uuid"]] as const) {
+    const r = await editarComoEmpleado(valor, { telefono: "11 4444 4444" });
+    comprobar(`empleado edita el cliente enviando listaPrecioId = ${etiqueta}: la accion anda`, String(r.ok), "true");
+    comprobar("  y la lista del cliente no cambia", String((await listaDe(clienteConLista.id)) === lista.id), "true");
+  }
+  comprobar("  pero el resto de los datos si se guardan", String((await prisma.cliente.findUnique({ where: { id: clienteConLista.id } }))?.telefono), "11 4444 4444");
+  const clienteDelEmpleado = await invocar(tEmp, clientesA.crearCliente, { nombre: `${MARCA} cliente nuevo con lista`, listaPrecioId: listaOtra.id });
+  comprobar("empleado crea un cliente enviando una lista: se crea sin lista", `${clienteDelEmpleado.ok}/${await listaDe(String(clienteDelEmpleado.id))}`, "true/null");
 
   // ── El dueno puede lo que el empleado no ─────────────────────────────────────
   console.log("--- Acciones prohibidas al empleado: el dueno SI puede ---");
@@ -408,6 +538,25 @@ async function main() {
   // El dueno ya no tiene una configuracion intacta: se restaura tal cual estaba.
   await prisma.$transaction([prisma.configuracion.deleteMany({}), prisma.configuracion.createMany({ data: configAntes })]);
 
+  // Ola 7: listas de precios, solo el dueno.
+  const idLista = await ok("crearLista", listasA.crearLista, { nombre: `${MARCA} lista creada`, descuentoPct: "7,5" });
+  comprobar("  la lista existe con su descuento", String((await prisma.listaPrecio.findUnique({ where: { id: String(idLista.id) } }))?.descuentoPct.toFixed(2)), "7.50");
+  await ok("editarLista", listasA.editarLista, { id: String(idLista.id), nombre: `${MARCA} lista editada`, descuentoPct: "8" });
+  await ok("guardarPrecioLista", listasA.guardarPrecioLista, { listaId: String(idLista.id), articuloId: articulo.id, precio: "950" });
+  comprobar("  el precio especifico existe", String((await prisma.listaPrecioItem.findFirst({ where: { listaPrecioId: String(idLista.id) } }))?.precio.toFixed(0)), "950");
+  await ok("quitarPrecioLista", listasA.quitarPrecioLista, { listaId: String(idLista.id), articuloId: articulo.id });
+  comprobar("  el precio especifico se quito", String(await prisma.listaPrecioItem.count({ where: { listaPrecioId: String(idLista.id) } })), "0");
+  await ok("cambiarActivoLista", listasA.cambiarActivoLista, { id: String(idLista.id), activo: false });
+  comprobar("  la lista quedo de baja", String((await prisma.listaPrecio.findUnique({ where: { id: String(idLista.id) } }))?.activo), "false");
+  // Y la lista de un cliente, solo el dueno: asignar, cambiar y quitar.
+  await ok("editarCliente asigna otra lista", clientesA.editarCliente, { id: clienteConLista.id, nombre: `${MARCA} cliente con lista`, listaPrecioId: listaOtra.id });
+  comprobar("  el cliente quedo con la otra lista", String((await listaDe(clienteConLista.id)) === listaOtra.id), "true");
+  await ok("editarCliente quita la lista", clientesA.editarCliente, { id: clienteConLista.id, nombre: `${MARCA} cliente con lista`, listaPrecioId: null });
+  comprobar("  el cliente quedo sin lista", String(await listaDe(clienteConLista.id)), "null");
+  await ok("editarCliente sin informar la lista no la toca", clientesA.editarCliente, { id: clienteConLista.id, nombre: `${MARCA} cliente con lista` });
+  const conListaDelDueno = await ok("crearCliente con lista", clientesA.crearCliente, { nombre: `${MARCA} cliente del dueno`, listaPrecioId: lista.id });
+  comprobar("  el cliente nuevo tiene la lista", String((await listaDe(String(conListaDelDueno.id))) === lista.id), "true");
+
   // ── Guarda de paginas ────────────────────────────────────────────────────────
   console.log("--- Guarda de paginas (requierePermisoPagina) ---");
   const intentar = async (token: string | undefined, ...acciones: Parameters<typeof requierePermisoPagina>) =>
@@ -427,6 +576,13 @@ async function main() {
   comprobar("empleado en /materiales", await intentar(tEmp, "verStock"), "entra (EMPLEADO)");
   comprobar("empleado en /reposicion", await intentar(tEmp, "verReposicion"), "entra (EMPLEADO)");
   comprobar("empleado en /cobranzas", await intentar(tEmp, "verCobranzas"), "entra (EMPLEADO)");
+  comprobar("empleado en /listas-precios", await intentar(tEmp, "gestionarListasPrecios"), "redirige a /ventas/nueva");
+  comprobar("empleado en /presupuestos", await intentar(tEmp, "verPresupuestos"), "entra (EMPLEADO)");
+  comprobar("empleado en /presupuestos/nuevo", await intentar(tEmp, "cargarPresupuesto"), "entra (EMPLEADO)");
+  comprobar("empleado en /cobranzas/hoy", await intentar(tEmp, "verRecordatorios"), "entra (EMPLEADO)");
+  comprobar("dueno en /listas-precios", await intentar(tDue, "gestionarListasPrecios"), "entra (DUENO)");
+  comprobar("sin sesion en /listas-precios va a /login", await intentar(undefined, "gestionarListasPrecios"), "redirige a /login");
+  comprobar("empleado dado de baja en /presupuestos va a /login", await intentar(tBaja, "verPresupuestos"), "redirige a /login");
   comprobar("dueno en el dashboard", await intentar(tDue, "verCostos", "verMargenes"), "entra (DUENO)");
   comprobar("dueno en /configuracion", await intentar(tDue, "configuracion"), "entra (DUENO)");
   comprobar("sin sesion va a /login (no a una pagina del rol)", await intentar(undefined, "verStock"), "redirige a /login");
@@ -511,6 +667,108 @@ async function main() {
   comprobar("libro de stock (dueno): el motivo de la compra nombra al proveedor", String(texto(movConProveedor).includes(`${MARCA} proveedor`)), "true");
   comprobar("libro de stock (empleado): sin proveedor", String(texto(movSinProveedor).includes(`${MARCA} proveedor`)), "false");
   comprobar("  pero conserva las cantidades", String(movSinProveedor.some((m) => m.tipo === "COMPRA" && m.cantidad.toFixed(0) === "5")), "true");
+
+  // ── Ola 7: presupuestos, recordatorios, ventas nuevas y listas sin costos para el empleado ──
+  console.log("--- Ola 7: consultas del empleado sin costos ---");
+  const presupuestosEmp = await qPresupuestos.getPresupuestos("todos");
+  comprobar("getPresupuestos trae los presupuestos reales (no la demo)", String(presupuestosEmp.some((p) => p.id === pBase.id)), "true");
+  sinCostos("getPresupuestos", presupuestosEmp);
+  sinValoresDeCosto("getPresupuestos", sinIds(presupuestosEmp));
+  const presupuestoEmp = await qPresupuestos.getPresupuesto(pBase.id);
+  comprobar("getPresupuesto trae el detalle", String(presupuestoEmp?.items.length), "1");
+  sinCostos("getPresupuesto", presupuestoEmp);
+  sinValoresDeCosto("getPresupuesto", sinIds(presupuestoEmp));
+  const articulosPresupuesto = await qPresupuestos.getArticulosParaPresupuesto();
+  comprobar("getArticulosParaPresupuesto: claves exactas", [...claves(articulosPresupuesto)].sort().join(","), "id,ivaPct,nombre,precioVenta");
+  sinValoresDeCosto("getArticulosParaPresupuesto", sinIds(articulosPresupuesto));
+  const recordatorios = await qRecordatorios.getRecordatoriosHoy();
+  comprobar("getRecordatoriosHoy lista al cliente con saldo", String(recordatorios.some((r) => r.id === clienteConLista.id)), "true");
+  sinCostos("getRecordatoriosHoy", recordatorios);
+  sinValoresDeCosto("getRecordatoriosHoy", sinIds(recordatorios));
+
+  // Paginas llamadas como funciones, con la sesion del empleado: lo que devuelven es lo que viaja a los componentes.
+  console.log("--- Ola 7: paginas del empleado, lo que llega a los componentes ---");
+  const arbol = (token: string | undefined, ruta: string, props?: unknown) => conSesion(token, () => pagina(ruta)(props));
+  const parametros = (id: string) => ({ params: Promise.resolve({ id }) });
+  const sinParametros = { searchParams: Promise.resolve({}) };
+  // Busca, en el arbol de elementos, el componente `nombre` y devuelve sus props.
+  const propsDe = (nodo: unknown, nombre: string, visto = new WeakSet<object>()): Record<string, unknown> | undefined => {
+    if (!nodo || typeof nodo !== "object" || visto.has(nodo)) return undefined;
+    visto.add(nodo);
+    const el = nodo as { type?: unknown; props?: Record<string, unknown> };
+    if (typeof el.type === "function" && (el.type as { name?: string }).name === nombre && el.props) return el.props;
+    for (const v of Array.isArray(nodo) ? nodo : Object.values(el.props ?? {})) {
+      const hallado = propsDe(v, nombre, visto);
+      if (hallado) return hallado;
+    }
+    return undefined;
+  };
+
+  const paginasEmp: [string, string, unknown][] = [
+    ["/presupuestos", "presupuestos", sinParametros],
+    ["/presupuestos/nuevo", "presupuestos/nuevo", undefined],
+    ["/presupuestos/[id]", "presupuestos/[id]", parametros(pBase.id)],
+    ["/presupuestos/[id]/editar", "presupuestos/[id]/editar", parametros(pBase.id)],
+    ["/presupuestos/[id]/imprimir", "presupuestos/[id]/imprimir", parametros(pBase.id)],
+    ["/cobranzas/hoy", "cobranzas/hoy", undefined],
+    ["/clientes/nuevo", "clientes/nuevo", undefined],
+    ["/clientes/[id]/editar", "clientes/[id]/editar", parametros(clienteConLista.id)],
+    ["/ventas/nueva", "ventas/nueva", undefined],
+  ];
+  for (const [etiqueta, ruta, props] of paginasEmp) {
+    const arb = await arbol(tEmp, ruta, props);
+    comprobar(`empleado ${etiqueta}: la pagina arma contenido`, String(arb !== null && typeof arb === "object"), "true");
+    sinCostos(`empleado ${etiqueta}`, arb);
+    sinValoresDeCosto(`empleado ${etiqueta}`, sinIds(arb));
+  }
+  // Las prohibidas redirigen antes de leer nada.
+  for (const [ruta, props] of [["listas-precios", undefined], ["listas-precios/nueva", undefined], ["listas-precios/[id]", parametros(lista.id)]] as const) {
+    const r = await arbol(tEmp, ruta, props).then(() => "entra", (e) => (e instanceof Redireccion ? e.destino : `error: ${e}`));
+    comprobar(`empleado /${ruta}: redirige a su inicio`, r, "/ventas/nueva");
+  }
+  for (const [ruta, props] of [["listas-precios", undefined], ["listas-precios/[id]", parametros(lista.id)], ["presupuestos", sinParametros], ["cobranzas/hoy", undefined]] as const) {
+    const r = await arbol(undefined, ruta, props).then(() => "entra", (e) => (e instanceof Redireccion ? e.destino : `error: ${e}`));
+    comprobar(`sin sesion /${ruta}: va a /login`, r, "/login");
+  }
+
+  // Venta nueva: el empleado recibe `verCostos: false` y articulos sin costo ni receta; el dueno si.
+  const ventaNuevaEmp = propsDe(await arbol(tEmp, "ventas/nueva"), "NuevaVentaForm");
+  comprobar("empleado /ventas/nueva: NuevaVentaForm sin verCostos", String(ventaNuevaEmp?.verCostos), "false");
+  comprobar("  articulos: solo id, nombre, descripcion, precio, IVA y servicio", [...claves(ventaNuevaEmp?.articulos)].sort().join(","), "descripcion,esServicio,id,ivaPct,nombre,precioVenta");
+  comprobar("  trae el articulo con receta, pero sin su costo", String(JSON.stringify(ventaNuevaEmp?.articulos).includes(articuloReceta.id)), "true");
+  const ventaNuevaDue = propsDe(await arbol(tDue, "ventas/nueva"), "NuevaVentaForm");
+  comprobar("dueno /ventas/nueva: NuevaVentaForm con verCostos y costos (control)", `${ventaNuevaDue?.verCostos}/${claves(ventaNuevaDue?.articulos).has("costoUnitario")}/${claves(ventaNuevaDue?.articulos).has("receta")}`, "true/true/true");
+
+  // Cliente nuevo / editar: el empleado no recibe la lista de listas ni el selector; el dueno si.
+  const formNuevoEmp = propsDe(await arbol(tEmp, "clientes/nuevo"), "ClienteForm");
+  comprobar("empleado /clientes/nuevo: ClienteForm sin listas (no hay selector)", String(formNuevoEmp?.listas), "undefined");
+  const formEditarEmp = propsDe(await arbol(tEmp, "clientes/[id]/editar", parametros(clienteConLista.id)), "ClienteForm");
+  comprobar("empleado /clientes/[id]/editar: ClienteForm sin listas", String(formEditarEmp?.listas), "undefined");
+  comprobar("  y sin la lista asignada en los valores iniciales", JSON.stringify((formEditarEmp?.inicial as { listaPrecioId?: string })?.listaPrecioId), '""');
+  comprobar("  ningun nombre de lista viaja en la pagina", String(texto(await arbol(tEmp, "clientes/[id]/editar", parametros(clienteConLista.id))).includes(MARCA + " lista")), "false");
+  const formNuevoDue = propsDe(await arbol(tDue, "clientes/nuevo"), "ClienteForm");
+  comprobar("dueno /clientes/nuevo: ClienteForm con las listas activas", String((formNuevoDue?.listas as { etiqueta: string }[] | undefined)?.some((l) => l.etiqueta === `${MARCA} lista`)), "true");
+  const formEditarDue = propsDe(await arbol(tDue, "clientes/[id]/editar", parametros(clienteConLista.id)), "ClienteForm");
+  comprobar("dueno /clientes/[id]/editar: ClienteForm con las listas", String(Array.isArray(formEditarDue?.listas)), "true");
+
+  // Advertencia de precios por debajo del costo: solo con `verCostos`; sin ese permiso ni se consultan los costos.
+  console.log("--- Ola 7: AdvertenciaBajoCosto ---");
+  const costosConsultados: string[] = [];
+  const delegado = prisma.articulo as unknown as { findMany: (...args: unknown[]) => unknown };
+  const findManyOriginal = delegado.findMany.bind(delegado);
+  delegado.findMany = (...args: unknown[]) => {
+    costosConsultados.push("articulo.findMany");
+    return findManyOriginal(...args);
+  };
+  const advertenciaEmp = await conSesion(tEmp, () => AdvertenciaBajoCosto({ listaId: lista.id }));
+  comprobar("empleado: AdvertenciaBajoCosto no devuelve nada", String(advertenciaEmp), "null");
+  comprobar("  y no consulto articulos ni recetas", String(costosConsultados.length), "0");
+  const advertenciaSin = await conSesion(undefined, () => AdvertenciaBajoCosto({ listaId: lista.id }));
+  comprobar("sin sesion: AdvertenciaBajoCosto no devuelve nada ni consulta", `${advertenciaSin}/${costosConsultados.length}`, "null/0");
+  const advertenciaDue = await conSesion(tDue, () => AdvertenciaBajoCosto({ listaId: lista.id }));
+  comprobar("dueno: AdvertenciaBajoCosto avisa (precio 100 contra costo 7777) y SI consulta", `${advertenciaDue !== null}/${costosConsultados.length > 0}`, "true/true");
+  comprobar("  y el aviso nombra el costo", String(texto(advertenciaDue).includes("7.777")), "true");
+  delegado.findMany = findManyOriginal as typeof delegado.findMany;
 
   // ── Limpieza ─────────────────────────────────────────────────────────────────
   console.log("--- Limpieza ---");

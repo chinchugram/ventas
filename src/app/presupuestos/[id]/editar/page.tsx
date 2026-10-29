@@ -6,12 +6,14 @@ import { hoyArgentina } from "@/lib/acciones";
 import { getArticulosParaPresupuesto, getClientesParaPresupuesto, getPresupuesto } from "@/lib/queries/presupuestos";
 import { Seccion } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { PresupuestoForm } from "../../_componentes/presupuesto-form";
 import { SinBase } from "../../_componentes/sin-base";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditarPresupuestoPage({ params }: { params: Promise<{ id: string }> }) {
+  await requierePermisoPagina("cargarPresupuesto");
   const { id } = await params;
   const [p, clientes, articulos] = await Promise.all([
     getPresupuesto(id),

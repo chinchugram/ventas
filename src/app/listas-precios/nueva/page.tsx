@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { dbDisponible } from "@/lib/prisma";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { Seccion } from "@/components/ui";
 import { ListaForm } from "../_componentes/lista-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function NuevaListaPage() {
+  await requierePermisoPagina("gestionarListasPrecios");
   const esModoDemo = !(await dbDisponible());
 
   return (

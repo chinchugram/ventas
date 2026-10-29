@@ -151,12 +151,12 @@ export const getListaDeCliente = cache(
     ),
 );
 
-// ─── SOLO DUEÑO (ola 4) ───────────────────────────────────────────────────────
+// ─── Solo con `verCostos` ─────────────────────────────────────────────────────
 
 /**
- * SOLO DUEÑO (ola 4): precios de la lista por debajo del costo de receta.
- * Usa costos, asi que solo lo consume el componente de servidor
- * `AdvertenciaBajoCosto`; nada de esto viaja a componentes cliente.
+ * Precios de la lista por debajo del costo de receta. Usa costos, asi que solo
+ * lo consume el componente de servidor `AdvertenciaBajoCosto`, que verifica
+ * `verCostos` antes de llamarla; nada de esto viaja a componentes cliente.
  */
 export async function getPreciosBajoCosto(listaId: string): Promise<PrecioBajoCosto[]> {
   return conRespaldo(

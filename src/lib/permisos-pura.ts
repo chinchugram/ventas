@@ -7,7 +7,12 @@ import type { Rol } from "@/lib/auth-pura";
 // Regla de oro: lo que no esta en la tabla, no se puede. `DUENO` puede todo lo
 // que esta en la tabla; `EMPLEADO` solo lo que la tabla le nombra de forma explicita.
 
-/** Las doce acciones del contrato de la ola 4 (todas solo para `DUENO`)... */
+/**
+ * Las doce acciones del contrato de la ola 4 (todas solo para `DUENO`)... y
+ * `gestionarListasPrecios` (ola 7): fijar el precio al que se le vende a cada
+ * cliente es una decision del dueno (y esas pantallas avisan cuando un precio
+ * queda por debajo del costo).
+ */
 export type AccionDelDueno =
   | "verCostos"
   | "verMargenes"
@@ -20,10 +25,11 @@ export type AccionDelDueno =
   | "verReportes"
   | "exportarCsv"
   | "configuracion"
-  | "gestionarUsuarios";
+  | "gestionarUsuarios"
+  | "gestionarListasPrecios"; // listas de precios y asignarlas a un cliente
 
 /**
- * ...y las que 4.3 agrega para lo que `EMPLEADO` si puede hacer: tener un nombre
+ * ...y las que 4.3 y la ola 7 agregan para lo que `EMPLEADO` si puede hacer: tener un nombre
  * propio permite exigirlas en cada accion y pagina (y quitarselas a un rol
  * futuro) sin tocar el resto.
  */
@@ -37,7 +43,13 @@ export type AccionDelMostrador =
   | "editarClientes" // alta, edicion y baja logica de clientes
   | "verStock" // materiales: solo cantidades
   | "verReposicion" // lista de reposicion, sin costo estimado
-  | "cambiarClavePropia"; // cada usuario cambia la suya (pide la actual)
+  | "cambiarClavePropia" // cada usuario cambia la suya (pide la actual)
+  // Ola 7: presupuestos (solo precios, nunca costos) y recordatorios de cobranza.
+  | "verPresupuestos"
+  | "cargarPresupuesto" // alta, edicion, duplicado y anulacion de un presupuesto
+  | "convertirPresupuesto" // lo convierte en una venta con los precios congelados
+  | "verRecordatorios" // /cobranzas/hoy: a quien llamar hoy
+  | "registrarContactoCobranza"; // deja constancia de un llamado o mensaje
 
 export type Accion = AccionDelDueno | AccionDelMostrador;
 
@@ -58,6 +70,7 @@ export const PERMISOS: Readonly<Record<Accion, readonly Rol[]>> = {
   exportarCsv: SOLO_DUENO,
   configuracion: SOLO_DUENO,
   gestionarUsuarios: SOLO_DUENO,
+  gestionarListasPrecios: SOLO_DUENO,
 
   verVentas: TODOS,
   cargarVenta: TODOS,
@@ -69,6 +82,11 @@ export const PERMISOS: Readonly<Record<Accion, readonly Rol[]>> = {
   verStock: TODOS,
   verReposicion: TODOS,
   cambiarClavePropia: TODOS,
+  verPresupuestos: TODOS,
+  cargarPresupuesto: TODOS,
+  convertirPresupuesto: TODOS,
+  verRecordatorios: TODOS,
+  registrarContactoCobranza: TODOS,
 };
 
 export const ACCIONES = Object.keys(PERMISOS) as Accion[];

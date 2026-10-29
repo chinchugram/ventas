@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import {
   esDecimal,
@@ -79,6 +80,8 @@ function revalidarPresupuestos(id?: string) {
 export type ResultadoAlta = { ok: true; id: string; numero: number; anio: number } | { ok: false; error: string };
 
 export async function crearPresupuesto(datos: DatosPresupuesto): Promise<ResultadoAlta> {
+  const permiso = await verificarPermiso("cargarPresupuesto");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaPresupuesto.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -97,6 +100,8 @@ const esquemaEdicion = esquemaPresupuesto.extend({ id: z.uuid("Presupuesto invá
 
 /** Solo si esta ABIERTO y no vencido. Conserva los precios de las lineas que ya estaban. */
 export async function editarPresupuesto(datos: z.input<typeof esquemaEdicion>): Promise<Resultado> {
+  const permiso = await verificarPermiso("cargarPresupuesto");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaEdicion.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -112,6 +117,8 @@ export async function editarPresupuesto(datos: z.input<typeof esquemaEdicion>): 
 }
 
 export async function anularPresupuesto(datos: z.input<typeof esquemaId>): Promise<Resultado> {
+  const permiso = await verificarPermiso("cargarPresupuesto");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaId.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -128,6 +135,8 @@ export async function anularPresupuesto(datos: z.input<typeof esquemaId>): Promi
 
 /** Copia como presupuesto nuevo, con los precios de hoy del cliente. */
 export async function duplicarPresupuesto(datos: z.input<typeof esquemaId>): Promise<ResultadoAlta> {
+  const permiso = await verificarPermiso("cargarPresupuesto");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaId.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -151,6 +160,8 @@ export type ResultadoConversion =
  * presupuesto bloqueado: no se puede convertir dos veces.
  */
 export async function convertirPresupuesto(datos: z.input<typeof esquemaId>): Promise<ResultadoConversion> {
+  const permiso = await verificarPermiso("convertirPresupuesto");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaId.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };

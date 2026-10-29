@@ -19,12 +19,14 @@ const BOTON_SECUNDARIO =
 export function AccionesPresupuesto({
   id,
   puedeEditar,
+  puedeDuplicar,
   puedeConvertir,
   puedeAnular,
   vencido,
 }: {
   id: string;
   puedeEditar: boolean;
+  puedeDuplicar: boolean;
   puedeConvertir: boolean;
   puedeAnular: boolean;
   vencido: boolean;
@@ -82,14 +84,16 @@ export function AccionesPresupuesto({
             Editar
           </Link>
         ) : null}
-        <button
-          type="button"
-          disabled={ocupado}
-          onClick={() => duplicado.enviar({ id }, (r) => router.push(`/presupuestos/${r.id}`))}
-          className={`${BOTON_SECUNDARIO} ${vencido ? "col-span-2 border-marca bg-marca-claro text-marca-texto" : ""}`}
-        >
-          {duplicado.pendiente ? "Duplicando…" : "Duplicar con precios de hoy"}
-        </button>
+        {puedeDuplicar ? (
+          <button
+            type="button"
+            disabled={ocupado}
+            onClick={() => duplicado.enviar({ id }, (r) => router.push(`/presupuestos/${r.id}`))}
+            className={`${BOTON_SECUNDARIO} ${vencido ? "col-span-2 border-marca bg-marca-claro text-marca-texto" : ""}`}
+          >
+            {duplicado.pendiente ? "Duplicando…" : "Duplicar con precios de hoy"}
+          </button>
+        ) : null}
       </div>
 
       {puedeAnular ? (

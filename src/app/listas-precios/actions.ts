@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import { esDecimal, mensajeDeError, normalizarDecimal, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import {
@@ -55,6 +56,8 @@ function revalidarListas(id?: string) {
 }
 
 export async function crearLista(datos: DatosLista): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const permiso = await verificarPermiso("gestionarListasPrecios");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaLista.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -75,6 +78,8 @@ export async function crearLista(datos: DatosLista): Promise<{ ok: true; id: str
 }
 
 export async function editarLista(datos: DatosLista & { id: string }): Promise<Resultado> {
+  const permiso = await verificarPermiso("gestionarListasPrecios");
+  if (!permiso.ok) return permiso;
   const id = idLista.safeParse(datos.id);
   if (!id.success) return { ok: false, error: primerError(id.error) };
   const parsed = esquemaLista.safeParse(datos);
@@ -97,6 +102,8 @@ export async function editarLista(datos: DatosLista & { id: string }): Promise<R
 
 /** Baja logica (`activo: false`) o reactivacion. */
 export async function cambiarActivoLista(datos: { id: string; activo: boolean }): Promise<Resultado> {
+  const permiso = await verificarPermiso("gestionarListasPrecios");
+  if (!permiso.ok) return permiso;
   const parsed = z.object({ id: idLista, activo: z.boolean() }).safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -114,6 +121,8 @@ export async function cambiarActivoLista(datos: { id: string; activo: boolean })
 
 /** Alta o edicion del precio especifico de un articulo en la lista. */
 export async function guardarPrecioLista(datos: DatosPrecioLista): Promise<Resultado> {
+  const permiso = await verificarPermiso("gestionarListasPrecios");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaPrecio.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -132,6 +141,8 @@ export async function guardarPrecioLista(datos: DatosPrecioLista): Promise<Resul
 
 /** Quita el precio especifico: el articulo vuelve al descuento general o al catalogo. */
 export async function quitarPrecioLista(datos: { listaId: string; articuloId: string }): Promise<Resultado> {
+  const permiso = await verificarPermiso("gestionarListasPrecios");
+  if (!permiso.ok) return permiso;
   const parsed = z.object({ listaId: idLista, articuloId: idArticulo }).safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };

@@ -39,7 +39,7 @@ function comprobar(etiqueta: string, obtenido: string, esperado: string) {
 
 type Fila = { accion: Accion; DUENO: boolean; EMPLEADO: boolean };
 const MATRIZ: Fila[] = [
-  // Las 12 del contrato: solo el dueno.
+  // Las 12 del contrato (+ las listas de precios de la ola 7): solo el dueno.
   { accion: "verCostos", DUENO: true, EMPLEADO: false },
   { accion: "verMargenes", DUENO: true, EMPLEADO: false },
   { accion: "anularVenta", DUENO: true, EMPLEADO: false },
@@ -52,6 +52,7 @@ const MATRIZ: Fila[] = [
   { accion: "exportarCsv", DUENO: true, EMPLEADO: false },
   { accion: "configuracion", DUENO: true, EMPLEADO: false },
   { accion: "gestionarUsuarios", DUENO: true, EMPLEADO: false },
+  { accion: "gestionarListasPrecios", DUENO: true, EMPLEADO: false },
   // Las que el empleado si puede: cargar ventas, cobrar, entregar, clientes, stock (cantidades), reposicion.
   { accion: "verVentas", DUENO: true, EMPLEADO: true },
   { accion: "cargarVenta", DUENO: true, EMPLEADO: true },
@@ -63,6 +64,12 @@ const MATRIZ: Fila[] = [
   { accion: "verStock", DUENO: true, EMPLEADO: true },
   { accion: "verReposicion", DUENO: true, EMPLEADO: true },
   { accion: "cambiarClavePropia", DUENO: true, EMPLEADO: true },
+  // Ola 7: presupuestos y recordatorios de cobranza (solo precios y saldos, nunca costos).
+  { accion: "verPresupuestos", DUENO: true, EMPLEADO: true },
+  { accion: "cargarPresupuesto", DUENO: true, EMPLEADO: true },
+  { accion: "convertirPresupuesto", DUENO: true, EMPLEADO: true },
+  { accion: "verRecordatorios", DUENO: true, EMPLEADO: true },
+  { accion: "registrarContactoCobranza", DUENO: true, EMPLEADO: true },
 ];
 
 // ─── 2. Que exige cada pagina y cada accion (a mano) ───────────────────────────
@@ -77,16 +84,25 @@ const PAGINAS_ESPERADAS: Record<string, Accion[]> = {
   "/clientes/nuevo": ["editarClientes"],
   "/clientes/[id]/editar": ["editarClientes"],
   "/cobranzas": ["verCobranzas"],
+  "/cobranzas/hoy": ["verRecordatorios"],
   "/compras": ["registrarCompra", "verCostos"],
   "/compras/nueva": ["registrarCompra", "verCostos"],
   "/configuracion": ["configuracion"],
   "/configuracion/maquinas/nueva": ["configuracion"],
   "/configuracion/maquinas/[id]": ["configuracion"],
   "/cortes": ["verCostos"],
+  "/listas-precios": ["gestionarListasPrecios"],
+  "/listas-precios/nueva": ["gestionarListasPrecios"],
+  "/listas-precios/[id]": ["gestionarListasPrecios"],
   "/materiales": ["verStock"],
   "/materiales/[id]": ["verStock"],
   "/materiales/nuevo": ["editarMateriales"],
   "/materiales/[id]/editar": ["editarMateriales", "verCostos", "verMargenes"],
+  "/presupuestos": ["verPresupuestos"],
+  "/presupuestos/nuevo": ["cargarPresupuesto"],
+  "/presupuestos/[id]": ["verPresupuestos"],
+  "/presupuestos/[id]/editar": ["cargarPresupuesto"],
+  "/presupuestos/[id]/imprimir": ["verPresupuestos"],
   "/reportes": ["verReportes", "verCostos", "verMargenes"],
   "/reportes/stock": ["verReportes", "verCostos"],
   "/reposicion": ["verReposicion"],
@@ -101,21 +117,36 @@ const ACCIONES_ESPERADAS: Record<string, Accion> = {
   "clientes/actions.ts#crearCliente": "editarClientes",
   "clientes/actions.ts#editarCliente": "editarClientes",
   "clientes/actions.ts#cambiarActivoCliente": "editarClientes",
+  "cobranzas/hoy/actions.ts#registrarContacto": "registrarContactoCobranza",
   "compras/actions.ts#registrarCompra": "registrarCompra",
   "configuracion/actions.ts#guardarConfiguracion": "configuracion",
   "configuracion/actions.ts#crearMaquina": "configuracion",
   "configuracion/actions.ts#editarMaquina": "configuracion",
   "configuracion/actions.ts#cambiarActivoMaquina": "configuracion",
+  "listas-precios/actions.ts#crearLista": "gestionarListasPrecios",
+  "listas-precios/actions.ts#editarLista": "gestionarListasPrecios",
+  "listas-precios/actions.ts#cambiarActivoLista": "gestionarListasPrecios",
+  "listas-precios/actions.ts#guardarPrecioLista": "gestionarListasPrecios",
+  "listas-precios/actions.ts#quitarPrecioLista": "gestionarListasPrecios",
   "materiales/actions.ts#crearMaterial": "editarMateriales",
   "materiales/actions.ts#editarMaterial": "editarMateriales",
   "materiales/actions.ts#cambiarEstadoMaterial": "editarMateriales",
   "materiales/[id]/actions.ts#ajustarStock": "ajustarStock",
+  // Anular un presupuesto no mueve stock ni caja y solo alcanza a uno que no se convirtio: lo decide quien los carga.
+  "presupuestos/actions.ts#crearPresupuesto": "cargarPresupuesto",
+  "presupuestos/actions.ts#editarPresupuesto": "cargarPresupuesto",
+  "presupuestos/actions.ts#anularPresupuesto": "cargarPresupuesto",
+  "presupuestos/actions.ts#duplicarPresupuesto": "cargarPresupuesto",
+  "presupuestos/actions.ts#convertirPresupuesto": "convertirPresupuesto",
   "reposicion/actions.ts#guardarFactorReposicion": "configuracion",
   "ventas/actions.ts#registrarVenta": "cargarVenta",
   "ventas/[id]/actions.ts#anularVenta": "anularVenta",
   "ventas/[id]/actions.ts#registrarPago": "registrarCobro",
   "ventas/[id]/actions.ts#anularPago": "anularPago",
   "ventas/[id]/actions.ts#marcarEntregada": "marcarEntregada",
+  // Dos acciones con el mismo cuerpo (solo precios): cada pantalla exige su propio permiso.
+  "ventas/nueva/actions.ts#preciosParaCliente": "cargarVenta",
+  "ventas/nueva/actions.ts#preciosParaPresupuesto": "cargarPresupuesto",
 };
 
 const lista = (xs: readonly string[]) => [...xs].sort().join(",");
@@ -194,13 +225,29 @@ function main() {
     comprobar(`${h.archivo}: pide sesion y permisos antes de leer el reporte`, String(h.texto.indexOf("usuarioActual()") < h.texto.indexOf("EXPORTACIONES.get(")), "true");
   }
 
+  console.log("--- Costos en las listas de precios (ola 7) ---");
+  const leerSrc = (...partes: string[]) => readFileSync(join(__dirname, "..", "src", ...partes), "utf8");
+  const advertencia = leerSrc("app", "listas-precios", "_componentes", "advertencia-bajo-costo.tsx");
+  comprobar(
+    "AdvertenciaBajoCosto verifica verCostos ANTES de consultar costos",
+    String(advertencia.includes('"verCostos"') && advertencia.indexOf('"verCostos"') < advertencia.indexOf("await getPreciosBajoCosto(")),
+    "true",
+  );
+  comprobar(
+    "la ficha de la lista solo pinta la advertencia con verCostos",
+    String(/puede\(usuario, "verCostos"\) \? <AdvertenciaBajoCosto/.test(leerSrc("app", "listas-precios", "[id]", "page.tsx"))),
+    "true",
+  );
+
   console.log("--- Navbar: cada entrada pide lo mismo que su pagina ---");
-  const navbar = readFileSync(join(__dirname, "..", "src", "components", "navbar.tsx"), "utf8");
-  const entradas = [...navbar.matchAll(/href: "(\/[^"]*)",[^}]*?acciones: \[([^\]]*)\]/g)].map((m) => ({
-    href: m[1]!,
-    acciones: [...m[2]!.matchAll(/"([A-Za-z]+)"/g)].map((x) => x[1]!),
+  const navbar = leerSrc("components", "navbar.tsx");
+  // Algunas entradas usan una constante de ruta (`href: RUTA_RECORDATORIOS`): se resuelve contra su `const X = "/ruta"`.
+  const rutas = new Map([...navbar.matchAll(/const ([A-Z_]+) = "(\/[^"]*)";/g)].map((m) => [m[1]!, m[2]!] as const));
+  const entradas = [...navbar.matchAll(/href: (?:"(\/[^"]*)"|([A-Z_]+)),[^}]*?acciones: \[([^\]]*)\]/g)].map((m) => ({
+    href: m[1] ?? rutas.get(m[2]!) ?? `(constante ${m[2]} sin resolver)`,
+    acciones: [...m[3]!.matchAll(/"([A-Za-z]+)"/g)].map((x) => x[1]!),
   }));
-  comprobar("entradas del navbar leidas", String(entradas.length), "12");
+  comprobar("entradas del navbar leidas", String(entradas.length), "15");
   for (const e of entradas) {
     if (e.href === "/usuarios") {
       comprobar("navbar /usuarios: solo con gestionarUsuarios (la pagina la crea 4.4)", lista(e.acciones), "gestionarUsuarios");
@@ -212,11 +259,11 @@ function main() {
   }
   const visibles = (rol: "DUENO" | "EMPLEADO") => entradas.filter((e) => puedeTodo({ rol }, e.acciones as Accion[])).map((e) => e.href);
   comprobar(
-    "el empleado ve solo ventas, clientes, materiales, reposicion y cobranzas",
+    "el empleado ve solo ventas, clientes, materiales, reposicion, presupuestos, cobranzas y recordatorios",
     lista(visibles("EMPLEADO")),
-    lista(["/ventas", "/clientes", "/materiales", "/reposicion", "/cobranzas"]),
+    lista(["/ventas", "/clientes", "/materiales", "/reposicion", "/presupuestos", "/cobranzas", "/cobranzas/hoy"]),
   );
-  comprobar("el dueno ve las 12 entradas", String(visibles("DUENO").length), "12");
+  comprobar("el dueno ve las 15 entradas", String(visibles("DUENO").length), "15");
 
   console.log("--- El auditor detecta lo que tiene que detectar ---");
   const base = (cuerpo: string, extra = "") => `"use server";\n${extra}\nexport async function f(datos: { a: string }): Promise<{ ok: true } | { ok: false; error: string }> {\n${cuerpo}\n}\n`;

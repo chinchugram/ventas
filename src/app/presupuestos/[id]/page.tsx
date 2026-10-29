@@ -5,12 +5,14 @@ import { ESTILO_ESTADO, ETIQUETA_ESTADO, numeroPresupuesto, textoPlazo } from "@
 import { getPresupuesto } from "@/lib/queries/presupuestos";
 import { Seccion, Tarjeta } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { AccionesPresupuesto } from "../_componentes/acciones-presupuesto";
 import { SinBase } from "../_componentes/sin-base";
 
 export const dynamic = "force-dynamic";
 
 export default async function PresupuestoPage({ params }: { params: Promise<{ id: string }> }) {
+  const usuario = await requierePermisoPagina("verPresupuestos");
   const { id } = await params;
   const p = await getPresupuesto(id);
   if (!p) {
@@ -128,9 +130,10 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
 
       <AccionesPresupuesto
         id={p.id}
-        puedeEditar={abierto}
-        puedeConvertir={abierto}
-        puedeAnular={p.estado === "ABIERTO" || p.estado === "VENCIDO"}
+        puedeEditar={abierto && puede(usuario, "cargarPresupuesto")}
+        puedeDuplicar={puede(usuario, "cargarPresupuesto")}
+        puedeConvertir={abierto && puede(usuario, "convertirPresupuesto")}
+        puedeAnular={(p.estado === "ABIERTO" || p.estado === "VENCIDO") && puede(usuario, "cargarPresupuesto")}
         vencido={p.estado === "VENCIDO"}
       />
     </>

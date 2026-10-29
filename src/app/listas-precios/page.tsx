@@ -2,12 +2,14 @@ import Link from "next/link";
 import { fmtNumero } from "@/lib/money";
 import { getListasPrecios, type ListaListado } from "@/lib/queries/listas-precios";
 import { dbDisponible } from "@/lib/prisma";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { Seccion, Vacio } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
 /** Listas de precios: un descuento general y/o precios especificos que se asignan a clientes. */
 export default async function ListasPreciosPage() {
+  await requierePermisoPagina("gestionarListasPrecios");
   const [listas, hayBase] = await Promise.all([getListasPrecios(), dbDisponible()]);
   const activas = listas.filter((l) => l.activo);
   const deBaja = listas.filter((l) => !l.activo);

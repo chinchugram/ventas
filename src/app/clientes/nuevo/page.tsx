@@ -1,15 +1,19 @@
 import Link from "next/link";
 import { dbDisponible } from "@/lib/prisma";
 import { getListasParaElegir } from "@/lib/queries/listas-precios";
-import { requierePermisoPagina } from "@/lib/permisos";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { Seccion } from "@/components/ui";
 import { ClienteForm } from "../_componentes/cliente-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function NuevoClientePage() {
-  await requierePermisoPagina("editarClientes");
-  const [esModoDemo, listas] = await Promise.all([dbDisponible().then((ok) => !ok), getListasParaElegir(null)]);
+  const usuario = await requierePermisoPagina("editarClientes");
+  // La lista de precios es una decision de precios: sin `gestionarListasPrecios` ni se consultan las listas.
+  const [esModoDemo, listas] = await Promise.all([
+    dbDisponible().then((ok) => !ok),
+    puede(usuario, "gestionarListasPrecios") ? getListasParaElegir(null) : undefined,
+  ]);
 
   return (
     <>
@@ -25,7 +29,7 @@ export default async function NuevoClientePage() {
           </Link>
         }
       />
-      <ClienteForm esModoDemo={esModoDemo} listas={listas.map((l) => ({ valor: l.id, etiqueta: l.nombre }))} />
+      <ClienteForm esModoDemo={esModoDemo} listas={listas?.map((l) => ({ valor: l.id, etiqueta: l.nombre }))} />
     </>
   );
 }

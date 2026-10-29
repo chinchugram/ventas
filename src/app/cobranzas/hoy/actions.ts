@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import {
   fechaDesdeISO,
   fechaISO,
@@ -36,6 +37,8 @@ export type DatosContacto = z.input<typeof esquemaContacto>;
  * ser una fecha pasada. Ver `registrarContactoEnTx`.
  */
 export async function registrarContacto(datos: DatosContacto): Promise<Resultado> {
+  const permiso = await verificarPermiso("registrarContactoCobranza");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaContacto.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   const { clienteId, nota, proximoContacto } = parsed.data;
