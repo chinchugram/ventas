@@ -25,6 +25,7 @@
     "db:restore": "sh scripts/restaurar.sh",
     "test:costeo": "tsx scripts/verificar-costeo.ts",
     "test:rango-fechas": "tsx scripts/verificar-rango-fechas.ts",
+    "test:reportes-rango": "tsx scripts/verificar-reportes-rango.ts",
     "demo:video": "tsx scripts/grabar-demo.ts",
     "test:stock": "tsx scripts/verificar-stock.ts",
     "test:integridad": "sh scripts/test-integridad.sh",
