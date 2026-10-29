@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { requiereUsuario } from "@/lib/auth";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { puede } from "@/lib/permisos-pura";
 import { dbDisponible } from "@/lib/prisma";
 import { Seccion } from "@/components/ui";
@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Cambiar mi clave" };
  * (solo exige sesion; la lista y la administracion son del dueno).
  */
 export default async function MiClavePage() {
-  const actual = await requiereUsuario();
+  const actual = await requierePermisoPagina("cambiarClavePropia");
   const esModoDemo = !(await dbDisponible());
 
   return (

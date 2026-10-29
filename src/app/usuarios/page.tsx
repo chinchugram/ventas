@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { requiereUsuario } from "@/lib/auth";
-import { inicioDeRol } from "@/lib/auth-pura";
-import { puede } from "@/lib/permisos-pura";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { getUsuarios } from "@/lib/queries/usuarios";
 import { AvisoDemo } from "@/components/form";
 import { Seccion, Vacio } from "@/components/ui";
@@ -14,8 +11,7 @@ export const metadata: Metadata = { title: "Usuarios" };
 
 export default async function UsuariosPage() {
   // Solo el dueno. Un empleado va a su pantalla de inicio (no se le dice que esta pagina existe).
-  const actual = await requiereUsuario();
-  if (!puede(actual, "gestionarUsuarios")) redirect(inicioDeRol(actual.rol));
+  const actual = await requierePermisoPagina("gestionarUsuarios");
 
   const { usuarios, esDemo, duenosActivos } = await getUsuarios(actual);
 

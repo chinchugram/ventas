@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { requiereUsuario } from "@/lib/auth";
-import { inicioDeRol } from "@/lib/auth-pura";
-import { puede } from "@/lib/permisos-pura";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { dbDisponible } from "@/lib/prisma";
 import { Seccion } from "@/components/ui";
 import { UsuarioForm } from "../_componentes/usuario-form";
@@ -12,8 +9,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Nuevo usuario" };
 
 export default async function NuevoUsuarioPage() {
-  const actual = await requiereUsuario();
-  if (!puede(actual, "gestionarUsuarios")) redirect(inicioDeRol(actual.rol));
+  const actual = await requierePermisoPagina("gestionarUsuarios");
 
   const esModoDemo = !(await dbDisponible());
 

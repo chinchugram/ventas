@@ -30,6 +30,7 @@ const QUE: Record<Accion, string> = {
   editarClientes: "editar clientes",
   verStock: "ver el stock",
   verReposicion: "ver la reposición",
+  cambiarClavePropia: "cambiar la clave",
 };
 
 export function mensajeSinPermiso(accion: Accion): string {

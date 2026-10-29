@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { z } from "zod";
-import { requiereUsuario } from "@/lib/auth";
-import { inicioDeRol } from "@/lib/auth-pura";
-import { puede } from "@/lib/permisos-pura";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { getUsuario } from "@/lib/queries/usuarios";
 import { Seccion } from "@/components/ui";
 import { fechaArgentina, InsigniaRol, Pastilla } from "../_formato";
@@ -14,8 +12,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Usuario" };
 
 export default async function UsuarioPage({ params }: { params: Promise<{ id: string }> }) {
-  const actual = await requiereUsuario();
-  if (!puede(actual, "gestionarUsuarios")) redirect(inicioDeRol(actual.rol));
+  const actual = await requierePermisoPagina("gestionarUsuarios");
 
   // El id de la URL tiene que ser un UUID: cualquier otra cosa ni llega a la base.
   const { id } = await params;

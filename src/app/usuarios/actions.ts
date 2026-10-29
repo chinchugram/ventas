@@ -7,7 +7,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { dbDisponible, prisma } from "@/lib/prisma";
 import { ErrorDeNegocio, mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { CLAVE_MAX } from "@/lib/auth-pura";
-import { COOKIE_SESION, opcionesCookieSesion, usuarioParaAccion } from "@/lib/auth";
+import { COOKIE_SESION, opcionesCookieSesion } from "@/lib/auth";
 import { verificarPermiso } from "@/lib/permisos";
 import {
   cambiarActivoUsuarioEnTx,
@@ -135,8 +135,8 @@ export async function resetearClaveUsuario(datos: { id: string; clave: string })
  * deja abierta una nueva en este navegador (token nuevo, cookie repuesta).
  */
 export async function cambiarMiClave(datos: { actual: string; nueva: string; repetir: string }): Promise<Resultado> {
-  const sesion = await usuarioParaAccion();
-  if (!sesion.ok) return sesion;
+  const permiso = await verificarPermiso("cambiarClavePropia");
+  if (!permiso.ok) return permiso;
   const parsed = z.object({ actual: claveTipeada, nueva: claveTipeada, repetir: claveTipeada }).safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -144,7 +144,7 @@ export async function cambiarMiClave(datos: { actual: string; nueva: string; rep
   try {
     // `prisma` y no una transaccion: la verificacion de la clave actual tiene que
     // dejar anotado el intento fallido aunque la operacion termine en error.
-    const nueva = await cambiarClavePropia(prisma, sesion.usuario, parsed.data);
+    const nueva = await cambiarClavePropia(prisma, permiso.usuario, parsed.data);
     (await cookies()).set(COOKIE_SESION, nueva.token, opcionesCookieSesion(nueva.expiraEn));
   } catch (error) {
     return fallo("cambiarMiClave", error, "No se pudo cambiar la clave.");

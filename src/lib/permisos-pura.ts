@@ -36,7 +36,8 @@ export type AccionDelMostrador =
   | "verClientes"
   | "editarClientes" // alta, edicion y baja logica de clientes
   | "verStock" // materiales: solo cantidades
-  | "verReposicion"; // lista de reposicion, sin costo estimado
+  | "verReposicion" // lista de reposicion, sin costo estimado
+  | "cambiarClavePropia"; // cada usuario cambia la suya (pide la actual)
 
 export type Accion = AccionDelDueno | AccionDelMostrador;
 
@@ -67,6 +68,7 @@ export const PERMISOS: Readonly<Record<Accion, readonly Rol[]>> = {
   editarClientes: TODOS,
   verStock: TODOS,
   verReposicion: TODOS,
+  cambiarClavePropia: TODOS,
 };
 
 export const ACCIONES = Object.keys(PERMISOS) as Accion[];

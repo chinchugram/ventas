@@ -62,6 +62,7 @@ const MATRIZ: Fila[] = [
   { accion: "editarClientes", DUENO: true, EMPLEADO: true },
   { accion: "verStock", DUENO: true, EMPLEADO: true },
   { accion: "verReposicion", DUENO: true, EMPLEADO: true },
+  { accion: "cambiarClavePropia", DUENO: true, EMPLEADO: true },
 ];
 
 // ─── 2. Que exige cada pagina y cada accion (a mano) ───────────────────────────
@@ -159,7 +160,8 @@ function main() {
     comprobar(`${clave}`, String(acciones.exigidas.get(clave)), esperada);
   }
   for (const [clave, exigida] of acciones.exigidas) {
-    if (deUsuarios(clave)) comprobar(`${clave} (administracion de usuarios)`, String(exigida), "gestionarUsuarios");
+    // Unica excepcion: cada usuario cambia su propia clave (cualquier rol, pide la actual).
+    if (deUsuarios(clave)) comprobar(`${clave} (administracion de usuarios)`, String(exigida), clave.endsWith("#cambiarMiClave") ? "cambiarClavePropia" : "gestionarUsuarios");
   }
   const prohibidasParaEmpleado = Object.values(ACCIONES_ESPERADAS).filter((a) => !puede({ rol: "EMPLEADO" }, a)).length;
   console.log(`     (${prohibidasParaEmpleado} de ${Object.keys(ACCIONES_ESPERADAS).length} acciones estan prohibidas para el empleado)`);
@@ -169,7 +171,8 @@ function main() {
   const esDeUsuarios = (ruta: string) => ruta === "/usuarios" || ruta.startsWith("/usuarios/");
   comprobar("paginas auditadas", lista(todas.filter((p) => !esDeUsuarios(p.ruta)).map((p) => p.ruta)), lista(Object.keys(PAGINAS_ESPERADAS)));
   for (const p of todas.filter((x) => esDeUsuarios(x.ruta))) {
-    comprobar(`${p.ruta} (administracion de usuarios) exige gestionarUsuarios`, String((permisosDePagina(p.texto) ?? []).includes("gestionarUsuarios")), "true");
+    const exigida = p.ruta === "/usuarios/mi-clave" ? "cambiarClavePropia" : "gestionarUsuarios";
+    comprobar(`${p.ruta} (administracion de usuarios) exige ${exigida}`, String((permisosDePagina(p.texto) ?? []).includes(exigida as Accion)), "true");
     comprobar(`${p.ruta}: verifica antes de leer datos`, String(verificaAntesDeLeer(p.texto)), "true");
   }
   for (const p of todas) {
