@@ -51,14 +51,18 @@ model Cliente {
   direccion  String?
   notas      String?
   activo     Boolean  @default(true)
+  /// Lista de precios del cliente (opcional). Si la lista esta inactiva se ignora.
+  listaPrecioId String? @db.Uuid
   creadoEn   DateTime @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
+  listaPrecio ListaPrecio? @relation(fields: [listaPrecioId], references: [id], onDelete: Restrict)
   ventas Venta[]
   pagos  Pago[]
 
   @@index([activo])
   @@index([nombre])
+  @@index([listaPrecioId])
   @@map("clientes")
 }
 
@@ -112,10 +116,48 @@ model Articulo {
 
   receta   Receta?
   ventaItems VentaItem[]
+  preciosDeLista ListaPrecioItem[]
 
   @@index([activo])
   @@index([nombre])
   @@map("articulos")
+}
+
+/// Lista de precios para un grupo de clientes: un descuento general sobre el
+/// precio de catalogo y/o precios especificos por articulo (ListaPrecioItem).
+/// CHECK en la migracion: descuento entre 0 y 100.
+model ListaPrecio {
+  id           String   @id @default(uuid()) @db.Uuid
+  nombre       String   @unique
+  /// Porcentaje (0-100) que se descuenta del precio de catalogo.
+  descuentoPct Decimal  @default(0) @db.Decimal(5, 2)
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  items    ListaPrecioItem[]
+  clientes Cliente[]
+
+  @@index([activo])
+  @@map("listas_precios")
+}
+
+/// Precio especifico de un articulo dentro de una lista. Mismo criterio de IVA
+/// que `Articulo.precioVenta`. CHECK en la migracion: precio >= 0.
+model ListaPrecioItem {
+  id            String   @id @default(uuid()) @db.Uuid
+  listaPrecioId String   @db.Uuid
+  articuloId    String   @db.Uuid
+  precio        Decimal  @db.Decimal(14, 4)
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  listaPrecio ListaPrecio @relation(fields: [listaPrecioId], references: [id], onDelete: Cascade)
+  articulo    Articulo    @relation(fields: [articuloId], references: [id])
+
+  @@unique([listaPrecioId, articuloId])
+  @@index([articuloId])
+  @@map("lista_precio_items")
 }
 
 model Receta {

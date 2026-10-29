@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { fmtFecha, fmtMoneda } from "@/lib/money";
+import { fmtFecha, fmtMoneda, fmtNumero } from "@/lib/money";
 import { formatearCuit } from "@/lib/cuit";
 import { getCliente } from "@/lib/queries/clientes";
+import { getListaDeCliente } from "@/lib/queries/listas-precios";
 import { ESTILO_ESTADO_PAGO, ETIQUETA_ESTADO_PAGO } from "@/lib/queries/ventas";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
 import { BotonActivoCliente } from "../_componentes/boton-activo";
@@ -20,6 +21,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const c = await getCliente(id);
   if (!c) notFound();
+  const lista = await getListaDeCliente(c.id);
 
   const debe = c.saldo.cmp(0) > 0;
   const datos = [
@@ -27,6 +29,12 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
     { etiqueta: "Teléfono", valor: c.telefono },
     { etiqueta: "Email", valor: c.email },
     { etiqueta: "Dirección", valor: c.direccion },
+    {
+      etiqueta: "Lista de precios",
+      valor: lista
+        ? `${lista.nombre}${lista.descuentoPct.gt(0) ? ` (−${fmtNumero(lista.descuentoPct)}%)` : ""}${lista.activo ? "" : " · de baja, no se aplica"}`
+        : null,
+    },
   ].filter((x) => x.valor);
   const vigentes = c.ventas.filter((v) => v.estado !== "ANULADA").length;
 

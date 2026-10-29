@@ -6,4 +6,4 @@ set -e
 echo "Ejecutando pruebas de integridad..."
 docker compose exec -T db psql -U ventas -d ventas < scripts/test-integridad.sql
 echo ""
-echo "Revisar la salida: 10 errores esperados (uno por restriccion) y 1 INSERT aceptado."
+echo "Revisar la salida: 12 errores esperados (uno por restriccion) y 1 INSERT aceptado."
