@@ -35,7 +35,8 @@ const SECUNDARIAS: Seccion[] = [
 ];
 // Se usan poco: en el celular van al final de "Mas". En escritorio, la configuracion es un icono
 // junto a "Nueva venta" y "Usuarios" vive en el menu de la cuenta (la barra a 1024 px justo entra).
-// La pagina `/usuarios` la arma la tarea 4.4; hasta entonces el enlace del dueno lleva a un 404.
+// La pagina `/usuarios/mi-clave` la ve cualquier rol; la administracion (`/usuarios`) solo el dueno.
+const MI_CLAVE = "/usuarios/mi-clave";
 const USUARIOS: Seccion = { href: "/usuarios", etiqueta: "Usuarios", icono: "clientes", acciones: ["gestionarUsuarios"] };
 const CONFIGURACION: Seccion = {
   href: "/configuracion",
@@ -276,6 +277,13 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
             <p className="min-w-0 text-sm text-slate-600">
               <span className="block truncate font-semibold text-slate-900">{usuario.nombre}</span>
               {ETIQUETA_ROL[usuario.rol]}
+              <Link
+                href={MI_CLAVE}
+                onClick={() => setMasAbierto(false)}
+                className="flex min-h-11 items-center font-medium text-marca-texto underline underline-offset-2"
+              >
+                Cambiar mi clave
+              </Link>
             </p>
             <BotonSalir className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 active:bg-slate-100">
               <IconoSalir className="h-5 w-5" />
@@ -471,6 +479,13 @@ function MenuUsuario({
               {s.etiqueta}
             </Link>
           ))}
+          <Link
+            href={MI_CLAVE}
+            aria-current={estaActiva(pathname, MI_CLAVE) ? "page" : undefined}
+            className="mt-3 flex min-h-11 w-full items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Cambiar mi clave
+          </Link>
           <BotonSalir className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             <IconoSalir className="h-5 w-5" />
             Cerrar sesión
