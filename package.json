@@ -23,6 +23,7 @@
     "db:studio": "prisma studio",
     "db:backup": "sh scripts/backup.sh",
     "test:costeo": "tsx scripts/verificar-costeo.ts",
+    "test:rango-fechas": "tsx scripts/verificar-rango-fechas.ts",
     "demo:video": "tsx scripts/grabar-demo.ts",
     "test:integridad": "sh scripts/test-integridad.sh"
   },
