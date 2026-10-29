@@ -109,18 +109,29 @@ mostrar un margen del 100% que es una mentira.
 
 ---
 
-## Mockup de la carga de venta
+## Carga de venta
 
-`/ventas/nueva` existe para **mostrarle el flujo al dueño y recoger opinión antes de invertir
-en la persistencia**. Calcula costos, IVA, márgenes y saldo pendiente con el mismo motor que
-usaría la versión real (`lib/costing.ts`), así que los números que muestra son los de verdad,
-salidos de las recetas del catálogo. Lo único que no existe es el guardado.
+`/ventas/nueva` guarda la venta de verdad cuando hay base de datos con catálogo y clientes.
+En pantalla se ven costo, IVA y margen en vivo, pero **al confirmar el servidor recalcula todo
+desde la base** (precio, IVA y costo de receta del momento): el navegador solo informa qué se
+vendió, cuánto y a quién. En una sola transacción:
 
-Al apretar "Guardar venta" muestra el comprobante interno que se generaría, sin escribir nada
-en la base. Hay un banner que lo dice en pantalla, para que nadie crea que se guardó.
+- numera la venta correlativa por año,
+- congela el costo de cada ítem,
+- descuenta el stock de los materiales de cada receta (un movimiento por material; los servicios no descuentan),
+- registra el pago inicial, si lo hubo.
 
-**Para mostrar:** `npm run dev` → http://localhost:3000/ventas/nueva. Conviene tener el catálogo
-con recetas cargadas (`npm run db:seed`), porque sin receta el margen sale como desconocido.
+**Nunca se frena una venta por falta de stock**: el sistema puede estar desactualizado y el pedido
+ya está hecho. Se descuenta lo que hay, el movimiento deja constancia de lo que faltó y la
+pantalla avisa.
+
+`/ventas/[id]` muestra el detalle y permite **anular**: la venta queda `ANULADA` (no se borra) y
+el stock vuelve exactamente como salió.
+
+Sin base de datos (o sin datos cargados) la pantalla funciona como **simulación en modo demo**:
+muestra el comprobante que se generaría, con un aviso, sin escribir nada.
+
+Todavía no hay pantalla para registrar cobros posteriores sobre una venta existente.
 
 ---
 
@@ -130,7 +141,8 @@ con recetas cargadas (`npm run db:seed`), porque sin receta el margen sale como 
 |---|---|
 | `/` | Cómo va el mes: facturado, cobrado, costo, ganancia, márgenes, alertas |
 | `/ventas` | Historial de ventas con margen y estado de pago |
-| `/ventas/nueva` | **Mockup** de la carga de venta: calcula todo en vivo, todavía no guarda |
+| `/ventas/nueva` | Carga de venta: calcula en vivo y guarda (descuenta stock) |
+| `/ventas/[id]` | Detalle de una venta, pagos y anulación |
 | `/clientes` | Quién es cada cliente y cuánto debe |
 | `/catalogo` | Costo por receta, precio, margen y precio necesario para la meta |
 | `/materiales` | Stock, valorización y avisos de reposición |
@@ -195,7 +207,7 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 - `src/lib/money.ts`: aritmética decimal y formateo es-AR.
 - Consultas del dashboard, catálogo, clientes, materiales, ventas y reportes.
 - Las 6 pantallas renderizan con datos reales.
-- `/ventas/nueva`: mockup funcional de la carga de venta, con márgenes reales calculados en vivo.
+- `/ventas/nueva`: carga de venta que guarda, congela costos y descuenta stock; `/ventas/[id]` permite anularla.
 - `npm run test:costeo` (15 comprobaciones) y `npm run test:integridad` (10 casos) pasan.
 - `npm run build` y `npm run typecheck` limpios.
 

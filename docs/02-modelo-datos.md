@@ -153,8 +153,10 @@ compra (último precio pagado = costo de reposición); las ventas viejas conserv
 
 ### `MovimientoStock` (etapa 2)
 Libro de stock, nunca se edita. `tipo` (`COMPRA`, `VENTA` o `AJUSTE`), `cantidad` con signo,
-`stockResultante` (saldo luego del movimiento, CHECK >= 0), `motivo?`, `compraId?`.
-`VENTA` queda reservado para el descuento automático al confirmar ventas.
+`stockResultante` (saldo luego del movimiento, CHECK >= 0), `motivo?`, `compraId?`, `ventaId?`.
+`VENTA` es el descuento al confirmar una venta (uno por material de las recetas); al anularla se
+crean movimientos `VENTA` de signo contrario con lo que realmente salió. Si faltaba stock, se
+descuenta lo disponible (el saldo nunca es negativo) y el motivo deja constancia del faltante.
 Los ajustes por conteo físico registran la diferencia como `AJUSTE` con su motivo.
 
 ### `Configuracion`

@@ -171,6 +171,7 @@ model Venta {
   cliente   Cliente     @relation(fields: [clienteId], references: [id])
   items     VentaItem[]
   pagos     Pago[]
+  movimientos MovimientoStock[]
 
   @@unique([anio, numero])
   @@index([fecha])
@@ -276,12 +277,15 @@ model MovimientoStock {
   stockResultante Decimal        @db.Decimal(14, 3)
   motivo          String?
   compraId        String?        @db.Uuid
+  ventaId         String?        @db.Uuid
   creadoEn        DateTime       @default(now()) @db.Timestamptz(3)
 
   material Material @relation(fields: [materialId], references: [id])
   compra   Compra?  @relation(fields: [compraId], references: [id])
+  venta    Venta?   @relation(fields: [ventaId], references: [id])
 
   @@index([materialId, creadoEn])
   @@index([compraId])
+  @@index([ventaId])
   @@map("movimientos_stock")
 }

@@ -1,11 +1,15 @@
 import { fmtFecha, fmtMonedaCorta as fmtMoneda, fmtNumero, sumar } from "@/lib/money";
 import { ETIQUETA_ESTADO_PAGO, ESTILO_ESTADO_PAGO, getVentas } from "@/lib/queries/ventas";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
+import { estadoDemo } from "@/lib/respaldo";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function VentasPage() {
   const ventas = await getVentas(50);
+  // Las ventas de demostracion no tienen detalle: solo se enlaza con base real.
+  const conDetalle = !estadoDemo().activo;
 
   const facturado = sumar(...ventas.map((v) => v.totalBruto));
   const pendiente = sumar(...ventas.map((v) => v.saldo));
@@ -35,7 +39,14 @@ export default async function VentasPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-medium text-slate-900">
-                    #{v.numero}/{v.anio} · {v.clienteNombre}
+                    {conDetalle ? (
+                      <Link href={`/ventas/${v.id}`} className="underline-offset-2 hover:underline">
+                        #{v.numero}/{v.anio}
+                      </Link>
+                    ) : (
+                      `#${v.numero}/${v.anio}`
+                    )}{" "}
+                    · {v.clienteNombre}
                   </p>
                   <p className="text-sm text-slate-500">
                     {fmtFecha(v.fecha)} · {fmtNumero(v.items)}{" "}

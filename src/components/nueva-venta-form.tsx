@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { aMoneda, d, fmtMoneda, fmtNumero, fmtPorcentaje, type Dinero } from "@/lib/money";
+import { registrarVenta } from "@/app/ventas/actions";
 import {
   calcularMargen,
   costearLineaVenta,
@@ -13,11 +14,12 @@ import {
 } from "@/lib/costing";
 
 /**
- * MOCKUP de la carga de venta.
+ * Carga de venta.
  *
- * Importa el MISMO motor de costeo que usaria la version real (`lib/costing.ts`).
- * No hay logica de negocio duplicada ni numeros de Showcase: los margenes que ve
- * el dueño son los que saldrian de sus propias recetas.
+ * Los numeros en pantalla salen del MISMO motor de costeo que usa el servidor
+ * (`lib/costing.ts`), pero son informativos: al confirmar, el servidor recalcula
+ * todo desde la base. Sin base de datos (modo demo) la venta se simula en
+ * memoria y no se guarda nada.
  */
 
 export type ComponenteDTO = {
@@ -86,6 +88,9 @@ export function NuevaVentaForm({
   const [metodo, setMetodo] = useState<string>("EFECTIVO");
   const [observaciones, setObservaciones] = useState("");
   const [comprobante, setComprobante] = useState<Simulacion | null>(null);
+  const [entregada, setEntregada] = useState(true);
+  const [guardando, iniciarGuardado] = useTransition();
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
 
   function cargarEjemploDemo() {
     // Solo artículos con receta: uno sin receta tiene costo 0 y mostraría un
@@ -198,8 +203,7 @@ export function NuevaVentaForm({
   }
 
   function confirmar() {
-    setComprobante({
-      numero: Math.floor(Math.random() * 900 + 100),
+    const base = {
       cliente: cliente?.nombre ?? "",
       lineas: lineasCalculadas,
       totales,
@@ -207,6 +211,27 @@ export function NuevaVentaForm({
       metodo,
       estadoPago: estadoPago(totales.totalBruto, cobrado),
       observaciones,
+    };
+
+    if (esModoDemo) {
+      setComprobante({ ...base, numero: `${Math.floor(Math.random() * 900 + 100)}`, guardada: false, advertencias: [] });
+      return;
+    }
+
+    setErrorGuardado(null);
+    iniciarGuardado(async () => {
+      const r = await registrarVenta({
+        clienteId,
+        observaciones,
+        entregada,
+        items: lineasCalculadas.map((l) => ({ articuloId: l.articulo.id, cantidad: l.linea.cantidad })),
+        pago: cobrado.gt(0) ? { monto: cobrado.toString(), metodo: metodo as "EFECTIVO" } : null,
+      });
+      if (r.ok) {
+        setComprobante({ ...base, numero: `${r.numero}/${r.anio}`, guardada: true, advertencias: r.advertencias, ventaId: r.id });
+      } else {
+        setErrorGuardado(r.error);
+      }
     });
   }
 
@@ -228,12 +253,14 @@ export function NuevaVentaForm({
 
   return (
     <div className="space-y-6 pb-28">
-      <BannerMockup
-        onCargarEjemplo={cargarEjemploDemo}
-        onLimpiar={limpiarFormulario}
-        tieneLineas={lineas.length > 0}
-        esModoDemo={esModoDemo}
-      />
+      {esModoDemo ? (
+        <BannerMockup
+          onCargarEjemplo={cargarEjemploDemo}
+          onLimpiar={limpiarFormulario}
+          tieneLineas={lineas.length > 0}
+          esModoDemo={esModoDemo}
+        />
+      ) : null}
 
       <section>
         <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
@@ -458,6 +485,21 @@ export function NuevaVentaForm({
       </section>
 
       <section>
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-normal text-slate-700">
+          <input
+            type="checkbox"
+            checked={entregada}
+            onChange={(e) => setEntregada(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0"
+          />
+          <span>
+            Ya se entregó
+            <span className="block text-slate-500">Si no, queda como pedido pendiente (el stock se descuenta igual).</span>
+          </span>
+        </label>
+      </section>
+
+      <section>
         <label htmlFor="obs">Observaciones</label>
         <textarea
           id="obs"
@@ -472,7 +514,9 @@ export function NuevaVentaForm({
         total={totales.totalBruto}
         ganancia={totales.ganancia}
         margenPct={totales.margenPct}
-        habilitado={hayLineas && clienteId !== ""}
+        habilitado={hayLineas && clienteId !== "" && !guardando}
+        guardando={guardando}
+        error={errorGuardado}
         onConfirmar={confirmar}
       />
     </div>
@@ -480,7 +524,11 @@ export function NuevaVentaForm({
 }
 
 type Simulacion = {
-  numero: number;
+  numero: string;
+  /** true = ya esta en la base; false = simulacion del modo demo. */
+  guardada: boolean;
+  advertencias: string[];
+  ventaId?: string;
   cliente: string;
   lineas: LineaCalculada[];
   totales: TotalesVenta;
@@ -508,14 +556,30 @@ function ComprobanteSimulado({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-        <p className="text-sm font-semibold text-amber-900">
-          Asi quedaria el comprobante interno.
-        </p>
-        <p className="mt-1 text-sm text-amber-800">
-          Esto se genero en memoria: no se guardo nada en la base ni se desconto stock.
-        </p>
-      </div>
+      {sim.guardada ? (
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4">
+          <p className="text-sm font-semibold text-emerald-900">Venta guardada.</p>
+          <p className="mt-1 text-sm text-emerald-800">Se descontó el stock de los materiales.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">Así quedaría el comprobante interno.</p>
+          <p className="mt-1 text-sm text-amber-800">
+            Esto se generó en memoria: no se guardó nada en la base ni se descontó stock.
+          </p>
+        </div>
+      )}
+
+      {sim.advertencias.length > 0 ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">Revisá el stock</p>
+          <ul className="mt-1 list-disc pl-5 text-sm text-amber-800">
+            {sim.advertencias.map((a) => (
+              <li key={a}>{a}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="overflow-hidden rounded-xl border border-slate-300 bg-white">
         <div className="border-b border-dashed border-slate-300 p-4 text-center">
@@ -589,20 +653,22 @@ function ComprobanteSimulado({
           Imprimir comprobante
         </button>
         <Link
-          href="/ventas"
+          href={sim.ventaId ? `/ventas/${sim.ventaId}` : "/ventas"}
           className="rounded-lg bg-marca px-4 py-3 text-center text-sm font-semibold text-tinta hover:opacity-90"
         >
-          Volver a ventas
+          {sim.ventaId ? "Ver la venta" : "Volver a ventas"}
         </Link>
       </div>
 
-      <button
-        type="button"
-        onClick={onVolver}
-        className="w-full text-sm text-slate-500 hover:underline"
-      >
-        Volver a editar la venta
-      </button>
+      {sim.guardada ? null : (
+        <button
+          type="button"
+          onClick={onVolver}
+          className="w-full text-sm text-slate-500 hover:underline"
+        >
+          Volver a editar la venta
+        </button>
+      )}
     </div>
   );
 }
@@ -662,16 +728,25 @@ function BarraInferior({
   ganancia,
   margenPct,
   habilitado,
+  guardando,
+  error,
   onConfirmar,
 }: {
   total: Dinero;
   ganancia: Dinero;
   margenPct: Dinero;
   habilitado: boolean;
+  guardando: boolean;
+  error: string | null;
   onConfirmar: () => void;
 }) {
   return (
     <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t border-slate-200 bg-white/95 backdrop-blur md:bottom-0">
+      {error ? (
+        <p role="alert" className="mx-auto max-w-5xl bg-red-50 px-4 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
       <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-xs text-slate-500">Total</p>
@@ -688,7 +763,7 @@ function BarraInferior({
           disabled={!habilitado}
           className="shrink-0 rounded-lg bg-marca px-5 py-3 text-sm font-semibold text-tinta disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          Guardar venta
+          {guardando ? "Guardando…" : "Guardar venta"}
         </button>
       </div>
     </div>

@@ -97,7 +97,7 @@ Respuesta directa a *"¿cómo va el mes?"*:
 
 | Etapa | Qué resuelve | Por qué |
 |---|---|---|
-| **2 — Stock real** *(en curso: compras, libro de movimientos y ajuste por conteo hechos; falta el descuento por venta, que llega con la persistencia de ventas)* | Compras, movimientos de entrada/salida, alertas por stock mínimo | Hoy el dueño compra a ciegas. El MVP solo le avisa si el stock *virtual* baja del mínimo. |
+| **2 — Stock real** *(en curso: compras, libro de movimientos y ajuste por conteo hechos; ventas persistidas con descuento de stock y anulación; falta la lista de reposición sugerida)* | Compras, movimientos de entrada/salida, alertas por stock mínimo | Hoy el dueño compra a ciegas. El MVP solo le avisa si el stock *virtual* baja del mínimo. |
 | **3 — Multi-usuario** | Login, registro de quién hizo cada venta | Cuando el negocio crezca o para no perder trazabilidad. |
 | **4 — Facturación electrónica** | Factura A/B ante ARCA, CAE, certificado digital | Requisito legal/comercial. El modelo ya está preparado: falta el emisor. |
 | **5 — Productividad** | Costeo real por máquina/consumo medido, tiempos por arte | Pasa de margen estimado a margen real. Es el salto de calidad. |
