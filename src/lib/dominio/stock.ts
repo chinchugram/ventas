@@ -10,7 +10,7 @@ import type { Tx } from "./tx";
  */
 export async function ajustarStockEnTx(
   tx: Tx,
-  ajuste: { materialId: string; stockContado: Dinero; motivo: string },
+  ajuste: { materialId: string; stockContado: Dinero; motivo: string; usuarioId?: string | null },
 ): Promise<{ diferencia: Dinero }> {
   const { materialId, stockContado, motivo } = ajuste;
 
@@ -27,7 +27,14 @@ export async function ajustarStockEnTx(
 
   await tx.material.update({ where: { id: materialId }, data: { stockActual: stockContado } });
   await tx.movimientoStock.create({
-    data: { materialId, tipo: "AJUSTE", cantidad: diferencia, stockResultante: stockContado, motivo },
+    data: {
+      materialId,
+      tipo: "AJUSTE",
+      cantidad: diferencia,
+      stockResultante: stockContado,
+      motivo,
+      usuarioId: ajuste.usuarioId ?? null,
+    },
   });
   return { diferencia };
 }

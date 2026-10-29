@@ -39,6 +39,8 @@ export type PagoNuevo = {
   monto: Dinero;
   metodo: MetodoPago;
   notas: string | null;
+  /** Quien lo registra. ausente = sin usuario. */
+  usuarioId?: string | null;
 };
 
 /**
@@ -61,6 +63,7 @@ export async function registrarPagoEnTx(tx: Tx, pago: PagoNuevo): Promise<{ id: 
       monto: pago.monto,
       metodo: pago.metodo,
       notas: pago.notas,
+      usuarioId: pago.usuarioId ?? null,
     },
     select: { id: true },
   });

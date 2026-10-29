@@ -19,8 +19,18 @@ export function opcionesCookieSesion(expiraEn: Date) {
   return opcionesCookie(expiraEn, PRODUCCION);
 }
 
+const ID_DEMO = "00000000-0000-0000-0000-000000000000";
+
 /** Usuario simulado del modo demo: solo en desarrollo y solo si no hay base. */
-const DEMO: UsuarioSesion = { id: "00000000-0000-0000-0000-000000000000", usuario: "demo", nombre: "Demo", rol: "DUENO" };
+const DEMO: UsuarioSesion = { id: ID_DEMO, usuario: "demo", nombre: "Demo", rol: "DUENO" };
+
+/**
+ * El id para guardar en `usuarioId` (ventas, pagos, compras, movimientos): el del
+ * usuario, o `null` si es el demo, que no existe en la tabla `usuarios`.
+ */
+export function idParaGuardar(usuario: UsuarioSesion): string | null {
+  return usuario.id === ID_DEMO ? null : usuario.id;
+}
 
 async function demoSiNoHayBase(): Promise<UsuarioSesion | null> {
   if (PRODUCCION) return null;

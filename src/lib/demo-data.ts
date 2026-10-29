@@ -347,6 +347,7 @@ export function demoCompras(): CompraListada[] {
       proveedor: c.proveedor,
       comprobante: c.comprobante,
       total: sumar(...items.map((i) => subtotalCompra(i.cantidad, i.costoUnitario))),
+      registradoPor: null,
       items,
     };
   });
@@ -374,7 +375,7 @@ export function demoMovimientos(materialId: string): MovimientoListado[] {
   return entradas.map((e) => {
     const resultante = saldo;
     saldo = saldo.minus(e.cantidad);
-    return { ...e, tipo: "COMPRA" as const, stockResultante: resultante };
+    return { ...e, tipo: "COMPRA" as const, stockResultante: resultante, registradoPor: null };
   });
 }
 

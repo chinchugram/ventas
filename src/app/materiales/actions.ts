@@ -13,6 +13,7 @@ import {
   type Resultado,
 } from "@/lib/acciones";
 import { UNIDADES } from "@/lib/materiales";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { cambiarEstadoMaterialEnTx, crearMaterialEnTx, editarMaterialEnTx } from "@/lib/dominio/materiales";
 
 // Alta, edicion y baja logica de materiales. El stock no se edita aca: solo
@@ -84,6 +85,9 @@ export async function crearMaterial(
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   const m = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
   let id: string;
   try {
     ({ id } = await prisma.$transaction((tx) =>
@@ -95,6 +99,7 @@ export async function crearMaterial(
         costoUnitario: d(m.costoUnitario),
         precioVenta: m.precioVenta === null ? null : d(m.precioVenta),
         notas: m.notas,
+        usuarioId,
       }),
     ));
   } catch (error) {

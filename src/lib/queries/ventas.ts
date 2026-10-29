@@ -118,6 +118,8 @@ export type VentaDetalle = {
   saldo: Dinero;
   estadoPago: EstadoPago;
   items: { id: string; descripcion: string; cantidad: Dinero; precioUnitario: Dinero; subtotalBruto: Dinero }[];
+  /** Nombre de quien la cargo; null = historico (se muestra "—"). */
+  registradoPor: string | null;
   /** Todos los pagos, tambien los anulados (se muestran tachados y no cuentan). */
   pagos: {
     id: string;
@@ -127,6 +129,7 @@ export type VentaDetalle = {
     notas: string | null;
     anuladoEn: Date | null;
     motivoAnulacion: string | null;
+    registradoPor: string | null;
   }[];
 };
 
@@ -139,8 +142,12 @@ export const getVenta = cache(
           where: { id },
           include: {
             cliente: { select: { id: true, nombre: true } },
+            usuario: { select: { nombre: true } },
             items: { orderBy: { id: "asc" } },
-            pagos: { orderBy: [{ fecha: "asc" }, { creadoEn: "asc" }] },
+            pagos: {
+              orderBy: [{ fecha: "asc" }, { creadoEn: "asc" }],
+              include: { usuario: { select: { nombre: true } } },
+            },
           },
         });
         if (!v) return null;
@@ -169,6 +176,7 @@ export const getVenta = cache(
             precioUnitario: i.precioUnitario,
             subtotalBruto: i.subtotalBruto,
           })),
+          registradoPor: v.usuario?.nombre ?? null,
           pagos: v.pagos.map((p) => ({
             id: p.id,
             fecha: p.fecha,
@@ -177,6 +185,7 @@ export const getVenta = cache(
             notas: p.notas,
             anuladoEn: p.anuladoEn,
             motivoAnulacion: p.motivoAnulacion,
+            registradoPor: p.usuario?.nombre ?? null,
           })),
         };
       },

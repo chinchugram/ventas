@@ -64,6 +64,7 @@ export default async function MaterialPage({ params }: { params: Promise<{ id: s
                       {fmtFecha(m.fecha)}
                       {m.motivo ? ` · ${m.motivo}` : ""}
                     </p>
+                    <p className="text-xs text-slate-500">Registrado por {m.registradoPor ?? "—"}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className={`font-semibold tabular-nums ${entra ? "text-emerald-700" : "text-red-700"}`}>

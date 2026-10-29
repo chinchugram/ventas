@@ -36,6 +36,7 @@ export default async function ComprasPage() {
                     {fmtFecha(c.fecha)}
                     {c.comprobante ? ` · ${c.comprobante}` : ""}
                   </p>
+                  <p className="text-xs text-slate-500">Registrado por {c.registradoPor ?? "—"}</p>
                 </div>
                 <p className="shrink-0 font-semibold tabular-nums text-slate-900">{fmtMonedaCorta(c.total)}</p>
               </div>

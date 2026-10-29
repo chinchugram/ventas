@@ -16,6 +16,7 @@ import {
   type Resultado,
 } from "@/lib/acciones";
 import { METODOS_PAGO, validarFechaPago } from "@/lib/cobranzas";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { anularVentaEnTx } from "@/lib/dominio/ventas";
 import { anularPagoEnTx, marcarEntregadaEnTx, registrarPagoEnTx } from "@/lib/dominio/pagos";
 import { revalidarVentas } from "@/lib/revalidar";
@@ -36,9 +37,12 @@ export async function anularVenta(datos: z.input<typeof esquema>): Promise<Resul
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
   const { ventaId } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
-    await prisma.$transaction((tx) => anularVentaEnTx(tx, ventaId));
+    await prisma.$transaction((tx) => anularVentaEnTx(tx, ventaId, usuarioId));
   } catch (error) {
     console.error("[anularVenta]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo anular la venta.") };
@@ -71,10 +75,13 @@ export async function registrarPago(datos: DatosPago): Promise<Resultado> {
   if (problemaFecha) return { ok: false, error: problemaFecha };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
   const { ventaId, monto, metodo, fecha, notas } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
     await prisma.$transaction((tx) =>
-      registrarPagoEnTx(tx, { ventaId, monto: d(monto), metodo, fecha: fechaDesdeISO(fecha), notas }),
+      registrarPagoEnTx(tx, { ventaId, monto: d(monto), metodo, fecha: fechaDesdeISO(fecha), notas, usuarioId }),
     );
   } catch (error) {
     console.error("[registrarPago]", error);
