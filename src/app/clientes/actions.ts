@@ -18,6 +18,8 @@ const esquemaCliente = z.object({
   email: textoOpcional(120).refine((v) => v === null || z.email().safeParse(v).success, "El email no es válido"),
   direccion: textoOpcional(200),
   notas: textoOpcional(500),
+  // Lista de precios: null la quita; sin informar no la toca (el dominio valida que exista y este activa).
+  listaPrecioId: z.uuid("Lista de precios inválida").nullish(),
 });
 
 export type DatosCliente = z.input<typeof esquemaCliente>;
@@ -33,7 +35,7 @@ function revalidarClientes(id?: string) {
   revalidatePath("/clientes");
   if (id) revalidatePath(`/clientes/${id}`);
   // El nombre del cliente aparece en el tablero, las ventas y los reportes.
-  for (const ruta of ["/", "/ventas", "/ventas/nueva", "/reportes", "/cobranzas"]) revalidatePath(ruta);
+  for (const ruta of ["/", "/ventas", "/ventas/nueva", "/reportes", "/cobranzas", "/listas-precios"]) revalidatePath(ruta);
 }
 
 export async function crearCliente(datos: DatosCliente): Promise<{ ok: true; id: string } | { ok: false; error: string }> {

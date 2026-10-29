@@ -30,9 +30,11 @@
 | `cuit` | text? | Guardado como texto (conserva ceros) |
 | `telefono`, `email`, `direccion`, `notas` | text? | |
 | `activo` | bool | Baja lógica |
+| `listaPrecioId` | uuid? FK | Lista de precios asignada (`ListaPrecio`). Null = precio de catálogo |
 | `creadoEn`, `actualizadoEn` | timestamptz | |
 
-Índice único parcial sobre `cuit` cuando no es null.
+Índice único parcial sobre `cuit` cuando no es null. Índice sobre `listaPrecioId`. Una lista asignada
+no se borra (`ON DELETE RESTRICT`): la app solo la da de baja.
 
 ### `Material`
 | Campo | Tipo | Notas |
@@ -167,6 +169,96 @@ Los ajustes por conteo físico registran la diferencia como `AJUSTE` con su moti
 | `clave` | text PK | `costoHoraManoObra`, `nombreNegocio`, `ivaDefault`, `moneda` |
 | `valor` | text | Todo como texto; se castea al leer |
 
+### `ListaPrecio`
+Descuento general sobre el catálogo y/o precios específicos por artículo, para un grupo de clientes.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `nombre` | text, único | El dominio no distingue mayúsculas; la base solo exige único exacto |
+| `descuentoPct` | decimal(5,2) | 0 a 100 (CHECK). Se descuenta del precio de catálogo |
+| `activo` | bool | Baja lógica. Una lista de baja no se aplica, aunque tenga clientes asignados |
+| `creadoEn`, `actualizadoEn` | timestamptz | |
+
+### `ListaPrecioItem`
+Precio específico de un artículo dentro de una lista.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `listaPrecioId` | uuid FK | `ON DELETE CASCADE` (la app nunca borra listas) |
+| `articuloId` | uuid FK | `ON DELETE RESTRICT` |
+| `precio` | decimal(14,4) | Con IVA incluido, como `Articulo.precioVenta`. CHECK `>= 0` |
+| `creadoEn`, `actualizadoEn` | timestamptz | |
+
+Único `(listaPrecioId, articuloId)`: un precio por artículo por lista.
+
+### `Presupuesto`
+Oferta de precios a un cliente. No guarda costos ni márgenes.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `numero` | int | Correlativo por año, generado en la transacción. CHECK `> 0` |
+| `anio` | int | Parte del único |
+| `clienteId` | uuid FK | |
+| `fecha` | date | Día de emisión (hoy en Argentina) |
+| `validezDias` | int | Por defecto 15. CHECK `> 0`; el dominio acepta hasta 365 |
+| `observaciones` | text? | |
+| `estado` | enum | `ABIERTO` (por defecto), `CONVERTIDO`, `ANULADO`. "Vencido" no es un estado guardado |
+| `ventaId` | uuid? FK único | Venta en la que se convirtió. Null si no está convertido |
+| `duplicadoDeId` | uuid? FK | Presupuesto del que es copia (con precios de hoy) |
+| `creadoEn`, `actualizadoEn` | timestamptz | |
+
+Único `(anio, numero)`. CHECK `(estado = 'CONVERTIDO') = (ventaId IS NOT NULL)`.
+
+### `PresupuestoItem`
+Línea congelada del presupuesto.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `presupuestoId` | uuid FK | `ON DELETE CASCADE` |
+| `articuloId` | uuid FK | `ON DELETE RESTRICT` |
+| `descripcion` | text | Copia del nombre del artículo al momento del presupuesto |
+| `cantidad` | decimal(14,3) | CHECK `> 0` |
+| `precioUnitario` | decimal(14,4) | Con IVA incluido, congelado. CHECK `>= 0` |
+| `ivaPct` | decimal(5,2) | Copia del artículo. CHECK entre 0 y 100 |
+
+### `ContactoCobranza`
+Llamado o mensaje a un cliente. Solo guarda lo que pasó y lo que se prometió.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `clienteId` | uuid FK | |
+| `fecha` | date | Día del contacto (hoy en Argentina) |
+| `nota` | text | CHECK: no vacía (sin contar espacios) y hasta 500 caracteres |
+| `proximoContacto` | date? | Cuándo volver a llamar. CHECK: no puede ser anterior a `fecha` |
+| `creadoEn` | timestamptz | Desempata dos contactos del mismo día: manda el último cargado |
+
+Índice `(clienteId, fecha)`. Sin `usuarioId` todavía (ola 4).
+
+## Decisiones de la ola 7
+
+- **Totales de presupuesto no se persisten.** Se calculan con `totalizarPresupuesto`, el mismo motor
+  que la venta. El bruto del presupuesto es el de la venta que sale de convertirlo, y la conversión
+  lo verifica antes de cerrar la transacción.
+- **"Vencido" se calcula.** Un presupuesto abierto vence cuando hoy es posterior a `fecha + validezDias`.
+  El estado guardado no lo tiene, así que no puede quedar desincronizado (igual que los saldos).
+- **Precios congelados.** Al crear, y al agregar una línea al editar, el precio sale de `resolverPrecio`.
+  Después no cambia: al editar, las líneas que ya estaban conservan su precio, salvo que cambie el cliente
+  (entonces se reprecia todo).
+- **Numeración por año.** Presupuestos y ventas tienen cada uno su correlativo por año. Los presupuestos
+  usan un lock de transacción propio, así que no esperan a las ventas ni al revés.
+- **`ventaId` único.** Una venta sale de un solo presupuesto. La CHECK impide un presupuesto `CONVERTIDO`
+  sin venta y una venta colgada de un presupuesto que no está convertido.
+- **La conversión no se repite.** `convertirPresupuestoEnTx` bloquea la fila (`FOR UPDATE`) y revisa el
+  estado antes de crear la venta. La CHECK es la red final.
+- **Saldo y antigüedad de los recordatorios: derivados.** Salen de ventas y pagos no anulados, igual que
+  `/cobranzas`: la antigüedad es desde la venta impaga más vieja del cliente. `ContactoCobranza` no guarda
+  saldo ni antigüedad, solo el contacto.
+
 ## Cálculos derivados (no se persisten)
 
 ```
@@ -176,6 +268,12 @@ saldo_venta = venta.totalBruto - SUM(pagos.monto)
 saldo_cliente = SUM(saldo_venta) sobre ventas no anuladas
 costo_receta = SUM(cantidad × costo_efectivo)  --Overrides primero
 precio_sugerido = costo_receta / (1 - margenObjetivo)
+
+-- Listas de precios y presupuestos (ola 7)
+precio_linea      = resolverPrecio: específico → catálogo − descuento → catálogo
+valido_hasta      = presupuesto.fecha + validezDias
+vencido           = estado = ABIERTO AND hoy > valido_hasta
+total_presupuesto = totalizarPresupuesto(líneas)   -- neto, IVA y bruto; sin costos
 ```
 
 Margen objetivo por defecto: 40% (configurable). Es el número contra el que se comparan los artículos

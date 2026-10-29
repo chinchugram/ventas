@@ -50,6 +50,21 @@ SELECT gen_random_uuid(), 9999, 1800, v."clienteId", CURRENT_DATE, 0, 0, 100, 0,
 \echo '--- 9b. pago anulado sin motivo -> debe FALLAR (CHECK pagos_anulacion_con_motivo)'
 UPDATE pagos SET "anuladoEn" = NOW() WHERE id = (SELECT id FROM pagos LIMIT 1);
 
+\echo ''
+\echo '--- 9c. lista de precios con descuento > 100 -> debe FALLAR (CHECK listas_precios_descuento_check)'
+INSERT INTO listas_precios (id, nombre, "descuentoPct", "actualizadoEn")
+VALUES (gen_random_uuid(), 'Lista de prueba', 150, NOW());
+
+\echo ''
+\echo '--- 9d. precio de lista negativo -> debe FALLAR (CHECK lista_precio_items_precio_check)'
+WITH l AS (
+  INSERT INTO listas_precios (id, nombre, "descuentoPct", "actualizadoEn")
+  VALUES (gen_random_uuid(), 'Lista de prueba 2', 10, NOW()) RETURNING id
+)
+INSERT INTO lista_precio_items (id, "listaPrecioId", "articuloId", precio, "actualizadoEn")
+SELECT gen_random_uuid(), l.id, a.id, -1, NOW() FROM l, articulos a LIMIT 1;
+
+\echo ''
 \echo '--- 10. linea de receta MATERIAL valida -> debe ACEPTAR [OK]'
 -- Se usa un id fijo para poder borrar exactamente la fila de prueba y no tocar
 -- las recetas que ya estaban cargadas.

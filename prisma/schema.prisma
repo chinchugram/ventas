@@ -42,6 +42,14 @@ enum MetodoPago {
   OTRO
 }
 
+/// Estado GUARDADO de un presupuesto. "Vencido" no existe aca: se calcula
+/// (fecha + validez contra hoy), un presupuesto ABIERTO vencido sigue ABIERTO.
+enum EstadoPresupuesto {
+  ABIERTO
+  CONVERTIDO
+  ANULADO
+}
+
 model Cliente {
   id         String   @id @default(uuid()) @db.Uuid
   nombre     String
@@ -51,14 +59,21 @@ model Cliente {
   direccion  String?
   notas      String?
   activo     Boolean  @default(true)
+  /// Lista de precios del cliente (opcional). Si la lista esta inactiva se ignora.
+  listaPrecioId String? @db.Uuid
   creadoEn   DateTime @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
+  listaPrecio ListaPrecio? @relation(fields: [listaPrecioId], references: [id], onDelete: Restrict)
   ventas Venta[]
   pagos  Pago[]
+  presupuestos Presupuesto[]
+
+  contactosCobranza ContactoCobranza[]
 
   @@index([activo])
   @@index([nombre])
+  @@index([listaPrecioId])
   @@map("clientes")
 }
 
@@ -112,10 +127,49 @@ model Articulo {
 
   receta   Receta?
   ventaItems VentaItem[]
+  presupuestoItems PresupuestoItem[]
+  preciosDeLista ListaPrecioItem[]
 
   @@index([activo])
   @@index([nombre])
   @@map("articulos")
+}
+
+/// Lista de precios para un grupo de clientes: un descuento general sobre el
+/// precio de catalogo y/o precios especificos por articulo (ListaPrecioItem).
+/// CHECK en la migracion: descuento entre 0 y 100.
+model ListaPrecio {
+  id           String   @id @default(uuid()) @db.Uuid
+  nombre       String   @unique
+  /// Porcentaje (0-100) que se descuenta del precio de catalogo.
+  descuentoPct Decimal  @default(0) @db.Decimal(5, 2)
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  items    ListaPrecioItem[]
+  clientes Cliente[]
+
+  @@index([activo])
+  @@map("listas_precios")
+}
+
+/// Precio especifico de un articulo dentro de una lista. Mismo criterio de IVA
+/// que `Articulo.precioVenta`. CHECK en la migracion: precio >= 0.
+model ListaPrecioItem {
+  id            String   @id @default(uuid()) @db.Uuid
+  listaPrecioId String   @db.Uuid
+  articuloId    String   @db.Uuid
+  precio        Decimal  @db.Decimal(14, 4)
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  listaPrecio ListaPrecio @relation(fields: [listaPrecioId], references: [id], onDelete: Cascade)
+  articulo    Articulo    @relation(fields: [articuloId], references: [id])
+
+  @@unique([listaPrecioId, articuloId])
+  @@index([articuloId])
+  @@map("lista_precio_items")
 }
 
 model Receta {
@@ -172,6 +226,8 @@ model Venta {
   items     VentaItem[]
   pagos     Pago[]
   movimientos MovimientoStock[]
+  /// Presupuesto del que salio esta venta (si salio de uno).
+  presupuesto Presupuesto?
 
   @@unique([anio, numero])
   @@index([fecha])
@@ -293,4 +349,79 @@ model MovimientoStock {
   @@index([compraId])
   @@index([ventaId])
   @@map("movimientos_stock")
+}
+
+/// Llamado o mensaje de cobranza a un cliente. Solo guarda lo que pasó (fecha,
+/// nota) y lo que se prometió (próximo contacto): el saldo y la antigüedad de la
+/// deuda se calculan desde ventas y pagos, nunca se guardan acá.
+/// Sin `usuarioId`: todavía no hay autenticación.
+model ContactoCobranza {
+  id              String    @id @default(uuid()) @db.Uuid
+  clienteId       String    @db.Uuid
+  fecha           DateTime  @db.Date
+  nota            String
+  proximoContacto DateTime? @db.Date
+  creadoEn        DateTime  @default(now()) @db.Timestamptz(3)
+
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+
+  @@index([clienteId, fecha])
+  @@map("contactos_cobranza")
+}
+
+/// Oferta de precios a un cliente. Los precios se congelan al crearlo (o al
+/// agregar una linea al editarlo); los TOTALES no se guardan: se calculan con
+/// `costearLineaVenta`/`totalizarVenta`, igual que la venta que resulta de
+/// convertirlo. No guarda costos ni margenes. Sin `usuarioId`: todavia no hay auth.
+/// CHECK en la migracion: validezDias > 0, numero > 0 y
+/// (estado = CONVERTIDO) <=> (ventaId no nulo).
+model Presupuesto {
+  id            String            @id @default(uuid()) @db.Uuid
+  numero        Int
+  anio          Int
+  clienteId     String            @db.Uuid
+  fecha         DateTime          @db.Date
+  /// Dias de validez desde `fecha` (inclusive el ultimo dia: ver `src/lib/presupuestos.ts`).
+  validezDias   Int               @default(15)
+  observaciones String?
+  estado        EstadoPresupuesto @default(ABIERTO)
+  /// Venta en la que se convirtio. Unico: una venta sale de un solo presupuesto.
+  ventaId       String?           @unique @db.Uuid
+  /// Presupuesto del que este es copia (duplicado con precios actuales).
+  duplicadoDeId String?           @db.Uuid
+  creadoEn      DateTime          @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime          @updatedAt @db.Timestamptz(3)
+
+  cliente     Cliente           @relation(fields: [clienteId], references: [id])
+  venta       Venta?            @relation(fields: [ventaId], references: [id], onDelete: Restrict)
+  duplicadoDe Presupuesto?      @relation("Duplicado", fields: [duplicadoDeId], references: [id], onDelete: Restrict)
+  duplicados  Presupuesto[]     @relation("Duplicado")
+  items       PresupuestoItem[]
+
+  @@unique([anio, numero])
+  @@index([clienteId])
+  @@index([estado])
+  @@index([fecha])
+  @@index([duplicadoDeId])
+  @@map("presupuestos")
+}
+
+/// Linea congelada de un presupuesto: descripcion, precio unitario (con IVA
+/// incluido, como `VentaItem`) e IVA del momento. CHECK en la migracion:
+/// cantidad > 0, precioUnitario >= 0 y ivaPct entre 0 y 100.
+model PresupuestoItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  presupuestoId  String  @db.Uuid
+  articuloId     String  @db.Uuid
+  descripcion    String
+  cantidad       Decimal @db.Decimal(14, 3)
+  precioUnitario Decimal @db.Decimal(14, 4)
+  ivaPct         Decimal @db.Decimal(5, 2)
+
+  presupuesto Presupuesto @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
+  articulo    Articulo    @relation(fields: [articuloId], references: [id])
+
+  @@index([presupuestoId])
+  @@index([articuloId])
+  @@map("presupuesto_items")
 }

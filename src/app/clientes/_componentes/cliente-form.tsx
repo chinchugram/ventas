@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearCliente, editarCliente, type DatosCliente } from "@/app/clientes/actions";
-import { AvisoDemo, BloqueError, BotonEnviar, CampoNotas, CampoTexto, useAccion } from "@/components/form";
+import { AvisoDemo, BloqueError, BotonEnviar, CampoNotas, CampoSelect, CampoTexto, useAccion, type Opcion } from "@/components/form";
 import { normalizarCuit, validarCuit } from "@/lib/cuit";
 
 export type ValoresCliente = {
@@ -13,9 +13,19 @@ export type ValoresCliente = {
   email: string;
   direccion: string;
   notas: string;
+  /** Id de la lista de precios, o "" si no tiene. */
+  listaPrecioId: string;
 };
 
-export const CLIENTE_VACIO: ValoresCliente = { nombre: "", cuit: "", telefono: "", email: "", direccion: "", notas: "" };
+export const CLIENTE_VACIO: ValoresCliente = {
+  nombre: "",
+  cuit: "",
+  telefono: "",
+  email: "",
+  direccion: "",
+  notas: "",
+  listaPrecioId: "",
+};
 
 /**
  * Alta y edicion de cliente. Sin `id` crea; con `id` edita. El CUIT se revisa
@@ -25,10 +35,13 @@ export const CLIENTE_VACIO: ValoresCliente = { nombre: "", cuit: "", telefono: "
 export function ClienteForm({
   id,
   inicial = CLIENTE_VACIO,
+  listas = [],
   esModoDemo = false,
 }: {
   id?: string;
   inicial?: ValoresCliente;
+  /** Listas de precios que se pueden elegir. */
+  listas?: Opcion[];
   esModoDemo?: boolean;
 }) {
   const router = useRouter();
@@ -53,8 +66,9 @@ export function ClienteForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (id) editar.enviar(valores, () => router.push(`/clientes/${id}`));
-        else crear.enviar(valores, (r) => router.push(`/clientes/${r.id}`));
+        const datos = { ...valores, listaPrecioId: valores.listaPrecioId || null };
+        if (id) editar.enviar(datos, () => router.push(`/clientes/${id}`));
+        else crear.enviar(datos, (r) => router.push(`/clientes/${r.id}`));
       }}
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
     >
@@ -102,6 +116,14 @@ export function ClienteForm({
         alCambiar={cambiar("direccion")}
         maxLength={200}
         autoComplete="off"
+      />
+      <CampoSelect
+        etiqueta="Lista de precios"
+        valor={valores.listaPrecioId}
+        alCambiar={cambiar("listaPrecioId")}
+        opciones={listas}
+        placeholder="Sin lista (precio de catálogo)"
+        ayuda="Las ventas nuevas de este cliente usan los precios de la lista."
       />
       <CampoNotas
         etiqueta="Notas"

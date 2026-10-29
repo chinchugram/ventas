@@ -4,8 +4,9 @@ Plan de trabajo para que un agente orquestador reparta tareas a subagentes en pa
 Cada **ola** es un conjunto de tareas **independientes entre sí** (no tocan los mismos archivos):
 se lanzan juntas y, cuando todas terminan y se integran, empieza la ola siguiente.
 
-Estado al día de hoy: **Etapa 1 (MVP) y Etapa 2 (stock real) hechas, olas 0 a 3 cerradas**, en la rama
-`etapa-2-stock-real`. Esta lista cubre lo que falta para que sea usable en el día a día y las
+Estado al día de hoy: **Etapa 1 (MVP) y Etapa 2 (stock real) hechas, olas 0 a 3 y ola 7 (comercial) cerradas**.
+La ola 7 se hizo **antes** que la 4 (multi-usuario): sus pantallas quedan sin roles ni `usuarioId` hasta que
+se haga la ola 4 (ver "Pendientes de la ola 7 para la ola 4"). Esta lista cubre lo que falta para que sea usable en el día a día y las
 etapas 3 a 6 de `docs/01-alcance-funcional.md`.
 
 Leyenda: `[x]` hecho · `[ ]` pendiente · `(R)` toca archivos compartidos, ver "Reglas".
@@ -152,11 +153,30 @@ Migraciones: `20260401…`.
 
 ## Ola 7 — Etapa 6: comercial (paralela, 3 tareas)
 
-Migraciones: `20260501…`.
+Migraciones: `20260501…` (7.1), `20260510…` (7.2), `20260515…` (7.3). Hecha **sin** la ola 4: no hay
+auth, roles ni `usuarioId` todavía.
 
-- [ ] **7.1 Listas de precios por cliente**.
-- [ ] **7.2 Presupuestos** que se convierten en venta con un clic (reusa `registrarVenta`).
-- [ ] **7.3 Recordatorios de cobranza**: lista de a quién llamar hoy, ordenada por antigüedad y monto.
+- [x] **7.1 Listas de precios por cliente**: `ListaPrecio`, `ListaPrecioItem`, `resolverPrecio`
+      (`src/lib/precios.ts`), override de precio en `registrarVentaEnTx`, pantallas `/listas-precios/**`.
+- [x] **7.2 Presupuestos** que se convierten en venta con un clic (reusa `registrarVentaEnTx`, precios
+      congelados, sin doble conversión).
+- [x] **7.3 Recordatorios de cobranza** (7.3a lógica y datos, 7.3b pantalla `/cobranzas/hoy`): a quién llamar
+      hoy, por antigüedad y monto, con enlace de WhatsApp.
+- [x] **7.4 Documentación**.
+
+### Pendientes de la ola 7 para la ola 4
+- **7.0a Permisos**: agregar `gestionarListasPrecios` (solo `DUENO`), `verPresupuestos`, `cargarPresupuesto`,
+  `convertirPresupuesto`, `verRecordatorios`, `registrarContactoCobranza` (`DUENO` y `EMPLEADO`) y ponerles
+  `requierePermiso` como primera línea de las server actions de `src/app/listas-precios`, `src/app/presupuestos`,
+  `src/app/cobranzas/hoy` y `preciosParaCliente`; `requierePermisoPagina` en sus páginas.
+- **7.0b `npm run test:acceso`**: clasificar las rutas nuevas (`/listas-precios/**`, `/presupuestos/**`,
+  `/cobranzas/hoy`) en la matriz.
+- **`usuarioId` nullable** en `Presupuesto`, `ContactoCobranza` (y quien cargue listas), como en las demás tablas de la ola 4.
+- **Costos al navegador**: la advertencia "precio bajo el costo" (`AdvertenciaBajoCosto`, Server Component en
+  `/listas-precios/[id]`) está marcada `// SOLO DUEÑO (ola 4)`; hoy se ve para todos. `src/app/ventas/nueva/page.tsx`
+  ya enviaba costos al componente cliente antes de esta ola (hallazgo preexistente para la 4.3).
+- **Límite conocido**: si cambia el IVA de un artículo entre el presupuesto y la conversión, el total coincide
+  pero el desglose neto/IVA usa el IVA actual (la conversión avisa).
 
 ---
 
