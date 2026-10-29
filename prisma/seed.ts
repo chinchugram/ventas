@@ -21,6 +21,9 @@ async function main() {
   console.log("Limpiando datos de ejemplo...");
   // El orden respeta las FK. No se usa TRUNCATE CASCADE a proposito: si alguien
   // tiene datos reales en esta base, este seed tiene que fallar y no borrarlos.
+  await prisma.movimientoStock.deleteMany();
+  await prisma.compraItem.deleteMany();
+  await prisma.compra.deleteMany();
   await prisma.pago.deleteMany();
   await prisma.ventaItem.deleteMany();
   await prisma.venta.deleteMany();

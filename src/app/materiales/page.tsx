@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { faltanteParaMinimo } from "@/lib/stock";
 import { fmtMoneda, fmtMonedaCorta, fmtNumero, sumar } from "@/lib/money";
 import { getMateriales } from "@/lib/queries/materiales";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
@@ -39,6 +41,11 @@ export default async function MaterialesPage() {
       <Seccion
         titulo="Materiales"
         descripcion="Lo que se consume para producir, y lo que se vende suelto"
+        accion={
+          <Link href="/compras/nueva" className="rounded-lg bg-marca px-3 py-2 text-sm font-semibold text-tinta">
+            Registrar compra
+          </Link>
+        }
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3">
@@ -54,7 +61,9 @@ export default async function MaterialesPage() {
         {materiales.map((m) => (
           <li key={m.id} className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="font-medium text-slate-900">{m.nombre}</p>
+              <Link href={`/materiales/${m.id}`} className="font-medium text-slate-900 underline-offset-2 hover:underline">
+                {m.nombre}
+              </Link>
               <span
                 className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold ${ESTILO_ESTADO[m.estado]}`}
               >
@@ -89,6 +98,12 @@ export default async function MaterialesPage() {
                 </dd>
               </div>
             </dl>
+
+            {m.estado !== "OK" ? (
+              <p className="mt-3 text-sm text-amber-700">
+                Faltan {fmtNumero(faltanteParaMinimo(m.stockActual, m.stockMinimo))} {m.unidad} para llegar al mínimo.
+              </p>
+            ) : null}
           </li>
         ))}
       </ul>

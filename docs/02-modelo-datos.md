@@ -143,6 +143,20 @@ Restricción de integridad (CHECK en SQL de Prisma):
 No se modelan pagos sin venta (anticipos a cuenta) en el MVP: el pedido puede tener
 `estado = PENDIENTE` y el saldo a favor se maneja fuera del sistema hasta la etapa 2.
 
+### `Compra` + `CompraItem` (etapa 2)
+`Compra`: `fecha`, `proveedor` (texto libre), `comprobante?`, `notas?`, `total` (suma de subtotales).
+`CompraItem`: `materialId`, `cantidad` (> 0), `costoUnitario`, `subtotal`.
+
+Al registrar una compra, en una sola transacción: se guardan cabecera y líneas, se suma el stock
+y se crea un `MovimientoStock` por línea. Opcionalmente el costo del material pasa a ser el de la
+compra (último precio pagado = costo de reposición); las ventas viejas conservan su snapshot.
+
+### `MovimientoStock` (etapa 2)
+Libro de stock, nunca se edita. `tipo` (`COMPRA`, `VENTA` o `AJUSTE`), `cantidad` con signo,
+`stockResultante` (saldo luego del movimiento, CHECK >= 0), `motivo?`, `compraId?`.
+`VENTA` queda reservado para el descuento automático al confirmar ventas.
+Los ajustes por conteo físico registran la diferencia como `AJUSTE` con su motivo.
+
 ### `Configuracion`
 | Campo | Tipo | Notas |
 |---|---|---|

@@ -11,6 +11,8 @@ import type { ArticuloConMargen } from "@/lib/queries/catalogo";
 import type { ClienteListado } from "@/lib/queries/clientes";
 import type { DeudaCliente, ResumenMes, TopProducto, VentaListada } from "@/lib/queries/dashboard";
 import type { MaterialListado } from "@/lib/queries/materiales";
+import type { CompraListada, MovimientoListado } from "@/lib/queries/compras";
+import { subtotalCompra } from "@/lib/stock";
 import type { VentaRow } from "@/lib/queries/ventas";
 
 /**
@@ -314,6 +316,65 @@ export function demoMateriales(): MaterialListado[] {
             : ("OK" as const),
     };
   }).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+}
+
+const COMPRAS = [
+  { id: "k1", haceDias: 3, proveedor: "Vinilos del Plata", comprobante: "0003-00014521", items: [{ m: "m1", cantidad: "20", costo: "4200" }, { m: "m2", cantidad: "6", costo: "1400" }] },
+  { id: "k2", haceDias: 12, proveedor: "Acrílicos Córdoba", comprobante: null, items: [{ m: "m4", cantidad: "3", costo: "24000" }] },
+  { id: "k3", haceDias: 25, proveedor: "Maderas Sur", comprobante: "0001-00008890", items: [{ m: "m3", cantidad: "10", costo: "8500" }] },
+] as const;
+
+function fechaHace(dias: number): Date {
+  const hoy = new Date();
+  return new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - dias));
+}
+
+export function demoCompras(): CompraListada[] {
+  return COMPRAS.map((c) => {
+    const items = c.items.map((i) => {
+      const material = MATERIALES.find((m) => m.id === i.m)!;
+      return {
+        material: material.nombre,
+        unidad: material.unidad,
+        cantidad: d(i.cantidad),
+        costoUnitario: d(i.costo),
+      };
+    });
+    return {
+      id: c.id,
+      fecha: fechaHace(c.haceDias),
+      proveedor: c.proveedor,
+      comprobante: c.comprobante,
+      total: sumar(...items.map((i) => subtotalCompra(i.cantidad, i.costoUnitario))),
+      items,
+    };
+  });
+}
+
+/**
+ * Movimientos de demostracion de un material: las compras demo que lo incluyen.
+ * El saldo se reconstruye hacia atras desde el stock actual, para que el ultimo
+ * movimiento cierre con lo que muestra la pantalla de materiales.
+ */
+export function demoMovimientos(materialId: string): MovimientoListado[] {
+  const material = MATERIALES.find((m) => m.id === materialId);
+  if (!material) return [];
+
+  const entradas = COMPRAS.filter((c) => c.items.some((i) => i.m === materialId))
+    .sort((a, b) => a.haceDias - b.haceDias)
+    .map((c) => ({
+      id: `${c.id}-${materialId}`,
+      fecha: fechaHace(c.haceDias),
+      cantidad: d(c.items.find((i) => i.m === materialId)!.cantidad),
+      motivo: `Compra a ${c.proveedor}`,
+    }));
+
+  let saldo = d(material.stock);
+  return entradas.map((e) => {
+    const resultante = saldo;
+    saldo = saldo.minus(e.cantidad);
+    return { ...e, tipo: "COMPRA" as const, stockResultante: resultante };
+  });
 }
 
 export function demoClientes(): ClienteListado[] {

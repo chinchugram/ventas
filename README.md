@@ -134,6 +134,8 @@ con recetas cargadas (`npm run db:seed`), porque sin receta el margen sale como 
 | `/clientes` | Quién es cada cliente y cuánto debe |
 | `/catalogo` | Costo por receta, precio, margen y precio necesario para la meta |
 | `/materiales` | Stock, valorización y avisos de reposición |
+| `/materiales/[id]` | Libro de movimientos del material y ajuste por conteo físico |
+| `/compras` | Historial de compras; `/compras/nueva` registra una (suma stock y actualiza el costo) |
 | `/reportes` | Ganancia por producto, más rentables, deuda por cliente, materiales |
 
 Todas mobile-first: en celular las tablas se convierten en tarjetas apiladas. El dueño atiende
@@ -156,6 +158,7 @@ el mostrador con el teléfono en la mano.
 | `npm run db:studio` | Prisma Studio, para mirar la base |
 | `npm run db:backup` | `pg_dump` a `backups/`, con rotación de 30 archivos |
 | `npm run test:costeo` | Verifica el motor de costeo contra 15 números conocidos |
+| `npm run test:stock` | Verifica las cuentas de compras y stock contra números conocidos |
 | `npm run test:integridad` | Verifica que los CHECK constraints rechazan datos inválidos |
 
 ---

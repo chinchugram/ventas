@@ -29,6 +29,12 @@ enum EstadoVenta {
   ANULADA
 }
 
+enum TipoMovimiento {
+  COMPRA
+  VENTA
+  AJUSTE
+}
+
 enum MetodoPago {
   EFECTIVO
   TRANSFERENCIA
@@ -70,6 +76,8 @@ model Material {
   actualizadoEn DateTime      @updatedAt @db.Timestamptz(3)
 
   componentes RecetaComponente[]
+  compraItems CompraItem[]
+  movimientos MovimientoStock[]
 
   @@index([activo])
   @@index([nombre])
@@ -220,4 +228,60 @@ model Configuracion {
   valor String
 
   @@map("configuracion")
+}
+
+/// Entrada de mercaderia: lo que se compro, a quien y a que costo.
+model Compra {
+  id          String   @id @default(uuid()) @db.Uuid
+  fecha       DateTime @db.Date
+  proveedor   String
+  comprobante String?
+  notas       String?
+  total       Decimal  @default(0) @db.Decimal(14, 2)
+
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  items       CompraItem[]
+  movimientos MovimientoStock[]
+
+  @@index([fecha])
+  @@map("compras")
+}
+
+model CompraItem {
+  id            String  @id @default(uuid()) @db.Uuid
+  compraId      String  @db.Uuid
+  materialId    String  @db.Uuid
+  cantidad      Decimal @db.Decimal(14, 3)
+  costoUnitario Decimal @db.Decimal(14, 4)
+  subtotal      Decimal @db.Decimal(14, 2)
+
+  compra   Compra   @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  material Material @relation(fields: [materialId], references: [id])
+
+  @@index([compraId])
+  @@index([materialId])
+  @@map("compra_items")
+}
+
+/// Libro de stock: cada entrada o salida queda registrada y nunca se edita.
+/// `cantidad` lleva signo (+ entra, - sale); `stockResultante` es el saldo luego
+/// del movimiento, para poder reconstruir la historia sin recalcular.
+model MovimientoStock {
+  id              String         @id @default(uuid()) @db.Uuid
+  materialId      String         @db.Uuid
+  tipo            TipoMovimiento
+  cantidad        Decimal        @db.Decimal(14, 3)
+  stockResultante Decimal        @db.Decimal(14, 3)
+  motivo          String?
+  compraId        String?        @db.Uuid
+  creadoEn        DateTime       @default(now()) @db.Timestamptz(3)
+
+  material Material @relation(fields: [materialId], references: [id])
+  compra   Compra?  @relation(fields: [compraId], references: [id])
+
+  @@index([materialId, creadoEn])
+  @@index([compraId])
+  @@map("movimientos_stock")
 }

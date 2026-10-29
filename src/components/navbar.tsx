@@ -17,6 +17,7 @@ const SECUNDARIAS: Seccion[] = [
   { href: "/catalogo", etiqueta: "Artículos", icono: "articulos" },
   { href: "/cortes", etiqueta: "Cortes", icono: "articulos" },
   { href: "/materiales", etiqueta: "Materiales", icono: "materiales" },
+  { href: "/compras", etiqueta: "Compras", icono: "materiales" },
   { href: "/reportes", etiqueta: "Reportes", icono: "reportes" },
 ];
 const NUEVA_VENTA = "/ventas/nueva";
