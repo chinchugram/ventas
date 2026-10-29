@@ -12,6 +12,7 @@ import { Seccion, SemaforoMargen, Tarjeta, Vacio } from "@/components/ui";
 import { GananciaDelMes, VentasPorDia, type DiaVentas } from "@/components/tablero";
 import { getVentas, type VentaRow } from "@/lib/queries/ventas";
 import { AvisoRespaldo } from "@/components/aviso-respaldo";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 // El dashboard lee datos que cambian con cada venta: nunca se cachea ni se
 // prerenderiza. Sin esto, `next build` intenta generar la pagina en build time
@@ -31,6 +32,7 @@ const ETIQUETA_ESTADO_PAGO = {
 } as const;
 
 export default async function Dashboard() {
+  await requierePermisoPagina("verCostos", "verMargenes");
   const [resumen, ultimas, deudas, articulos, config, materiales, ventas] = await Promise.all([
     getResumenMes(),
     getUltimasVentas(8),

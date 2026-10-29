@@ -1,5 +1,6 @@
 import { fmtFecha, fmtMonedaCorta as fmtMoneda, fmtNumero, sumar } from "@/lib/money";
-import { ETIQUETA_ESTADO_PAGO, ESTILO_ESTADO_PAGO, getVentas } from "@/lib/queries/ventas";
+import { ETIQUETA_ESTADO_PAGO, ESTILO_ESTADO_PAGO, getVentas, getVentasSinCostos, tieneGanancia } from "@/lib/queries/ventas";
+import { puedeTodo, requierePermisoPagina } from "@/lib/permisos";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
 import Link from "next/link";
@@ -7,7 +8,10 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 export default async function VentasPage() {
-  const ventas = await getVentas(50);
+  const usuario = await requierePermisoPagina("verVentas");
+  // Ganancia y margen solo para quien puede verlos; los demas reciben un listado que ni lee el costo.
+  const verMargenes = puedeTodo(usuario, ["verCostos", "verMargenes"]);
+  const ventas = verMargenes ? await getVentas(50) : await getVentasSinCostos(50);
   // Las ventas de demostracion no tienen detalle: solo se enlaza con base real.
   const conDetalle = !estadoDemo().activo;
 
@@ -19,7 +23,8 @@ export default async function VentasPage() {
       <Seccion titulo="Ventas" descripcion={`Últimas ${ventas.length}`} />
 
       <div className="mb-4 grid grid-cols-2 gap-3">
-        <Tarjeta titulo="Facturado" valor={fmtMoneda(facturado)} />
+        {/* El total facturado es una cifra de gestion del negocio: se reserva a quien ve margenes. */}
+        {verMargenes ? <Tarjeta titulo="Facturado" valor={fmtMoneda(facturado)} /> : null}
         <Tarjeta
           titulo="Sin cobrar"
           valor={fmtMoneda(pendiente)}
@@ -62,19 +67,21 @@ export default async function VentasPage() {
                 </span>
               </div>
 
-              <dl className="mt-3 grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
+              <dl className={`mt-3 grid gap-x-4 gap-y-2 text-sm ${tieneGanancia(v) ? "grid-cols-3" : "grid-cols-2"}`}>
                 <div>
                   <dt className="text-xs text-slate-500">Total</dt>
                   <dd className="font-semibold tabular-nums text-slate-900">
                     {fmtMoneda(v.totalBruto)}
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-xs text-slate-500">Ganancia</dt>
-                  <dd className="font-semibold tabular-nums text-emerald-700">
-                    {fmtMoneda(v.ganancia)}
-                  </dd>
-                </div>
+                {tieneGanancia(v) ? (
+                  <div>
+                    <dt className="text-xs text-slate-500">Ganancia</dt>
+                    <dd className="font-semibold tabular-nums text-emerald-700">
+                      {fmtMoneda(v.ganancia)}
+                    </dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt className="text-xs text-slate-500">Saldo</dt>
                   <dd

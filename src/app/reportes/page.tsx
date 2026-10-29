@@ -10,6 +10,7 @@ import {
 import { getMateriales } from "@/lib/queries/materiales";
 import { conRango, parseRangoFechas, rangoDeMes, type ParamsFecha } from "@/lib/rango-fechas";
 import { Seccion, Tabla, Tarjeta, Vacio } from "@/components/ui";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ export const dynamic = "force-dynamic";
  * link del reporte de enero por WhatsApp y funciona. Los formularios son GET.
  */
 export default async function ReportesPage({ searchParams }: { searchParams: Promise<ParamsFecha> }) {
+  await requierePermisoPagina("verReportes", "verCostos", "verMargenes");
   const rango = parseRangoFechas(await searchParams);
 
   const [resumen, productos, deudas, consumo, materiales] = await Promise.all([

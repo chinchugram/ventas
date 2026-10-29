@@ -77,6 +77,44 @@ async function articulosDesdeBase(): Promise<ArticuloConMargen[]> {
   });
 }
 
+/** Lo que hace falta para vender un articulo: nombre, precio e IVA. Sin receta, costo ni margen. */
+export type ArticuloParaVender = {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  precioVenta: Dinero;
+  ivaPct: Dinero;
+  esServicio: boolean;
+};
+
+/**
+ * Articulos activos SIN costo ni receta, para quien no puede `verCostos`. No lee
+ * las recetas, materiales ni maquinas de la base: el costo no llega ni a la
+ * memoria del servidor, y mucho menos a un componente cliente.
+ */
+export const getArticulosParaVender = cache(
+  (): Promise<ArticuloParaVender[]> =>
+    conRespaldo(
+      async () => {
+        const articulos = await prisma.articulo.findMany({
+          where: { activo: true },
+          orderBy: { nombre: "asc" },
+          select: { id: true, nombre: true, descripcion: true, precioVenta: true, ivaPct: true, esServicio: true },
+        });
+        return articulos;
+      },
+      () =>
+        demoArticulos().map((a) => ({
+          id: a.id,
+          nombre: a.nombre,
+          descripcion: a.descripcion,
+          precioVenta: a.precioVenta,
+          ivaPct: a.ivaPct,
+          esServicio: a.esServicio,
+        })),
+    ),
+);
+
 export type ArticuloConMargen = {
   id: string;
   nombre: string;

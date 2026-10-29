@@ -103,18 +103,23 @@ Tres capas, de afuera hacia adentro:
    proxy no es la única defensa (un `matcher` mal editado lo saltearía), así que el código que lee
    o escribe datos verifica por su cuenta. **El layout raíz no protege**: no se vuelve a ejecutar en
    las navegaciones del cliente; solo pinta la navegación con `usuarioActual()`. API:
-   - páginas: `const usuario = await requiereUsuario()` (redirige a `/login`), o
-     `await requierePermiso("verReportes")` cuando hace falta un permiso;
-   - server actions: `const sesion = await usuarioParaAccion(); if (!sesion.ok) return sesion;` o
-     `const permiso = await verificarPermiso("anularVenta"); if (!permiso.ok) return permiso;`
-     (devuelven `{ ok: false, error }`; Next oculta el texto de los errores lanzados en producción);
-   - route handlers: `requierePermiso("exportarCsv")` dentro de un `try` que responda 403.
-   Hoy (4.1) las páginas y acciones existentes no son de esta tarea y todavía no lo llaman: las
-   cubre la capa 1. **4.3 las agrega** al aplicar permisos (`requierePermiso` como primera línea).
-3. **`npm run test:auth` audita las rutas**: lista cada `page.tsx`, `actions.ts` y `route.ts` de
-   `src/app` que no llama a ninguna de esas funciones (hoy 35 de 37, como aviso). Con
-   `AUTH_ESTRICTO=1 npm run test:auth` cada una cuenta como falla: activarlo cuando 4.3 termine, así
-   una página nueva sin verificación rompe la prueba.
+   - páginas (4.3): `await requierePermisoPagina("verCostos", "verMargenes")` como primera línea:
+     sin sesión redirige a `/login`; con sesión pero sin alguno de los permisos, a la pantalla de
+     inicio del rol (`/ventas/nueva` para `EMPLEADO`), nunca a `/login`;
+   - server actions (4.3): `const permiso = await verificarPermiso("anularVenta"); if (!permiso.ok)
+     return permiso;` como PRIMERA sentencia, antes de validar o leer nada (devuelve
+     `{ ok: false, error }`; Next oculta el texto de los errores lanzados en producción);
+   - route handlers: `usuarioActual()` + `puede(...)` y respuesta 401/403 de texto plano (el export
+     CSV exige `exportarCsv`, `verReportes`, `verCostos` y `verMargenes`).
+   Las 20 acciones y las 25 páginas con datos del repo lo hacen desde 4.3 (tabla de qué permiso exige
+   cada una en `scripts/verificar-permisos.ts`, escrita a mano).
+3. **`AUTH_ESTRICTO=1 npm run test:auth` audita las rutas**: cada `page.tsx` tiene que llamar a
+   `requierePermisoPagina(...)` antes de leer datos, cada función exportada de un `actions.ts` tiene
+   que empezar con `requierePermiso` / `verificarPermiso` (se lee el código, no solo se busca el
+   nombre), todo archivo con `"use server"` tiene que ser un `actions.ts` auditado y cada `route.ts`
+   verifica sesión y permisos. Sin `AUTH_ESTRICTO` los hallazgos son avisos. `npm run test:permisos`
+   comprueba además la matriz rol × acción, invoca cada acción prohibida con un empleado real
+   (sin cambios en la base) y verifica que las consultas del empleado no traen costos.
 
 Sin base o sin usuarios: en producción, sin base, el proxy responde **503** (nunca queda abierto);
 con base pero **sin ningún usuario**, 503 con la instrucción `npm run usuarios:crear-dueno` (en

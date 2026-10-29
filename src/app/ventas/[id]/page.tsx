@@ -4,6 +4,7 @@ import { fmtFecha, fmtMoneda, fmtNumero } from "@/lib/money";
 import { hoyArgentinaISO } from "@/lib/acciones";
 import { ETIQUETA_METODO, tieneSaldo } from "@/lib/cobranzas";
 import { ESTILO_ESTADO_PAGO, ETIQUETA_ESTADO_PAGO, getVenta } from "@/lib/queries/ventas";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { AnularVentaBoton } from "@/components/anular-venta-boton";
 import { Seccion, Tarjeta } from "@/components/ui";
 import { RegistrarPagoForm } from "./_componentes/registrar-pago-form";
@@ -27,9 +28,16 @@ function fechaHoraAR(momento: Date): string {
 }
 
 export default async function VentaPage({ params }: { params: Promise<{ id: string }> }) {
+  const usuario = await requierePermisoPagina("verVentas");
   const { id } = await params;
   const venta = await getVenta(id);
   if (!venta) notFound();
+
+  // Los botones de lo que el usuario no puede hacer ni se pintan (las acciones lo vuelven a verificar).
+  const puedeCobrar = puede(usuario, "registrarCobro");
+  const puedeEntregar = puede(usuario, "marcarEntregada");
+  const puedeAnularPago = puede(usuario, "anularPago");
+  const puedeAnularVenta = puede(usuario, "anularVenta");
 
   const anulada = venta.estado === "ANULADA";
   const debe = !anulada && tieneSaldo(venta.saldo);
@@ -73,13 +81,13 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
         />
       </div>
 
-      {debe ? (
+      {debe && puedeCobrar ? (
         <div className="mb-4">
           <RegistrarPagoForm ventaId={venta.id} saldo={venta.saldo.toFixed(2)} hoy={hoyArgentinaISO()} />
         </div>
       ) : null}
 
-      {venta.estado === "PENDIENTE" ? (
+      {venta.estado === "PENDIENTE" && puedeEntregar ? (
         <div className="mb-4">
           <MarcarEntregadaBoton ventaId={venta.id} debe={debe} />
         </div>
@@ -132,7 +140,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
                       </span>
                     </div>
                   </div>
-                  {!pagoAnulado ? (
+                  {!pagoAnulado && puedeAnularPago ? (
                     <div className="flex flex-wrap justify-end">
                       <AnularPagoBoton pagoId={p.id} />
                     </div>
@@ -150,7 +158,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
         </p>
       ) : null}
 
-      {!anulada ? <AnularVentaBoton ventaId={venta.id} /> : null}
+      {!anulada && puedeAnularVenta ? <AnularVentaBoton ventaId={venta.id} /> : null}
     </>
   );
 }

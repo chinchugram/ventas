@@ -4,10 +4,12 @@ import { NuevaCompraForm } from "@/components/nueva-compra-form";
 import { Seccion } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
 import { leerPrecarga } from "@/lib/reposicion";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
 export default async function NuevaCompraPage({ searchParams }: { searchParams: Promise<{ m?: string | string[] }> }) {
+  await requierePermisoPagina("registrarCompra", "verCostos");
   const [materiales, { m: precarga }] = await Promise.all([getMateriales(), searchParams]);
   const opciones = materiales.map((m) => ({
     id: m.id,

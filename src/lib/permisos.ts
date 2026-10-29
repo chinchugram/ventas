@@ -1,11 +1,12 @@
+import { redirect } from "next/navigation";
 import { ErrorDeNegocio } from "@/lib/acciones";
-import { SIN_SESION, usuarioActual, type UsuarioSesion } from "@/lib/auth";
-import { puede, type Accion } from "@/lib/permisos-pura";
+import { SIN_SESION, requiereUsuario, usuarioActual, type UsuarioSesion } from "@/lib/auth";
+import { puede, puedeTodo, rutaDeInicio, type Accion } from "@/lib/permisos-pura";
 
 // API unica de autorizacion (contrato de la ola 4). Solo servidor: usa la sesion
 // del pedido. Lo puro (la tabla y `puede`) esta en `src/lib/permisos-pura.ts`.
 
-export { ACCIONES, PERMISOS, puede, type Accion } from "@/lib/permisos-pura";
+export { ACCIONES, PERMISOS, puede, puedeTodo, type Accion } from "@/lib/permisos-pura";
 
 const QUE: Record<Accion, string> = {
   verCostos: "ver costos",
@@ -20,6 +21,15 @@ const QUE: Record<Accion, string> = {
   exportarCsv: "exportar reportes",
   configuracion: "cambiar la configuración",
   gestionarUsuarios: "administrar usuarios",
+  verVentas: "ver ventas",
+  cargarVenta: "cargar ventas",
+  registrarCobro: "registrar cobros",
+  marcarEntregada: "marcar ventas como entregadas",
+  verCobranzas: "ver cobranzas",
+  verClientes: "ver clientes",
+  editarClientes: "editar clientes",
+  verStock: "ver el stock",
+  verReposicion: "ver la reposición",
 };
 
 export function mensajeSinPermiso(accion: Accion): string {
@@ -29,7 +39,7 @@ export function mensajeSinPermiso(accion: Accion): string {
 /**
  * Usuario del pedido si puede hacer `accion`. Si no hay sesion o no tiene
  * permiso, lanza `ErrorDeNegocio` con un mensaje claro. Pensado como primera
- * linea de una server action o de una pagina:
+ * linea de una server action o de un route handler:
  *
  *   const usuario = await requierePermiso("anularVenta");
  *
@@ -52,4 +62,21 @@ export async function verificarPermiso(
   if (!usuario) return { ok: false, error: SIN_SESION };
   if (!puede(usuario, accion)) return { ok: false, error: mensajeSinPermiso(accion) };
   return { ok: true, usuario };
+}
+
+/**
+ * Primera linea de una PAGINA (`page.tsx`) que exige permisos. Sin sesion
+ * redirige a /login; con sesion pero sin alguno de los permisos, a la pantalla
+ * de inicio del rol (`/ventas/nueva` para `EMPLEADO`), nunca a /login. Pedir
+ * varias acciones exige todas. Devuelve el usuario para decidir que mostrar.
+ *
+ *   const usuario = await requierePermisoPagina("verCostos", "verMargenes");
+ *
+ * La pantalla de inicio de cada rol tiene que estar permitida para ese rol, o la
+ * redireccion daria vueltas (`scripts/verificar-permisos.ts` lo comprueba).
+ */
+export async function requierePermisoPagina(...acciones: Accion[]): Promise<UsuarioSesion> {
+  const usuario = await requiereUsuario();
+  if (!puedeTodo(usuario, acciones)) redirect(rutaDeInicio(usuario.rol));
+  return usuario;
 }

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { CLAVE_FACTOR, esquemaFactor } from "@/lib/reposicion";
 
@@ -10,6 +11,8 @@ import { CLAVE_FACTOR, esquemaFactor } from "@/lib/reposicion";
  * comprar). Upsert: la clave no existe hasta la primera vez que se guarda.
  */
 export async function guardarFactorReposicion(datos: { factor: string }): Promise<Resultado> {
+  const permiso = await verificarPermiso("configuracion");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaFactor.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };

@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import { decimalPositivo, hoyArgentina, mensajeDeError, primerError, SIN_BASE, textoOpcional } from "@/lib/acciones";
 import { registrarVentaEnTx } from "@/lib/dominio/ventas";
@@ -34,6 +35,8 @@ export type DatosVenta = z.input<typeof esquemaVenta>;
  * Ver `registrarVentaEnTx`.
  */
 export async function registrarVenta(datos: DatosVenta): Promise<ResultadoVenta> {
+  const permiso = await verificarPermiso("cargarVenta");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaVenta.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };

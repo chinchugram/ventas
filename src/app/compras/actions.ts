@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import {
   decimalNoNegativo,
@@ -40,6 +41,8 @@ export type DatosCompra = z.input<typeof esquemaCompra>;
 
 /** Registra una compra en una transaccion: o entra completa o no entra nada. */
 export async function registrarCompra(datos: DatosCompra): Promise<Resultado> {
+  const permiso = await verificarPermiso("registrarCompra");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaCompra.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
