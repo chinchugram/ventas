@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UnidadMedida {
+  M2
+  M
+  KG
+  L
+  U
+  HOJA
+  ROLLO
+}
+
+enum TipoComponente {
+  MATERIAL
+  MAQUINA
+  MANO_OBRA
+}
+
+enum EstadoVenta {
+  PENDIENTE
+  ENTREGADA
+  ANULADA
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TRANSFERENCIA
+  TARJETA
+  OTRO
+}
+
+model Cliente {
+  id         String   @id @default(uuid()) @db.Uuid
+  nombre     String
+  cuit       String?
+  telefono   String?
+  email      String?
+  direccion  String?
+  notas      String?
+  activo     Boolean  @default(true)
+  creadoEn   DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  ventas Venta[]
+  pagos  Pago[]
+
+  @@index([activo])
+  @@index([nombre])
+  @@map("clientes")
+}
+
+model Material {
+  id            String        @id @default(uuid()) @db.Uuid
+  nombre        String
+  unidad        UnidadMedida
+  stockActual   Decimal       @default(0) @db.Decimal(14, 3)
+  stockMinimo   Decimal       @default(0) @db.Decimal(14, 3)
+  costoUnitario Decimal       @default(0) @db.Decimal(14, 4)
+  precioVenta   Decimal?      @db.Decimal(14, 4)
+  notas         String?
+  activo        Boolean       @default(true)
+  creadoEn      DateTime      @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime      @updatedAt @db.Timestamptz(3)
+
+  componentes RecetaComponente[]
+
+  @@index([activo])
+  @@index([nombre])
+  @@map("materiales")
+}
+
+model Maquina {
+  id            String   @id @default(uuid()) @db.Uuid
+  nombre        String
+  costoHora     Decimal  @default(0) @db.Decimal(14, 2)
+  notas         String?
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  componentes RecetaComponente[]
+
+  @@index([activo])
+  @@map("maquinas")
+}
+
+model Articulo {
+  id          String   @id @default(uuid()) @db.Uuid
+  nombre      String
+  descripcion String?
+  precioVenta Decimal  @db.Decimal(14, 4)
+  ivaPct      Decimal  @default(21) @db.Decimal(5, 2)
+  esServicio  Boolean  @default(false)
+  activo      Boolean  @default(true)
+  creadoEn    DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  receta   Receta?
+  ventaItems VentaItem[]
+
+  @@index([activo])
+  @@index([nombre])
+  @@map("articulos")
+}
+
+model Receta {
+  id         String   @id @default(uuid()) @db.Uuid
+  articuloId String   @unique @db.Uuid
+  notas      String?
+  creadoEn   DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  articulo    Articulo            @relation(fields: [articuloId], references: [id], onDelete: Cascade)
+  componentes RecetaComponente[]
+
+  @@map("recetas")
+}
+
+model RecetaComponente {
+  id                   String         @id @default(uuid()) @db.Uuid
+  recetaId             String         @db.Uuid
+  tipo                 TipoComponente
+  materialId           String?        @db.Uuid
+  maquinaId            String?        @db.Uuid
+  cantidad             Decimal        @db.Decimal(14, 4)
+  costoUnitarioOverride Decimal?      @db.Decimal(14, 4)
+  notas                String?
+
+  receta   Receta   @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+  material Material? @relation(fields: [materialId], references: [id])
+  maquina  Maquina?  @relation(fields: [maquinaId], references: [id])
+
+  @@index([recetaId])
+  @@index([materialId])
+  @@index([maquinaId])
+  @@map("receta_componentes")
+}
+
+model Venta {
+  id          String      @id @default(uuid()) @db.Uuid
+  numero      Int
+  anio        Int
+  clienteId   String      @db.Uuid
+  fecha       DateTime    @db.Date
+  estado      EstadoVenta @default(PENDIENTE)
+  observaciones String?
+
+  totalNeto   Decimal     @default(0) @db.Decimal(14, 2)
+  totalIVA    Decimal     @default(0) @db.Decimal(14, 2)
+  totalBruto  Decimal     @default(0) @db.Decimal(14, 2)
+  costoTotal  Decimal     @default(0) @db.Decimal(14, 2)
+
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  cliente   Cliente     @relation(fields: [clienteId], references: [id])
+  items     VentaItem[]
+  pagos     Pago[]
+
+  @@unique([anio, numero])
+  @@index([fecha])
+  @@index([clienteId])
+  @@index([estado])
+  @@map("ventas")
+}
+
+model VentaItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  ventaId    String   @db.Uuid
+  articuloId String   @db.Uuid
+  descripcion String
+  cantidad   Decimal  @db.Decimal(14, 3)
+  precioUnitario Decimal @db.Decimal(14, 4)
+  ivaPct     Decimal  @db.Decimal(5, 2)
+
+  subtotalNeto   Decimal @db.Decimal(14, 2)
+  subtotalIVA    Decimal @db.Decimal(14, 2)
+  subtotalBruto  Decimal @db.Decimal(14, 2)
+  costoUnitarioSnapshot Decimal @default(0) @db.Decimal(14, 4)
+  costoTotalSnapshot    Decimal @default(0) @db.Decimal(14, 2)
+
+  venta    Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  articulo Articulo @relation(fields: [articuloId], references: [id])
+
+  @@index([ventaId])
+  @@index([articuloId])
+  @@map("venta_items")
+}
+
+model Pago {
+  id        String     @id @default(uuid()) @db.Uuid
+  ventaId   String     @db.Uuid
+  clienteId String     @db.Uuid
+  fecha     DateTime   @db.Date
+  monto     Decimal    @db.Decimal(14, 2)
+  metodo    MetodoPago @default(EFECTIVO)
+  notas     String?
+
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  venta   Venta   @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+
+  @@index([ventaId])
+  @@index([clienteId])
+  @@index([fecha])
+  @@map("pagos")
+}
+
+model Configuracion {
+  clave String   @id
+  valor String
+
+  @@map("configuracion")
+}

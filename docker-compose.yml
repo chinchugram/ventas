@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: ventas-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ventas
+      POSTGRES_PASSWORD: ventas
+      POSTGRES_DB: ventas
+      TZ: America/Argentina/Buenos_Aires
+      PGTZ: America/Argentina/Buenos_Aires
+    ports:
+      - "5432:5432"
+    volumes:
+      - ventas-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ventas -d ventas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ventas-db-data:
