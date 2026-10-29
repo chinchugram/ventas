@@ -7,7 +7,7 @@
 | Producto | ERP mínimo: clientes, artículos, materiales, ventas, cobranzas, 5 reportes | El dueño pidió exactamente eso. Todo lo demás es etapa 2+. |
 | Comprobantes | Internos, **sin** facturación electrónica | Decisión del dueño. Se agrega ARCA después sin tocar el modelo. |
 | Plataforma | Web **responsive, mobile-first** | El mostrador se atiende con el celular en la mano. Diseño mobile-first real, no un desktop comprimido. |
-| Usuarios | Uno, **sin login** | Un usuario real no necesita autenticación. Se agrega en etapa 3. |
+| Usuarios | Varios, con **login y roles** (`DUENO` / `EMPLEADO`) | Desde la etapa 3 (ola 4): cada venta, cobro y compra queda con quién la cargó. Antes, un solo usuario sin login. Ver `docs/seguridad-ola-4-auth.md`. |
 | Cobranzas | Sí, cuenta corriente calculada | El negocio vende a crédito. |
 | Framework | **Next.js 15** (App Router, React Server Components) | Un solo lenguaje, SSR para que el celular cargue rápido, y Server Actions que eliminan una capa entera de API REST. |
 | Lenguaje | **TypeScript** estricto | El dominio es dinero: los tipos son la primera línea de defensa. |
@@ -98,5 +98,5 @@ ventas/
 |---|---|
 | El dueño no carga las recetas completas | El dashboard marca "artículos sin receta" con costo desconocido. Es visible, no invisible. |
 | El costo real difiere del estimado por receta | Etapa 5. En el MVP el margen es un **estándar estimado**, y así se documenta. |
-| Un solo usuario sin login en una red del negocio | Etapa 3. La app no expone datos públicos; el firewall del VPS es el límite. |
+| Acceso sin login (un solo usuario, en el MVP) | Resuelto en la etapa 3 (ola 4): login con usuarios, roles y sesiones guardadas en la base. Ver `docs/seguridad-ola-4-auth.md`. |
 | Sin backups automáticos | Script de `pg_dump` diario agregado en la etapa 2. **Es lo primero que hay que agregar antes de cargar datos reales.** |

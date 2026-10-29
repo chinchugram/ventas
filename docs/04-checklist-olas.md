@@ -163,7 +163,7 @@ Migraciones: `20260501…`.
 ## Hecho
 
 - [x] Etapa 1 — MVP: clientes, catálogo, materiales, recetas, ventas, cobranzas (solo lectura), 5 reportes, dashboard.
-- [x] Acceso con usuario y contraseña (HTTP Basic) para todo el sitio.
+- [x] Acceso con usuario y contraseña (HTTP Basic) para todo el sitio. *Reemplazado en la ola 4 por login con usuarios y roles.*
 - [x] Calculadora de cortes por plancha.
 - [x] Etapa 2 — compras con actualización de costo, libro de movimientos, ajuste por conteo físico.
 - [x] Etapa 2 — ventas persistidas: numeración por año, costo congelado, descuento de stock, pago inicial, anulación.
