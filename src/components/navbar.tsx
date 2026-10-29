@@ -19,24 +19,31 @@ const INICIO: Seccion = { href: "/", etiqueta: "Inicio", icono: "inicio" };
 const VENTAS: Seccion = { href: "/ventas", etiqueta: "Ventas", icono: "ventas" };
 const CLIENTES: Seccion = { href: "/clientes", etiqueta: "Clientes", icono: "clientes" };
 const PRINCIPALES: Seccion[] = [INICIO, VENTAS, CLIENTES];
+// Cuelga de /cobranzas pero tiene su propia entrada: "Cobranzas" no debe encenderse en ella.
+const RUTA_RECORDATORIOS = "/cobranzas/hoy";
 const SECUNDARIAS: Seccion[] = [
   { href: "/catalogo", etiqueta: "Artículos", icono: "articulos" },
   { href: "/cortes", etiqueta: "Cortes", icono: "articulos" },
   { href: "/materiales", etiqueta: "Materiales", icono: "materiales" },
   { href: "/compras", etiqueta: "Compras", icono: "materiales" },
   { href: "/reposicion", etiqueta: "Reposición", icono: "materiales", soloCelular: true },
+  { href: "/presupuestos", etiqueta: "Presupuestos", icono: "ventas" },
   { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas" },
+  { href: RUTA_RECORDATORIOS, etiqueta: "Recordatorios", icono: "cobranzas" },
   { href: "/reportes", etiqueta: "Reportes", icono: "reportes" },
 ];
-// Se usa poco: en escritorio va como icono junto a "Nueva venta", en el celular al final de "Mas".
+// Se usan poco: en escritorio van como iconos junto a "Nueva venta", en el celular al final de "Mas".
+const LISTAS_PRECIOS: Seccion = { href: "/listas-precios", etiqueta: "Listas de precios", icono: "articulos" };
 const CONFIGURACION: Seccion = { href: "/configuracion", etiqueta: "Configuración", icono: "configuracion" };
-const EN_HOJA_MAS: Seccion[] = [...SECUNDARIAS, CONFIGURACION];
+const EN_HOJA_MAS: Seccion[] = [...SECUNDARIAS, LISTAS_PRECIOS, CONFIGURACION];
 const NUEVA_VENTA = "/ventas/nueva";
 
 function estaActiva(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   // "Nueva venta" tiene su propio boton: no debe encender "Ventas".
   if (href === "/ventas") return pathname === "/ventas";
+  // La entrada mas especifica gana: dentro de /cobranzas/hoy solo se enciende "Recordatorios".
+  if (href === "/cobranzas") return pathname.startsWith(href) && !pathname.startsWith(RUTA_RECORDATORIOS);
   return pathname.startsWith(href);
 }
 
@@ -95,19 +102,23 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
           </div>
 
           <div className="hidden shrink-0 items-center gap-2 md:flex">
-            <Link
-              href={CONFIGURACION.href}
-              aria-label={CONFIGURACION.etiqueta}
-              title={CONFIGURACION.etiqueta}
-              aria-current={estaActiva(pathname, CONFIGURACION.href) ? "page" : undefined}
-              className={`rounded-lg p-3 transition-colors ${
-                estaActiva(pathname, CONFIGURACION.href)
-                  ? "bg-marca text-tinta"
-                  : "text-slate-300 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              <Icono nombre={CONFIGURACION.icono} className="h-5 w-5" />
-            </Link>
+            {[LISTAS_PRECIOS, CONFIGURACION].map((s) => {
+              const activa = estaActiva(pathname, s.href);
+              return (
+                <Link
+                  key={s.href}
+                  href={s.href}
+                  aria-label={s.etiqueta}
+                  title={s.etiqueta}
+                  aria-current={activa ? "page" : undefined}
+                  className={`rounded-lg p-3 transition-colors ${
+                    activa ? "bg-marca text-tinta" : "text-slate-300 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  <Icono nombre={s.icono} className="h-5 w-5" />
+                </Link>
+              );
+            })}
             <Link
               href={NUEVA_VENTA}
               className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 py-2 text-sm font-semibold text-tinta lg:px-4 transition-transform hover:brightness-105 active:scale-95"
@@ -129,7 +140,7 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
           <div
             role="dialog"
             aria-label="Más secciones"
-            className="sheet-in absolute inset-x-0 bottom-0 rounded-t-3xl bg-white px-4 pt-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] shadow-2xl"
+            className="sheet-in absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-3xl bg-white px-4 pt-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] shadow-2xl"
           >
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-300" />
             <ul className="space-y-1">
