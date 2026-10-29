@@ -100,7 +100,7 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
               aria-label={CONFIGURACION.etiqueta}
               title={CONFIGURACION.etiqueta}
               aria-current={estaActiva(pathname, CONFIGURACION.href) ? "page" : undefined}
-              className={`rounded-lg p-2 transition-colors ${
+              className={`rounded-lg p-3 transition-colors ${
                 estaActiva(pathname, CONFIGURACION.href)
                   ? "bg-marca text-tinta"
                   : "text-slate-300 hover:bg-white/10 hover:text-white"
@@ -189,7 +189,7 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
               type="button"
               onClick={() => setMasAbierto((v) => !v)}
               aria-expanded={masAbierto}
-              className={`flex w-full flex-col items-center gap-0.5 pt-2 pb-1.5 text-[11px] font-medium ${
+              className={`flex w-full flex-col items-center gap-0.5 pt-2 pb-1.5 text-xs font-medium ${
                 masActivo || masAbierto ? "text-tinta" : "text-slate-500"
               }`}
             >
@@ -210,7 +210,7 @@ function ItemBarra({ seccion, activa }: { seccion: Seccion; activa: boolean }) {
       <Link
         href={seccion.href}
         aria-current={activa ? "page" : undefined}
-        className={`flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-[11px] font-medium ${
+        className={`flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-xs font-medium ${
           activa ? "text-tinta" : "text-slate-500"
         }`}
       >

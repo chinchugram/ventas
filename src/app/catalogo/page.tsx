@@ -49,7 +49,7 @@ export default async function CatalogoPage() {
             <li key={a.id} className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <Link href={`/catalogo/${a.id}`} className="font-medium text-slate-900 hover:underline">
+                  <Link href={`/catalogo/${a.id}`} className="inline-flex min-h-11 items-center font-medium text-slate-900 hover:underline">
                     {a.nombre}
                   </Link>
                   {a.esServicio ? <span className="ml-2 text-xs text-slate-500">servicio</span> : null}
@@ -83,7 +83,7 @@ export default async function CatalogoPage() {
 
               {a.receta.confiable ? (
                 <details className="mt-3 group">
-                  <summary className="cursor-pointer text-sm font-medium text-marca-texto">
+                  <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-marca-texto">
                     Ver receta ({a.receta.componentes.length}{" "}
                     {a.receta.componentes.length === 1 ? "componente" : "componentes"})
                   </summary>
@@ -119,7 +119,7 @@ export default async function CatalogoPage() {
 
               <Link
                 href={`/catalogo/${a.id}`}
-                className="mt-3 block rounded-lg border border-slate-300 py-2 text-center text-sm font-medium text-slate-700"
+                className="mt-3 block rounded-lg border border-slate-300 py-3 text-center text-sm font-medium text-slate-700"
               >
                 {a.receta.confiable ? "Editar artículo y receta" : "Cargar receta"}
               </Link>
@@ -135,7 +135,7 @@ export default async function CatalogoPage() {
 
 function BotonNuevo() {
   return (
-    <Link href="/catalogo/nuevo" className="rounded-lg bg-tinta px-3 py-2 text-sm font-semibold text-white">
+    <Link href="/catalogo/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-tinta px-3 text-sm font-semibold text-white">
       + Nuevo artículo
     </Link>
   );
@@ -146,13 +146,13 @@ function ListaDeBaja({ articulos }: { articulos: { id: string; nombre: string }[
   if (articulos.length === 0) return null;
   return (
     <details className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
-      <summary className="cursor-pointer text-sm font-medium text-slate-700">
+      <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-slate-700">
         Dados de baja ({articulos.length})
       </summary>
       <ul className="mt-2 divide-y divide-slate-100">
         {articulos.map((a) => (
           <li key={a.id}>
-            <Link href={`/catalogo/${a.id}`} className="block py-2 text-sm text-slate-600 hover:underline">
+            <Link href={`/catalogo/${a.id}`} className="block py-3 text-sm text-slate-600 hover:underline">
               {a.nombre}
             </Link>
           </li>

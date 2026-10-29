@@ -18,7 +18,7 @@ const TEXTO_ESTADO = {
   OK: "OK",
 } as const;
 
-const BOTON_SECUNDARIO = "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700";
+const BOTON_SECUNDARIO = "inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700";
 
 export default async function MaterialesPage({ searchParams }: { searchParams: Promise<{ bajas?: string }> }) {
   const verBajas = (await searchParams).bajas === "1";
@@ -32,7 +32,7 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
       <Link href="/compras/nueva" className={BOTON_SECUNDARIO}>
         Registrar compra
       </Link>
-      <Link href="/materiales/nuevo" className="rounded-lg bg-marca px-3 py-2 text-sm font-semibold text-tinta">
+      <Link href="/materiales/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta">
         Nuevo material
       </Link>
     </div>
@@ -87,7 +87,7 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
           tono={alertas.length > 0 ? "aviso" : "ok"}
           detalle={
             alertas.length > 0 ? (
-              <Link href="/reposicion" className="underline underline-offset-2">
+              <Link href="/reposicion" className="inline-flex min-h-11 items-center underline underline-offset-2">
                 Ver qué comprar
               </Link>
             ) : undefined
@@ -99,7 +99,7 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
         {materiales.map((m) => (
           <li key={m.id} className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex items-start justify-between gap-3">
-              <Link href={`/materiales/${m.id}`} className="font-medium text-slate-900 underline-offset-2 hover:underline">
+              <Link href={`/materiales/${m.id}`} className="inline-flex min-h-11 items-center font-medium text-slate-900 underline-offset-2 hover:underline">
                 {m.nombre}
               </Link>
               <div className="flex shrink-0 items-center gap-2">
@@ -109,7 +109,7 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
                 <Link
                   href={`/materiales/${m.id}/editar`}
                   aria-label={`Editar ${m.nombre}`}
-                  className="-my-2 rounded-md px-2 py-2 text-sm font-medium text-marca-texto underline-offset-2 hover:underline"
+                  className="-my-3 rounded-md px-2 py-3 text-sm font-medium text-marca-texto underline-offset-2 hover:underline"
                 >
                   Editar
                 </Link>
@@ -162,7 +162,7 @@ function LinkBajas({ cantidad }: { cantidad: number }) {
   if (cantidad === 0) return null;
   return (
     <p className="mt-4 text-center text-sm">
-      <Link href="/materiales?bajas=1" className="text-slate-500 underline underline-offset-2">
+      <Link href="/materiales?bajas=1" className="inline-flex min-h-11 items-center text-slate-600 underline underline-offset-2">
         Ver {cantidad === 1 ? "1 material dado de baja" : `${cantidad} materiales dados de baja`}
       </Link>
     </p>
@@ -181,7 +181,7 @@ function ListaDeBajas({ materiales }: { materiales: MaterialDeBaja[] }) {
             <p className="min-w-0 font-medium text-slate-700">{m.nombre}</p>
             <Link
               href={`/materiales/${m.id}/editar`}
-              className="-my-2 shrink-0 rounded-md px-2 py-2 text-sm font-medium text-marca-texto underline-offset-2 hover:underline"
+              className="-my-3 shrink-0 rounded-md px-2 py-3 text-sm font-medium text-marca-texto underline-offset-2 hover:underline"
             >
               Ver / reactivar
             </Link>

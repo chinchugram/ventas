@@ -100,7 +100,7 @@ export default async function Dashboard() {
 
       {alertas.length > 0 && (
         <section className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+          <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
             Para mirar
           </h2>
           <ul className="space-y-2">
@@ -122,7 +122,7 @@ export default async function Dashboard() {
       )}
 
       <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
           Últimas ventas
         </h2>
         {ultimas.length === 0 ? (
@@ -158,7 +158,7 @@ export default async function Dashboard() {
 
       {deudas.length > 0 && (
         <section className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+          <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
             Quién debe
           </h2>
           <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -182,7 +182,7 @@ export default async function Dashboard() {
 
       {articulos.length > 0 && (
         <section className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+          <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
             Margen del catálogo
           </h2>
           <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -201,7 +201,7 @@ export default async function Dashboard() {
           </ul>
           <Link
             href="/catalogo"
-            className="mt-2 inline-block text-sm font-medium text-marca-texto hover:underline"
+            className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-marca-texto hover:underline"
           >
             Ver catálogo completo →
           </Link>

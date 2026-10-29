@@ -42,7 +42,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
         accion={
           <Link
             href="/ventas"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
           >
             Volver
           </Link>
@@ -58,7 +58,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
             {ETIQUETA_ESTADO_PAGO[venta.estadoPago]}
           </span>
         ) : null}
-        <Link href={`/clientes/${venta.clienteId}`} className="text-xs font-medium text-slate-600 underline underline-offset-2">
+        <Link href={`/clientes/${venta.clienteId}`} className="inline-flex min-h-11 items-center text-sm font-medium text-slate-600 underline underline-offset-2">
           Ver cliente
         </Link>
       </div>
@@ -114,7 +114,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
                 <li key={p.id} className="py-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className={pagoAnulado ? "text-slate-400 line-through" : "text-slate-900"}>
+                      <p className={pagoAnulado ? "text-slate-500 line-through" : "text-slate-900"}>
                         {fmtFecha(p.fecha)} · {ETIQUETA_METODO[p.metodo] ?? p.metodo}
                       </p>
                       {p.notas ? <p className="break-words text-slate-500">{p.notas}</p> : null}
@@ -126,7 +126,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
                     </div>
                     <div className="shrink-0">
                       <span
-                        className={`font-semibold tabular-nums ${pagoAnulado || anulada ? "text-slate-400 line-through" : "text-slate-900"}`}
+                        className={`font-semibold tabular-nums ${pagoAnulado || anulada ? "text-slate-500 line-through" : "text-slate-900"}`}
                       >
                         {fmtMoneda(p.monto)}
                       </span>

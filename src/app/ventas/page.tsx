@@ -40,7 +40,7 @@ export default async function VentasPage() {
                 <div className="min-w-0">
                   <p className="font-medium text-slate-900">
                     {conDetalle ? (
-                      <Link href={`/ventas/${v.id}`} className="underline-offset-2 hover:underline">
+                      <Link href={`/ventas/${v.id}`} className="inline-flex min-h-11 items-center underline underline-offset-2">
                         #{v.numero}/{v.anio}
                       </Link>
                     ) : (
@@ -79,7 +79,7 @@ export default async function VentasPage() {
                   <dt className="text-xs text-slate-500">Saldo</dt>
                   <dd
                     className={`font-semibold tabular-nums ${
-                      v.saldo.cmp(0) > 0 ? "text-amber-700" : "text-slate-400"
+                      v.saldo.cmp(0) > 0 ? "text-amber-700" : "text-slate-500"
                     }`}
                   >
                     {v.saldo.cmp(0) > 0 ? fmtMoneda(v.saldo) : "al día"}

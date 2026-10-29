@@ -55,7 +55,7 @@ export function ImpactoMargen({
   const bajanDeMeta = impactos.filter((i) => i.quedaBajoMeta).length;
 
   return (
-    <section aria-live="polite" className="rounded-xl border border-slate-200 bg-white p-4">
+    <section className="rounded-xl border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-900">
         {cambio ? "Así cambian los márgenes" : "Artículos que usan este material"}
       </h2>

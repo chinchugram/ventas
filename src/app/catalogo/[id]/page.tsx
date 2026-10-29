@@ -27,7 +27,7 @@ export default async function EditarArticuloPage({ params }: { params: Promise<{
         accion={
           <Link
             href="/catalogo"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
           >
             Volver
           </Link>

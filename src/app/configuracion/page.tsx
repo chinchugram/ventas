@@ -38,7 +38,7 @@ export default async function ConfiguracionPage() {
         </div>
         <Link
           href="/configuracion/maquinas/nueva"
-          className="shrink-0 rounded-lg bg-marca px-3 py-2 text-sm font-semibold text-tinta"
+          className="shrink-0 inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta"
         >
           Agregar máquina
         </Link>
@@ -53,7 +53,7 @@ export default async function ConfiguracionPage() {
               <div className="flex items-start justify-between gap-3">
                 <Link
                   href={`/configuracion/maquinas/${m.id}`}
-                  className={`min-w-0 font-medium underline-offset-2 hover:underline ${m.activo ? "text-slate-900" : "text-slate-500"}`}
+                  className={`inline-flex min-h-11 min-w-0 items-center font-medium underline-offset-2 hover:underline ${m.activo ? "text-slate-900" : "text-slate-500"}`}
                 >
                   {m.nombre}
                 </Link>

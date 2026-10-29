@@ -263,10 +263,10 @@ export function NuevaVentaForm({
       ) : null}
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
           Cliente
         </h2>
-        <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+        <select aria-label="Cliente" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
           {clientes.map((c) => (
             <option key={c.id} value={c.id}>
               {c.nombre}
@@ -277,11 +277,12 @@ export function NuevaVentaForm({
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
           Agregar articulo
         </h2>
         <input
           type="search"
+          aria-label="Buscar artículo en el catálogo"
           placeholder="Buscar en el catalogo"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
@@ -296,16 +297,16 @@ export function NuevaVentaForm({
                 <button
                   type="button"
                   onClick={() => agregar(a.id)}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-3 text-left text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
                     yaCargado
-                      ? "border-marca bg-marca-claro text-marca"
+                      ? "border-marca bg-marca-claro text-marca-texto"
                       : "border-slate-300 bg-white text-slate-800"
                   }`}
                 >
                   <span>{a.nombre}</span>
                   <span className="text-slate-500">{fmtMoneda(a.precioVenta)}</span>
                   {!a.recetaConfiable ? (
-                    <span className="text-xs font-semibold text-amber-600">sin receta</span>
+                    <span className="text-xs font-semibold text-amber-700">sin receta</span>
                   ) : null}
                 </button>
               </li>
@@ -314,23 +315,23 @@ export function NuevaVentaForm({
         </ul>
 
         {articulosFiltrados.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">Ningún artículo coincide con la búsqueda.</p>
+          <p className="mt-2 text-sm text-slate-600">Ningún artículo coincide con la búsqueda.</p>
         ) : null}
       </section>
 
       <section>
         <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
+          <h2 className="text-sm font-semibold tracking-wide text-slate-600 uppercase">
             Detalle
           </h2>
-          <span className="text-sm text-slate-500">
+          <span className="text-sm text-slate-600">
             {lineasCalculadas.length}{" "}
             {lineasCalculadas.length === 1 ? "linea" : "lineas"}
           </span>
         </div>
 
         {lineasCalculadas.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-600">
             Todavía no agregaste nada.
           </p>
         ) : (
@@ -342,7 +343,8 @@ export function NuevaVentaForm({
                   <button
                     type="button"
                     onClick={() => quitar(l.linea.id)}
-                    className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-red-600"
+                    aria-label={`Quitar ${l.articulo.nombre}`}
+                    className="inline-flex min-h-11 shrink-0 items-center rounded-md px-3 text-xs font-semibold text-red-600"
                   >
                     Quitar
                   </button>
@@ -364,22 +366,22 @@ export function NuevaVentaForm({
                     />
                   </div>
                   <div>
-                    <label className="text-xs">Unitario</label>
+                    <span className="mb-1 block text-xs font-medium text-slate-700">Unitario</span>
                     <p className="py-2.5 text-sm tabular-nums text-slate-600">
                       {fmtMoneda(l.articulo.precioVenta)}
                     </p>
                   </div>
                   <div>
-                    <label className="text-xs">Total</label>
+                    <span className="mb-1 block text-xs font-medium text-slate-700">Total</span>
                     <p className="py-2.5 text-sm font-semibold tabular-nums text-slate-900">
                       {fmtMoneda(l.cal.subtotalBruto)}
                     </p>
                   </div>
                   <div>
-                    <label className="text-xs">Ganancia</label>
+                    <span className="mb-1 block text-xs font-medium text-slate-700">Ganancia</span>
                     <p
                       className={`py-2.5 text-sm font-semibold tabular-nums ${
-                        l.margen.costoConfiable ? "text-emerald-700" : "text-amber-600"
+                        l.margen.costoConfiable ? "text-emerald-700" : "text-amber-700"
                       }`}
                     >
                       {l.margen.costoConfiable
@@ -390,7 +392,7 @@ export function NuevaVentaForm({
                 </div>
 
                 {l.articulo.recetaConfiable ? (
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-slate-600">
                     Costo {fmtMoneda(l.cal.costoTotalSnapshot)} · margen{" "}
                     {fmtPorcentaje(l.margen.margenPct)} · markup{" "}
                     {fmtPorcentaje(l.margen.markupPct)}
@@ -409,7 +411,7 @@ export function NuevaVentaForm({
                       onClick={() =>
                         setVerReceta(verReceta === l.linea.id ? null : l.linea.id)
                       }
-                      className="text-xs font-medium text-marca-texto"
+                      className="inline-flex min-h-11 items-center text-sm font-medium text-marca-texto"
                     >
                       {verReceta === l.linea.id ? "Ocultar receta" : "Ver receta"}
                     </button>
@@ -432,7 +434,7 @@ export function NuevaVentaForm({
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
           Cobro
         </h2>
 
@@ -460,7 +462,7 @@ export function NuevaVentaForm({
           </div>
         ) : null}
 
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {METODOS.map((m) => (
             <Boton key={m.valor} toggle activo={metodo === m.valor} onClick={() => setMetodo(m.valor)}>
               {m.etiqueta}
@@ -583,7 +585,7 @@ function ComprobanteSimulado({
 
       <div className="overflow-hidden rounded-xl border border-slate-300 bg-white">
         <div className="border-b border-dashed border-slate-300 p-4 text-center">
-          <p className="text-xs tracking-wide text-slate-500 uppercase">Comprobante interno</p>
+          <p className="text-xs tracking-wide text-slate-600 uppercase">Comprobante interno</p>
           <p className="text-lg font-semibold text-slate-900">Nº {sim.numero}</p>
           <p className="text-sm text-slate-600">{sim.cliente}</p>
         </div>
@@ -664,7 +666,7 @@ function ComprobanteSimulado({
         <button
           type="button"
           onClick={onVolver}
-          className="w-full text-sm text-slate-500 hover:underline"
+          className="min-h-11 w-full text-sm text-slate-600 hover:underline"
         >
           Volver a editar la venta
         </button>
@@ -704,15 +706,15 @@ function BannerMockup({
             <button
               type="button"
               onClick={onCargarEjemplo}
-              className="rounded-lg bg-amber-800 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-amber-900"
+              className="min-h-11 rounded-lg bg-amber-800 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-amber-900"
             >
-              ⚡ Cargar ejemplo demo
+              <span aria-hidden="true">⚡</span> Cargar ejemplo demo
             </button>
           ) : (
             <button
               type="button"
               onClick={onLimpiar}
-              className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+              className="min-h-11 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
             >
               Limpiar líneas
             </button>
@@ -785,7 +787,8 @@ function Boton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border px-3 py-2.5 text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
+      aria-pressed={toggle ? !!activo : undefined}
+      className={`rounded-lg border px-3 py-3 text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
         toggle
           ? activo
             ? "border-marca bg-marca text-tinta"
