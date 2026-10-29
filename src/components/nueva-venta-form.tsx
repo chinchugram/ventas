@@ -30,6 +30,7 @@ export type ComponenteDTO = {
   costoTotal: string;
 };
 
+/** Lo que viaja al navegador de cualquier usuario: nombre, precio e IVA. Sin costos. */
 export type ArticuloDTO = {
   id: string;
   nombre: string;
@@ -37,6 +38,10 @@ export type ArticuloDTO = {
   precioVenta: string;
   ivaPct: string;
   esServicio: boolean;
+};
+
+/** Solo para quien puede `verCostos`: el servidor no arma esto para nadie mas. */
+export type ArticuloConCostosDTO = ArticuloDTO & {
   costoUnitario: string;
   recetaConfiable: boolean;
   receta: ComponenteDTO[];
@@ -53,10 +58,13 @@ type Linea = { id: string; articuloId: string; cantidad: string };
 type LineaCalculada = {
   linea: Linea;
   articulo: ArticuloDTO;
+  /** Costo y receta del articulo; `null` si el usuario no puede verlos. */
+  costos: ArticuloConCostosDTO | null;
   cantidad: Dinero;
-  /** Resultado crudo del motor de costeo: neto, IVA, costo y ganancia de la linea. */
+  /** Resultado crudo del motor de costeo: neto, IVA y total de la linea (el costo, solo con `costos`). */
   cal: ReturnType<typeof costearLineaVenta>;
-  margen: Margen;
+  /** Margen de la linea; `null` si el usuario no puede verlo. */
+  margen: Margen | null;
 };
 
 const METODOS = [
@@ -70,15 +78,22 @@ const METODOS = [
 // pantalla son efimeras, no se persisten.
 let secuenciaLinea = 0;
 
-export function NuevaVentaForm({
-  articulos,
-  clientes,
-  esModoDemo = false,
-}: {
-  articulos: ArticuloDTO[];
+function tieneCostos(a: ArticuloDTO | ArticuloConCostosDTO): a is ArticuloConCostosDTO {
+  return "costoUnitario" in a;
+}
+
+type PropsNuevaVenta = {
   clientes: ClienteDTO[];
   esModoDemo?: boolean;
-}) {
+} & (
+  | { verCostos: true; articulos: ArticuloConCostosDTO[] }
+  // Sin permiso de ver costos el servidor ni arma los costos: solo precio, IVA y total.
+  | { verCostos: false; articulos: ArticuloDTO[] }
+);
+
+export function NuevaVentaForm({ articulos, clientes, esModoDemo = false, verCostos }: PropsNuevaVenta) {
+  const costosDe = (a: ArticuloDTO): ArticuloConCostosDTO | null =>
+    verCostos && tieneCostos(a) ? a : null;
   const [clienteId, setClienteId] = useState(clientes[0]?.id ?? "");
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [busqueda, setBusqueda] = useState("");
@@ -95,7 +110,7 @@ export function NuevaVentaForm({
   function cargarEjemploDemo() {
     // Solo artículos con receta: uno sin receta tiene costo 0 y mostraría un
     // margen inflado en la primera pantalla que ve el cliente.
-    const costeados = articulos.filter((a) => a.recetaConfiable);
+    const costeados = articulos.filter((a) => costosDe(a)?.recetaConfiable);
     const a1 = costeados[0] ?? articulos[0];
     if (!a1) return;
     const a2 = costeados[1] ?? a1;
@@ -128,29 +143,35 @@ export function NuevaVentaForm({
       if (!articulo) continue;
 
       const cantidad = d(linea.cantidad || "0");
+      const costos = costosDe(articulo);
       const cal = costearLineaVenta({
         cantidad,
         precioUnitario: d(articulo.precioVenta),
         ivaPct: d(articulo.ivaPct),
-        costoUnitario: d(articulo.costoUnitario),
+        costoUnitario: d(costos?.costoUnitario ?? "0"),
       });
 
       salida.push({
         linea,
         articulo,
+        costos,
         cantidad,
         cal,
-        margen: calcularMargen({
-          precioBruto: cal.subtotalBruto,
-          costo: cal.costoTotalSnapshot,
-          ivaPct: d(articulo.ivaPct),
-          costoConfiable: articulo.recetaConfiable,
-        }),
+        margen: costos
+          ? calcularMargen({
+              precioBruto: cal.subtotalBruto,
+              costo: cal.costoTotalSnapshot,
+              ivaPct: d(articulo.ivaPct),
+              costoConfiable: costos.recetaConfiable,
+            })
+          : null,
       });
     }
 
     return salida;
-  }, [lineas, porId]);
+    // `costosDe` solo depende de `verCostos`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineas, porId, verCostos]);
 
   // Los totales salen de `totalizarVenta`, el mismo helper que usa la version que
   // guarda. El IVA se acumula linea por linea a proposito: cada articulo tiene su
@@ -211,6 +232,7 @@ export function NuevaVentaForm({
       metodo,
       estadoPago: estadoPago(totales.totalBruto, cobrado),
       observaciones,
+      verCostos,
     };
 
     if (esModoDemo) {
@@ -305,7 +327,7 @@ export function NuevaVentaForm({
                 >
                   <span>{a.nombre}</span>
                   <span className="text-slate-500">{fmtMoneda(a.precioVenta)}</span>
-                  {!a.recetaConfiable ? (
+                  {costosDe(a) && !costosDe(a)?.recetaConfiable ? (
                     <span className="text-xs font-semibold text-amber-700">sin receta</span>
                   ) : null}
                 </button>
@@ -350,7 +372,7 @@ export function NuevaVentaForm({
                   </button>
                 </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className={`mt-3 grid grid-cols-2 gap-3 ${l.margen ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
                   <div className="col-span-2 sm:col-span-1">
                     <label htmlFor={`cant-${l.linea.id}`} className="text-xs">
                       Cantidad
@@ -377,34 +399,38 @@ export function NuevaVentaForm({
                       {fmtMoneda(l.cal.subtotalBruto)}
                     </p>
                   </div>
-                  <div>
-                    <span className="mb-1 block text-xs font-medium text-slate-700">Ganancia</span>
-                    <p
-                      className={`py-2.5 text-sm font-semibold tabular-nums ${
-                        l.margen.costoConfiable ? "text-emerald-700" : "text-amber-700"
-                      }`}
-                    >
-                      {l.margen.costoConfiable
-                        ? fmtMoneda(l.margen.ganancia)
-                        : "costo desconocido"}
-                    </p>
-                  </div>
+                  {l.margen ? (
+                    <div>
+                      <span className="mb-1 block text-xs font-medium text-slate-700">Ganancia</span>
+                      <p
+                        className={`py-2.5 text-sm font-semibold tabular-nums ${
+                          l.margen.costoConfiable ? "text-emerald-700" : "text-amber-700"
+                        }`}
+                      >
+                        {l.margen.costoConfiable
+                          ? fmtMoneda(l.margen.ganancia)
+                          : "costo desconocido"}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
 
-                {l.articulo.recetaConfiable ? (
-                  <p className="mt-2 text-xs text-slate-600">
-                    Costo {fmtMoneda(l.cal.costoTotalSnapshot)} · margen{" "}
-                    {fmtPorcentaje(l.margen.margenPct)} · markup{" "}
-                    {fmtPorcentaje(l.margen.markupPct)}
-                  </p>
-                ) : (
-                  <p className="mt-2 text-xs text-amber-700">
-                    Este artículo no tiene receta: el costo real se está suponiendo 0 y el margen
-                    que se ve es optimista.
-                  </p>
-                )}
+                {l.margen && l.costos ? (
+                  l.costos.recetaConfiable ? (
+                    <p className="mt-2 text-xs text-slate-600">
+                      Costo {fmtMoneda(l.cal.costoTotalSnapshot)} · margen{" "}
+                      {fmtPorcentaje(l.margen.margenPct)} · markup{" "}
+                      {fmtPorcentaje(l.margen.markupPct)}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-amber-700">
+                      Este artículo no tiene receta: el costo real se está suponiendo 0 y el margen
+                      que se ve es optimista.
+                    </p>
+                  )
+                ) : null}
 
-                {l.articulo.receta.length > 0 ? (
+                {l.costos && l.costos.receta.length > 0 ? (
                   <div className="mt-2">
                     <button
                       type="button"
@@ -417,7 +443,7 @@ export function NuevaVentaForm({
                     </button>
                     {verReceta === l.linea.id ? (
                       <ul className="mt-2 space-y-1 border-l-2 border-slate-200 pl-3">
-                        {l.articulo.receta.map((c, i) => (
+                        {l.costos.receta.map((c, i) => (
                           <li key={i} className="text-xs text-slate-600">
                             {c.etiqueta}: {fmtNumero(c.cantidad)} × {fmtMoneda(c.costoUnitario)} ={" "}
                             {fmtMoneda(c.costoTotal)}
@@ -514,8 +540,8 @@ export function NuevaVentaForm({
 
       <BarraInferior
         total={totales.totalBruto}
-        ganancia={totales.ganancia}
-        margenPct={totales.margenPct}
+        ganancia={verCostos ? totales.ganancia : null}
+        margenPct={verCostos ? totales.margenPct : null}
         habilitado={hayLineas && clienteId !== "" && !guardando}
         guardando={guardando}
         error={errorGuardado}
@@ -538,6 +564,8 @@ type Simulacion = {
   metodo: string;
   estadoPago: ReturnType<typeof estadoPago>;
   observaciones: string;
+  /** El usuario puede ver costo y ganancia en el comprobante. */
+  verCostos: boolean;
 };
 
 function ComprobanteSimulado({
@@ -610,13 +638,17 @@ function ComprobanteSimulado({
           <Fila etiqueta="Neto" valor={fmtMoneda(sim.totales.totalNeto)} />
           <Fila etiqueta="IVA" valor={fmtMoneda(sim.totales.totalIVA)} />
           <Fila etiqueta="Total" valor={fmtMoneda(sim.totales.totalBruto)} fuerte />
-          <Fila etiqueta="Costo" valor={fmtMoneda(sim.totales.costoTotal)} />
-          <Fila
-            etiqueta="Ganancia"
-            valor={`${fmtMoneda(sim.totales.ganancia)} (${fmtPorcentaje(sim.totales.margenPct)})`}
-            fuerte
-            tono="green"
-          />
+          {sim.verCostos ? (
+            <>
+              <Fila etiqueta="Costo" valor={fmtMoneda(sim.totales.costoTotal)} />
+              <Fila
+                etiqueta="Ganancia"
+                valor={`${fmtMoneda(sim.totales.ganancia)} (${fmtPorcentaje(sim.totales.margenPct)})`}
+                fuerte
+                tono="green"
+              />
+            </>
+          ) : null}
         </div>
 
         <div className="border-t border-dashed border-slate-300 p-4 text-sm">
@@ -735,8 +767,9 @@ function BarraInferior({
   onConfirmar,
 }: {
   total: Dinero;
-  ganancia: Dinero;
-  margenPct: Dinero;
+  /** `null` si el usuario no puede ver ganancia ni margen. */
+  ganancia: Dinero | null;
+  margenPct: Dinero | null;
   habilitado: boolean;
   guardando: boolean;
   error: string | null;
@@ -755,9 +788,11 @@ function BarraInferior({
           <p className="text-lg leading-tight font-semibold tabular-nums text-slate-900">
             {fmtMoneda(total)}
           </p>
-          <p className="text-xs tabular-nums text-emerald-700">
-            ganancia {fmtMoneda(ganancia)} · {fmtPorcentaje(margenPct)}
-          </p>
+          {ganancia && margenPct ? (
+            <p className="text-xs tabular-nums text-emerald-700">
+              ganancia {fmtMoneda(ganancia)} · {fmtPorcentaje(margenPct)}
+            </p>
+          ) : null}
         </div>
         <button
           type="button"

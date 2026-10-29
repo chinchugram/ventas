@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { Seccion } from "@/components/ui";
 import { fmtNumero } from "@/lib/money";
 import { estadoDemo } from "@/lib/respaldo";
@@ -12,6 +13,8 @@ import { EstadoMaterialBoton } from "../../_componentes/estado-material-boton";
 export const dynamic = "force-dynamic";
 
 export default async function EditarMaterialPage({ params }: { params: Promise<{ id: string }> }) {
+  // El formulario muestra costo y el impacto en margen de las recetas: hacen falta los tres permisos.
+  await requierePermisoPagina("editarMateriales", "verCostos", "verMargenes");
   const { id } = await params;
   const material = await getMaterialParaEditar(id);
   if (!material) notFound();

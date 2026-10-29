@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { esquemaConfiguracion, esquemaMaquina, type DatosConfiguracion, type DatosMaquina } from "@/lib/configuracion";
 import {
@@ -20,6 +21,8 @@ import {
  * Las ventas ya hechas no cambian: guardan su costo congelado.
  */
 export async function guardarConfiguracion(datos: DatosConfiguracion): Promise<Resultado> {
+  const permiso = await verificarPermiso("configuracion");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaConfiguracion.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -40,6 +43,8 @@ export async function guardarConfiguracion(datos: DatosConfiguracion): Promise<R
 // revalida todo el sitio.
 
 export async function crearMaquina(datos: DatosMaquina): Promise<Resultado> {
+  const permiso = await verificarPermiso("configuracion");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaMaquina.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -58,6 +63,8 @@ export async function crearMaquina(datos: DatosMaquina): Promise<Resultado> {
 const idMaquina = z.uuid("Máquina inválida");
 
 export async function editarMaquina(datos: DatosMaquina & { id: string }): Promise<Resultado> {
+  const permiso = await verificarPermiso("configuracion");
+  if (!permiso.ok) return permiso;
   const id = idMaquina.safeParse(datos.id);
   if (!id.success) return { ok: false, error: primerError(id.error) };
   const parsed = esquemaMaquina.safeParse(datos);
@@ -83,6 +90,8 @@ export type ResultadoActivo = { ok: true; recetas: number } | { ok: false; error
  * y se devuelve cuantas son para avisar.
  */
 export async function cambiarActivoMaquina(datos: { id: string; activo: boolean }): Promise<ResultadoActivo> {
+  const permiso = await verificarPermiso("configuracion");
+  if (!permiso.ok) return permiso;
   const parsed = z.object({ id: idMaquina, activo: z.boolean() }).safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };

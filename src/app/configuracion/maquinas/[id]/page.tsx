@@ -5,10 +5,12 @@ import { getMaquina } from "@/lib/queries/configuracion";
 import { Seccion } from "@/components/ui";
 import { MaquinaForm } from "../../_componentes/maquina-form";
 import { EstadoMaquinaBoton } from "../../_componentes/estado-maquina-boton";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
 export default async function MaquinaPage({ params }: { params: Promise<{ id: string }> }) {
+  await requierePermisoPagina("configuracion");
   const { id } = await params;
   const maquina = await getMaquina(id);
   if (!maquina) notFound();

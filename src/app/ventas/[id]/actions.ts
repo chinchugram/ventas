@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import {
   decimalPositivo,
@@ -33,6 +34,8 @@ const esquema = z.object({ ventaId: z.uuid("Venta inválida") });
 
 /** Anula una venta (queda ANULADA, no se borra) y devuelve el stock que salio. */
 export async function anularVenta(datos: z.input<typeof esquema>): Promise<Resultado> {
+  const permiso = await verificarPermiso("anularVenta");
+  if (!permiso.ok) return permiso;
   const parsed = esquema.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -69,6 +72,8 @@ export type DatosPago = z.input<typeof esquemaPago>;
  * la venta bloqueada: del formulario solo se usa el monto tipeado.
  */
 export async function registrarPago(datos: DatosPago): Promise<Resultado> {
+  const permiso = await verificarPermiso("registrarCobro");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaPago.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   const problemaFecha = validarFechaPago(parsed.data.fecha, hoyArgentinaISO());
@@ -99,6 +104,8 @@ const esquemaAnularPago = z.object({
 
 /** Anula un pago (baja logica, con motivo). El saldo de la venta vuelve a subir. */
 export async function anularPago(datos: z.input<typeof esquemaAnularPago>): Promise<Resultado> {
+  const permiso = await verificarPermiso("anularPago");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaAnularPago.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -118,6 +125,8 @@ export async function anularPago(datos: z.input<typeof esquemaAnularPago>): Prom
 
 /** PENDIENTE → ENTREGADA. */
 export async function marcarEntregada(datos: z.input<typeof esquema>): Promise<Resultado> {
+  const permiso = await verificarPermiso("marcarEntregada");
+  if (!permiso.ok) return permiso;
   const parsed = esquema.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };

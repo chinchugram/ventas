@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import {
   decimalNoNegativo,
@@ -80,6 +81,8 @@ function revalidarMateriales(id?: string) {
 export async function crearMaterial(
   datos: DatosMaterialNuevo,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const permiso = await verificarPermiso("editarMateriales");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaAlta.safeParse(datos);
   if (!parsed.success) return { ok: false, error: errorDeCampo(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -112,6 +115,8 @@ export async function crearMaterial(
 }
 
 export async function editarMaterial(datos: DatosMaterialEditado): Promise<Resultado> {
+  const permiso = await verificarPermiso("editarMateriales");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaEdicion.safeParse(datos);
   if (!parsed.success) return { ok: false, error: errorDeCampo(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
@@ -141,6 +146,8 @@ export async function editarMaterial(datos: DatosMaterialEditado): Promise<Resul
 
 /** Baja logica (`activo = false`) o reactivacion. */
 export async function cambiarEstadoMaterial(datos: z.input<typeof esquemaEstado>): Promise<Resultado> {
+  const permiso = await verificarPermiso("editarMateriales");
+  if (!permiso.ok) return permiso;
   const parsed = esquemaEstado.safeParse(datos);
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };

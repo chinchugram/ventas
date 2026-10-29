@@ -6,39 +6,59 @@ import { usePathname } from "next/navigation";
 import { Icono, type NombreIcono } from "@/components/iconos";
 import { salir } from "@/app/login/actions";
 import type { Rol } from "@/lib/auth-pura";
+import { puedeTodo, rutaDeInicio, type Accion } from "@/lib/permisos-pura";
 
 type Seccion = {
   href: string;
   etiqueta: string;
   icono: NombreIcono;
+  /** Permisos que hacen falta para ver la entrada (todos). Los mismos que exige la pagina. */
+  acciones: readonly Accion[];
 };
 
 // Orden y agrupacion de la navegacion. En el celular, las primeras cuatro viven
 // en la barra inferior y el resto en "Mas": son las que se usan todos los dias.
-const INICIO: Seccion = { href: "/", etiqueta: "Inicio", icono: "inicio" };
-const VENTAS: Seccion = { href: "/ventas", etiqueta: "Ventas", icono: "ventas" };
-const CLIENTES: Seccion = { href: "/clientes", etiqueta: "Clientes", icono: "clientes" };
+const INICIO: Seccion = { href: "/", etiqueta: "Inicio", icono: "inicio", acciones: ["verCostos", "verMargenes"] };
+const VENTAS: Seccion = { href: "/ventas", etiqueta: "Ventas", icono: "ventas", acciones: ["verVentas"] };
+const CLIENTES: Seccion = { href: "/clientes", etiqueta: "Clientes", icono: "clientes", acciones: ["verClientes"] };
 const PRINCIPALES: Seccion[] = [INICIO, VENTAS, CLIENTES];
-// Todas son arreglos de datos planos: para ocultar entradas segun permisos basta con filtrarlos
-// antes de pintarlos (ver `ENLACES_ESCRITORIO` y `EN_HOJA_MAS`).
+// Todas son arreglos de datos planos: cada entrada se filtra con los permisos del usuario antes de
+// pintarse (ver `entradasVisibles`). Ocultar un enlace no protege nada: cada pagina lo vuelve a exigir.
 const SECUNDARIAS: Seccion[] = [
-  { href: "/catalogo", etiqueta: "Artículos", icono: "articulos" },
-  { href: "/cortes", etiqueta: "Cortes", icono: "articulos" },
-  { href: "/materiales", etiqueta: "Materiales", icono: "materiales" },
-  { href: "/compras", etiqueta: "Compras", icono: "materiales" },
-  { href: "/reposicion", etiqueta: "Reposición", icono: "materiales" },
-  { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas" },
-  { href: "/reportes", etiqueta: "Reportes", icono: "reportes" },
+  { href: "/catalogo", etiqueta: "Artículos", icono: "articulos", acciones: ["verCostos", "verMargenes"] },
+  { href: "/cortes", etiqueta: "Cortes", icono: "articulos", acciones: ["verCostos"] },
+  { href: "/materiales", etiqueta: "Materiales", icono: "materiales", acciones: ["verStock"] },
+  { href: "/compras", etiqueta: "Compras", icono: "materiales", acciones: ["registrarCompra", "verCostos"] },
+  { href: "/reposicion", etiqueta: "Reposición", icono: "materiales", acciones: ["verReposicion"] },
+  { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas", acciones: ["verCobranzas"] },
+  { href: "/reportes", etiqueta: "Reportes", icono: "reportes", acciones: ["verReportes", "verCostos", "verMargenes"] },
 ];
-// Se usa poco: en escritorio va como icono junto a "Nueva venta", en el celular al final de "Mas".
-const CONFIGURACION: Seccion = { href: "/configuracion", etiqueta: "Configuración", icono: "configuracion" };
-// Escritorio ancho (lg): todas las secciones en la barra. Entre md y lg no entran: se muestran
-// las principales y el resto va en la hoja "Mas", la misma del celular.
-const ENLACES_ESCRITORIO: Seccion[] = [...PRINCIPALES, ...SECUNDARIAS];
-const EN_HOJA_MAS: Seccion[] = [...SECUNDARIAS, CONFIGURACION];
+// Se usan poco: en el celular van al final de "Mas". En escritorio, la configuracion es un icono
+// junto a "Nueva venta" y "Usuarios" vive en el menu de la cuenta (la barra a 1024 px justo entra).
+// La pagina `/usuarios` la arma la tarea 4.4; hasta entonces el enlace del dueno lleva a un 404.
+const USUARIOS: Seccion = { href: "/usuarios", etiqueta: "Usuarios", icono: "clientes", acciones: ["gestionarUsuarios"] };
+const CONFIGURACION: Seccion = {
+  href: "/configuracion",
+  etiqueta: "Configuración",
+  icono: "configuracion",
+  acciones: ["configuracion"],
+};
+const ADMINISTRACION: Seccion[] = [USUARIOS, CONFIGURACION];
+const ICONOS_ESCRITORIO: Seccion[] = [CONFIGURACION];
+const EN_MENU_USUARIO: Seccion[] = [USUARIOS];
+const ACCIONES_NUEVA_VENTA: readonly Accion[] = ["cargarVenta"];
 const ID_HOJA_MAS = "hoja-mas";
 const ID_MENU_USUARIO = "menu-usuario";
 const NUEVA_VENTA = "/ventas/nueva";
+
+/** Las entradas que el rol puede usar. */
+function entradasVisibles(rol: Rol, secciones: Seccion[]): Seccion[] {
+  return secciones.filter((s) => puedeTodo({ rol }, s.acciones));
+}
+
+// Clases literales (Tailwind no ve las armadas con plantillas): la barra inferior tiene una columna
+// por entrada principal, mas "Nueva venta" (al centro) y "Mas".
+const COLUMNAS_BARRA: Record<number, string> = { 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" };
 
 function estaActiva(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
@@ -59,6 +79,17 @@ function inicial(nombre: string): string {
 
 export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string; usuario: UsuarioNavbar }) {
   const pathname = usePathname() ?? "/";
+  const principales = entradasVisibles(usuario.rol, PRINCIPALES);
+  const secundarias = entradasVisibles(usuario.rol, SECUNDARIAS);
+  const administracion = entradasVisibles(usuario.rol, ADMINISTRACION);
+  const iconosEscritorio = entradasVisibles(usuario.rol, ICONOS_ESCRITORIO);
+  const enMenuUsuario = entradasVisibles(usuario.rol, EN_MENU_USUARIO);
+  const puedeNuevaVenta = puedeTodo(usuario, ACCIONES_NUEVA_VENTA);
+  // Escritorio ancho (lg): todas las secciones en la barra. Entre md y lg no entran: se muestran
+  // las principales y el resto va en la hoja "Mas", la misma del celular.
+  const enlacesEscritorio = [...principales, ...secundarias];
+  const enHojaMas = [...secundarias, ...administracion];
+  const columnasBarra = COLUMNAS_BARRA[principales.length + 1 + (puedeNuevaVenta ? 1 : 0)] ?? "grid-cols-5";
   const [masAbierto, setMasAbierto] = useState(false);
   const hojaRef = useRef<HTMLDialogElement>(null);
   // Boton que abrio la hoja (hay uno en la barra inferior y otro en el encabezado): a el vuelve el foco.
@@ -99,7 +130,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
     disparadorRef.current?.focus();
   }
 
-  const masActivo = EN_HOJA_MAS.some((s) => estaActiva(pathname, s.href));
+  const masActivo = enHojaMas.some((s) => estaActiva(pathname, s.href));
 
   return (
     <>
@@ -108,7 +139,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
         <div className="mx-auto flex h-14 max-w-5xl items-center xl:max-w-6xl justify-between px-4">
           <div className="flex min-w-0 items-center gap-3 lg:gap-4">
             <Link
-              href="/"
+              href={rutaDeInicio(usuario.rol)}
               className="flex shrink-0 items-center rounded-lg p-1"
               aria-label={`${nombre}, ir al inicio`}
             >
@@ -119,7 +150,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
             {/* Desde md: las principales y "Más"; desde lg entran todas las secciones (y desde xl, el
                 encabezado se ensancha para que "Nueva venta" conserve su texto). */}
             <nav className="hidden min-w-0 items-center gap-1 md:flex" aria-label="Principal">
-              {ENLACES_ESCRITORIO.map((s) => {
+              {enlacesEscritorio.map((s) => {
                 const activa = estaActiva(pathname, s.href);
                 // Las secundarias solo caben desde lg; antes se llega a ellas por "Mas".
                 const esSecundaria = !PRINCIPALES.includes(s);
@@ -158,27 +189,33 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
 
           {/* gap-1: con el menu del usuario, en lg las diez secciones justo entran. */}
           <div className="hidden shrink-0 items-center gap-1 md:flex">
-            <MenuUsuario usuario={usuario} pathname={pathname} />
-            <Link
-              href={CONFIGURACION.href}
-              aria-label={CONFIGURACION.etiqueta}
-              title={CONFIGURACION.etiqueta}
-              aria-current={estaActiva(pathname, CONFIGURACION.href) ? "page" : undefined}
-              className={`rounded-lg p-3 transition-colors ${
-                estaActiva(pathname, CONFIGURACION.href)
-                  ? "bg-marca text-tinta"
-                  : "text-slate-300 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              <Icono nombre={CONFIGURACION.icono} className="h-5 w-5" />
-            </Link>
-            <Link
-              href={NUEVA_VENTA}
-              className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 text-sm font-semibold text-tinta transition-transform hover:brightness-105 active:scale-95 xl:px-4"
-            >
-              <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
-              <span className="sr-only xl:not-sr-only">Nueva venta</span>
-            </Link>
+            <MenuUsuario usuario={usuario} pathname={pathname} enlaces={enMenuUsuario} />
+            {iconosEscritorio.map((s) => {
+              const activa = estaActiva(pathname, s.href);
+              return (
+                <Link
+                  key={s.href}
+                  href={s.href}
+                  aria-label={s.etiqueta}
+                  title={s.etiqueta}
+                  aria-current={activa ? "page" : undefined}
+                  className={`rounded-lg p-3 transition-colors ${
+                    activa ? "bg-marca text-tinta" : "text-slate-300 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  <Icono nombre={s.icono} className="h-5 w-5" />
+                </Link>
+              );
+            })}
+            {puedeNuevaVenta ? (
+              <Link
+                href={NUEVA_VENTA}
+                className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 text-sm font-semibold text-tinta transition-transform hover:brightness-105 active:scale-95 xl:px-4"
+              >
+                <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
+                <span className="sr-only xl:not-sr-only">Nueva venta</span>
+              </Link>
+            ) : null}
           </div>
         </div>
       </header>
@@ -210,7 +247,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
             </button>
           </div>
           <ul className="space-y-1">
-            {EN_HOJA_MAS.map((s) => {
+            {enHojaMas.map((s) => {
               const activa = estaActiva(pathname, s.href);
               return (
                 <li key={s.href}>
@@ -253,22 +290,24 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
         aria-label="Principal"
         className="fixed inset-x-0 bottom-0 z-[60] border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
-        <ul className="mx-auto grid max-w-md grid-cols-5 items-end">
-          <ItemBarra seccion={INICIO} activa={estaActiva(pathname, "/")} />
-          <ItemBarra seccion={VENTAS} activa={estaActiva(pathname, "/ventas")} />
+        <ul className={`mx-auto grid max-w-md ${columnasBarra} items-end`}>
+          {principales.includes(INICIO) ? <ItemBarra seccion={INICIO} activa={estaActiva(pathname, "/")} /> : null}
+          {principales.includes(VENTAS) ? <ItemBarra seccion={VENTAS} activa={estaActiva(pathname, "/ventas")} /> : null}
 
-          <li className="flex justify-center">
-            <Link
-              href={NUEVA_VENTA}
-              aria-label="Nueva venta"
-              aria-current={pathname === NUEVA_VENTA ? "page" : undefined}
-              className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-tinta shadow-lg ring-4 ring-white transition-transform active:scale-90"
-            >
-              <Icono nombre="nueva" className="h-7 w-7" grosor={2.5} />
-            </Link>
-          </li>
+          {puedeNuevaVenta ? (
+            <li className="flex justify-center">
+              <Link
+                href={NUEVA_VENTA}
+                aria-label="Nueva venta"
+                aria-current={pathname === NUEVA_VENTA ? "page" : undefined}
+                className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-tinta shadow-lg ring-4 ring-white transition-transform active:scale-90"
+              >
+                <Icono nombre="nueva" className="h-7 w-7" grosor={2.5} />
+              </Link>
+            </li>
+          ) : null}
 
-          <ItemBarra seccion={CLIENTES} activa={estaActiva(pathname, "/clientes")} />
+          {principales.includes(CLIENTES) ? <ItemBarra seccion={CLIENTES} activa={estaActiva(pathname, "/clientes")} /> : null}
 
           <li>
             <button
@@ -357,7 +396,16 @@ function IconoSalir({ className }: { className: string }) {
  * entra el nombre completo) abre un panel con el nombre, el rol y "Cerrar sesion".
  * Patron "disclosure": boton con aria-expanded; Escape o un clic afuera lo cierran.
  */
-function MenuUsuario({ usuario, pathname }: { usuario: UsuarioNavbar; pathname: string }) {
+function MenuUsuario({
+  usuario,
+  pathname,
+  enlaces,
+}: {
+  usuario: UsuarioNavbar;
+  pathname: string;
+  /** Secciones que el rol puede abrir desde el menu (hoy, "Usuarios" para el dueno). */
+  enlaces: Seccion[];
+}) {
   const [abierto, setAbierto] = useState(false);
   const contenedorRef = useRef<HTMLDivElement>(null);
   const botonRef = useRef<HTMLButtonElement>(null);
@@ -412,6 +460,17 @@ function MenuUsuario({ usuario, pathname }: { usuario: UsuarioNavbar; pathname: 
             <span className="block truncate font-semibold text-slate-900">{usuario.nombre}</span>
             {ETIQUETA_ROL[usuario.rol]}
           </p>
+          {enlaces.map((s) => (
+            <Link
+              key={s.href}
+              href={s.href}
+              aria-current={estaActiva(pathname, s.href) ? "page" : undefined}
+              className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Icono nombre={s.icono} className="h-5 w-5" />
+              {s.etiqueta}
+            </Link>
+          ))}
           <BotonSalir className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             <IconoSalir className="h-5 w-5" />
             Cerrar sesión

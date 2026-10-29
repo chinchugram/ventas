@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { Seccion } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
 import { getMateriales } from "@/lib/queries/materiales";
@@ -7,6 +8,7 @@ import { MaterialForm } from "../_componentes/material-form";
 export const dynamic = "force-dynamic";
 
 export default async function NuevoMaterialPage() {
+  await requierePermisoPagina("editarMateriales");
   // Se consulta la base solo para saber si hay que avisar del modo demostracion.
   await getMateriales();
 

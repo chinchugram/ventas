@@ -3,6 +3,7 @@ import { fmtFecha, fmtMoneda, fmtMonedaCorta, sumar } from "@/lib/money";
 import { agruparPorAntiguedad, agruparPorCliente, ETIQUETA_METODO, type VentaConSaldo } from "@/lib/cobranzas";
 import { ESTILO_ESTADO_PAGO, ETIQUETA_ESTADO_PAGO } from "@/lib/queries/ventas";
 import { estadoDemo } from "@/lib/respaldo";
+import { requierePermisoPagina } from "@/lib/permisos";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
 import { getCobradoDelMes, getPagosRecientes, getVentasConSaldo } from "./consultas";
 
@@ -18,6 +19,7 @@ const ESTILO_TRAMO = {
 } as const;
 
 export default async function CobranzasPage({ searchParams }: { searchParams: Promise<{ vista?: string }> }) {
+  await requierePermisoPagina("verCobranzas");
   const { vista: vistaPedida } = await searchParams;
   const vista: Vista = vistaPedida === "antiguedad" ? "antiguedad" : "clientes";
 

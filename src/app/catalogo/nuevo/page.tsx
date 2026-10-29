@@ -5,11 +5,13 @@ import { getCatalogoCostos } from "@/lib/queries/recetas";
 import { estadoDemo } from "@/lib/respaldo";
 import { Seccion } from "@/components/ui";
 import { ArticuloForm } from "../_componentes/articulo-form";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
 /** Alta de articulo con su receta. */
 export default async function NuevoArticuloPage() {
+  await requierePermisoPagina("editarCatalogo", "verCostos", "verMargenes");
   const [config, catalogo, ivaPorDefecto] = await Promise.all([getConfig(), getCatalogoCostos(), getIvaPorDefecto()]);
 
   return (

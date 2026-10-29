@@ -7,8 +7,6 @@
  * una verificacion de sesion propia (hoy los cubre solo el proxy). Con
  * AUTH_ESTRICTO=1 eso cuenta como falla: para cuando 4.3 termine de cubrirlas.
  */
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
 import {
   CLAVE_MAX,
   CLAVE_MIN,
@@ -35,7 +33,15 @@ import {
   verificarClave,
   type EstadoFallos,
 } from "../src/lib/auth-pura";
-import { ACCIONES, puede, type Accion } from "../src/lib/permisos-pura";
+import { ACCIONES, puede, rutaDeInicio, type Accion } from "../src/lib/permisos-pura";
+import {
+  auditarAcciones,
+  paginas,
+  permisosDePagina,
+  routeHandlers,
+  verificaAntesDeLeer,
+  verificaRouteHandler,
+} from "./auditoria-permisos";
 
 let fallos = 0;
 
@@ -199,11 +205,19 @@ async function main() {
   comprobar("inicio del empleado", inicioDeRol("EMPLEADO"), "/ventas/nueva");
 
   console.log("--- Permisos ---");
-  comprobar("12 acciones", String(ACCIONES.length), "12");
+  // La matriz completa rol × accion, escrita a mano, esta en `npm run test:permisos`.
+  comprobar("21 acciones (12 del contrato + 9 del mostrador)", String(ACCIONES.length), "21");
   comprobar("el dueno puede todo", String(ACCIONES.every((a) => puede({ rol: "DUENO" }, a))), "true");
-  comprobar("el empleado ninguna de la lista", String(ACCIONES.some((a) => puede({ rol: "EMPLEADO" }, a))), "false");
+  const DEL_CONTRATO: Accion[] = [
+    "verCostos", "verMargenes", "anularVenta", "anularPago", "ajustarStock", "registrarCompra",
+    "editarCatalogo", "editarMateriales", "verReportes", "exportarCsv", "configuracion", "gestionarUsuarios",
+  ];
+  comprobar("el empleado ninguna de las 12 del contrato", String(DEL_CONTRATO.some((a) => puede({ rol: "EMPLEADO" }, a))), "false");
   comprobar("sin usuario, nada", String(ACCIONES.some((a) => puede(null, a))), "false");
   comprobar("accion desconocida, nada", String(puede({ rol: "EMPLEADO" }, "toString" as Accion)), "false");
+  comprobar("accion desconocida, nada (tampoco el dueno)", String(puede({ rol: "DUENO" }, "toString" as Accion)), "false");
+  comprobar("inicio del empleado", rutaDeInicio("EMPLEADO"), inicioDeRol("EMPLEADO"));
+  comprobar("inicio del dueno", rutaDeInicio("DUENO"), inicioDeRol("DUENO"));
 
   auditarRutas();
 
@@ -216,32 +230,37 @@ async function main() {
 }
 
 /**
- * Paginas, acciones y route handlers sin verificacion propia. Hoy el proxy los
- * cubre a todos (verifica la sesion contra la base en cada pedido); este listado
- * es para que 4.3 agregue `requiereUsuario()` / `requierePermiso()` en cada uno.
+ * Paginas, acciones y route handlers sin verificacion propia. El proxy cubre a
+ * todos (verifica la sesion contra la base en cada pedido), pero no es la unica
+ * defensa: cada uno verifica por su cuenta, y con permisos (4.3). Con
+ * AUTH_ESTRICTO=1 cada hallazgo cuenta como falla. La tabla de que permiso exige
+ * cada ruta y cada accion esta en `scripts/verificar-permisos.ts`.
  */
 function auditarRutas() {
-  console.log("--- Rutas sin verificacion propia (las cubre el proxy) ---");
-  const raiz = join(__dirname, "..", "src", "app");
-  const archivos: string[] = [];
-  const recorrer = (dir: string) => {
-    for (const e of readdirSync(dir, { withFileTypes: true })) {
-      const ruta = join(dir, e.name);
-      if (e.isDirectory()) recorrer(ruta);
-      else if (/^(page\.tsx|actions\.ts|route\.ts)$/.test(e.name)) archivos.push(ruta);
-    }
-  };
-  recorrer(raiz);
-  const VERIFICA = /\b(requiereUsuario|requierePermiso|verificarPermiso|usuarioParaAccion|usuarioActual)\s*\(/;
-  const PUBLICAS = new Set(["login/page.tsx", "login/actions.ts"]);
-  const sinVerificar = archivos
-    .map((a) => relative(raiz, a))
-    .filter((a) => !PUBLICAS.has(a) && !VERIFICA.test(readFileSync(join(raiz, a), "utf8")))
-    .sort();
   const estricto = process.env.AUTH_ESTRICTO === "1";
-  for (const a of sinVerificar) console.log(`${estricto ? "FALLA" : "AVISO"} src/app/${a}`);
-  if (estricto) fallos += sinVerificar.length;
-  console.log(`     ${sinVerificar.length} de ${archivos.length} sin verificacion propia${estricto ? "" : " (AUTH_ESTRICTO=1 las cuenta como falla)"}`);
+  console.log(`--- Rutas sin verificacion propia (${estricto ? "AUTH_ESTRICTO: son fallas" : "avisos; las cubre el proxy"}) ---`);
+  const hallazgos: string[] = [];
+
+  const acciones = auditarAcciones();
+  for (const h of acciones.hallazgos) hallazgos.push(`src/app/${h.archivo}: ${h.detalle}`);
+
+  const todasLasPaginas = paginas();
+  for (const p of todasLasPaginas) {
+    if (permisosDePagina(p.texto) === null) hallazgos.push(`src/app/${p.archivo}: no llama a requierePermisoPagina(...)`);
+    else if (!verificaAntesDeLeer(p.texto)) hallazgos.push(`src/app/${p.archivo}: lee datos antes de requierePermisoPagina(...)`);
+  }
+  const handlers = routeHandlers();
+  for (const h of handlers) {
+    if (!verificaRouteHandler(h.texto)) hallazgos.push(`src/app/${h.archivo}: el route handler no verifica sesion y permisos`);
+  }
+
+  for (const h of hallazgos) console.log(`${estricto ? "FALLA" : "AVISO"} ${h}`);
+  if (estricto) fallos += hallazgos.length;
+  const total = acciones.exigidas.size + todasLasPaginas.length + handlers.length;
+  console.log(
+    `     ${hallazgos.length} hallazgo(s) en ${acciones.exigidas.size} acciones, ${todasLasPaginas.length} paginas y ${handlers.length} route handler(s) (${total} en total)` +
+      (estricto ? "" : " (AUTH_ESTRICTO=1 los cuenta como falla)"),
+  );
 }
 
 main().catch((error) => {
