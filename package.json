@@ -61,7 +61,9 @@
     "test:datos-fiscales": "tsx scripts/verificar-datos-fiscales.ts",
     "test:comprobantes": "tsx scripts/verificar-comprobantes.ts",
     "test:comprobantes:db": "tsx scripts/test-comprobantes.ts",
-    "test:qr": "tsx scripts/verificar-qr.ts"
+    "test:qr": "tsx scripts/verificar-qr.ts",
+    "test:facturar": "tsx scripts/verificar-facturar.ts",
+    "test:facturar:db": "tsx scripts/test-facturar.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",
