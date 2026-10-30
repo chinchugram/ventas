@@ -57,7 +57,10 @@
     "test:auth:db": "tsx scripts/test-auth.ts",
     "test:permisos": "tsx scripts/verificar-permisos.ts && tsx scripts/test-permisos.ts",
     "test:usuarios": "tsx scripts/test-usuarios.ts",
-    "test:acceso": "tsx scripts/test-acceso.ts"
+    "test:acceso": "tsx scripts/test-acceso.ts",
+    "test:datos-fiscales": "tsx scripts/verificar-datos-fiscales.ts",
+    "test:comprobantes": "tsx scripts/verificar-comprobantes.ts",
+    "test:comprobantes:db": "tsx scripts/test-comprobantes.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",

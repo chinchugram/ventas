@@ -50,6 +50,16 @@ enum EstadoPresupuesto {
   ANULADO
 }
 
+/// Condicion frente al IVA. La del cliente decide la letra de la factura (ver
+/// `tipoDeComprobante` en src/lib/comprobantes.ts). El emisor solo puede ser
+/// RESPONSABLE_INSCRIPTO o MONOTRIBUTO (src/lib/datos-fiscales.ts).
+enum CondicionIva {
+  CONSUMIDOR_FINAL
+  RESPONSABLE_INSCRIPTO
+  MONOTRIBUTO
+  EXENTO
+}
+
 model Cliente {
   id         String   @id @default(uuid()) @db.Uuid
   nombre     String
@@ -61,6 +71,10 @@ model Cliente {
   activo     Boolean  @default(true)
   /// Lista de precios del cliente (opcional). Si la lista esta inactiva se ignora.
   listaPrecioId String? @db.Uuid
+  /// Condicion frente al IVA (ola 5). Decide la letra de la factura.
+  condicionIva CondicionIva @default(CONSUMIDOR_FINAL)
+  /// DNI (7 u 8 digitos, sin puntos). Sin CUIT ni DNI = consumidor final sin identificar.
+  dni        String?
   creadoEn   DateTime @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
@@ -236,6 +250,8 @@ model Venta {
   movimientos MovimientoStock[]
   /// Presupuesto del que salio esta venta (si salio de uno).
   presupuesto Presupuesto?
+  /// Facturas y notas de credito de la venta (ola 5). Una sola factura vigente.
+  comprobantes Comprobante[]
 
   @@unique([anio, numero])
   @@index([usuarioId])
@@ -499,6 +515,8 @@ model Usuario {
   presupuestos      Presupuesto[]
   contactosCobranza ContactoCobranza[]
   listasPrecios     ListaPrecio[]
+  // Trazabilidad (ola 5): quien emitio cada comprobante.
+  comprobantes      Comprobante[]
 
   @@map("usuarios")
 }
@@ -519,4 +537,150 @@ model Sesion {
   @@index([usuarioId])
   @@index([expiraEn])
   @@map("sesiones")
+}
+
+// ─── Facturacion electronica (ola 5) ──────────────────────────────────────────
+
+/// Factura o nota de credito, con su codigo ARCA en `Comprobante.codigoArca`:
+/// A = 1 / 3, B = 6 / 8, C = 11 / 13.
+enum TipoComprobante {
+  FACTURA_A
+  FACTURA_B
+  FACTURA_C
+  NOTA_CREDITO_A
+  NOTA_CREDITO_B
+  NOTA_CREDITO_C
+}
+
+/// Donde se pidio el CAE. Hoy solo existe SIMULADO: todo lo que no sea
+/// PRODUCCION se muestra con la marca "SIN VALIDEZ FISCAL".
+enum AmbienteFiscal {
+  SIMULADO
+  HOMOLOGACION
+  PRODUCCION
+}
+
+/// PENDIENTE: numero reservado y guardado, CAE todavia no confirmado.
+/// EMITIDO: con CAE. RECHAZADO: el emisor no lo autorizo (queda como registro
+/// del intento; ver docs/fiscal-5.1-decisiones.md).
+enum EstadoComprobante {
+  PENDIENTE
+  EMITIDO
+  RECHAZADO
+}
+
+/// Comprobante fiscal de una venta. Es una FOTO: emisor, receptor, lineas e
+/// importes se copian al emitir y no cambian aunque despues se edite el
+/// cliente, el articulo o la configuracion. Ver src/lib/dominio/comprobantes.ts.
+///
+/// En la migracion (20260301000000_comprobantes): CHECK de importes, numero,
+/// punto de venta, codigo ARCA coherente con el tipo, CAE de 14 digitos y
+/// vencimiento si y solo si EMITIDO, nota de credito <=> comprobante asociado;
+/// indices unicos parciales (numero vigente por ambiente/punto/tipo, una sola
+/// factura vigente por venta, una sola nota de credito vigente por factura) y
+/// triggers que vuelven inmutable lo fiscal.
+model Comprobante {
+  id          String            @id @default(uuid()) @db.Uuid
+  ambiente    AmbienteFiscal
+  tipo        TipoComprobante
+  /// Codigo ARCA del tipo (1, 3, 6, 8, 11, 13). CHECK: coherente con `tipo`.
+  codigoArca  Int
+  puntoVenta  Int
+  numero      Int
+  /// Fecha del comprobante: hoy en Argentina al emitir.
+  fecha       DateTime          @db.Date
+  estado      EstadoComprobante @default(PENDIENTE)
+
+  // Foto del emisor (datos fiscales del negocio al momento de emitir).
+  emisorRazonSocial        String
+  emisorCuit               String
+  emisorCondicionIva       CondicionIva
+  emisorDomicilio          String
+  emisorInicioActividades  DateTime @db.Date
+  emisorIibb               String?
+
+  // Foto del receptor (el cliente al momento de emitir).
+  receptorNombre       String
+  /// Tipo de documento ARCA: 80 CUIT, 96 DNI, 99 sin identificar.
+  receptorDocTipo      Int
+  /// Numero de documento ("0" si no esta identificado).
+  receptorDocNro       String
+  receptorCondicionIva CondicionIva
+  receptorDomicilio    String?
+
+  /// Neto gravado. En la factura C es el total (no discrimina IVA).
+  importeNeto  Decimal @db.Decimal(14, 2)
+  /// IVA total. 0 en la factura C. Desglose por alicuota en `ComprobanteIva`.
+  importeIva   Decimal @db.Decimal(14, 2)
+  /// CHECK: total = neto + IVA.
+  importeTotal Decimal @db.Decimal(14, 2)
+
+  /// 14 digitos. Solo (y siempre) en EMITIDO.
+  cae            String?
+  caeVencimiento DateTime? @db.Date
+  /// Observaciones o motivo de rechazo devueltos por el emisor.
+  observaciones  String?
+
+  /// Factura que anula una nota de credito. Obligatorio en las NC, prohibido en las facturas.
+  comprobanteAsociadoId String? @db.Uuid
+  ventaId               String  @db.Uuid
+  /// Quien lo emitio. NULL = sin usuario (se muestra "—").
+  usuarioId             String? @db.Uuid
+
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  venta               Venta             @relation(fields: [ventaId], references: [id], onDelete: Restrict)
+  usuario             Usuario?          @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  comprobanteAsociado Comprobante?      @relation("NotaDeCredito", fields: [comprobanteAsociadoId], references: [id], onDelete: Restrict)
+  notasDeCredito      Comprobante[]     @relation("NotaDeCredito")
+  items               ComprobanteItem[]
+  alicuotas           ComprobanteIva[]
+
+  @@index([ventaId])
+  @@index([comprobanteAsociadoId])
+  @@index([usuarioId])
+  @@index([fecha])
+  @@index([estado])
+  @@map("comprobantes")
+}
+
+/// Linea del comprobante: copia de la `VentaItem` al emitir (precio con IVA
+/// incluido, como en la venta). Sin costos. CHECK: cantidad > 0, importes >= 0,
+/// bruto = neto + IVA. Inmutable (trigger).
+model ComprobanteItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  comprobanteId  String  @db.Uuid
+  /// Orden de la linea en el comprobante (1, 2, ...).
+  orden          Int
+  descripcion    String
+  cantidad       Decimal @db.Decimal(14, 3)
+  precioUnitario Decimal @db.Decimal(14, 4)
+  ivaPct         Decimal @db.Decimal(5, 2)
+  subtotalNeto   Decimal @db.Decimal(14, 2)
+  subtotalIva    Decimal @db.Decimal(14, 2)
+  subtotalBruto  Decimal @db.Decimal(14, 2)
+
+  comprobante Comprobante @relation(fields: [comprobanteId], references: [id], onDelete: Cascade)
+
+  @@unique([comprobanteId, orden])
+  @@map("comprobante_items")
+}
+
+/// Importe por alicuota de IVA (el arreglo `Iva` de ARCA): una fila por
+/// alicuota presente en las facturas A y B; ninguna en la C. Trigger diferido:
+/// la suma de las bases es el neto del comprobante y la de los importes, su IVA.
+model ComprobanteIva {
+  id            String  @id @default(uuid()) @db.Uuid
+  comprobanteId String  @db.Uuid
+  alicuotaPct   Decimal @db.Decimal(5, 2)
+  /// Codigo ARCA de la alicuota: 3 (0%), 9 (2,5%), 8 (5%), 4 (10,5%), 5 (21%), 6 (27%).
+  codigoArca    Int
+  baseImponible Decimal @db.Decimal(14, 2)
+  importe       Decimal @db.Decimal(14, 2)
+
+  comprobante Comprobante @relation(fields: [comprobanteId], references: [id], onDelete: Cascade)
+
+  @@unique([comprobanteId, alicuotaPct])
+  @@map("comprobante_iva")
 }
