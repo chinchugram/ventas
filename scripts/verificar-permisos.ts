@@ -125,6 +125,9 @@ const ACCIONES_ESPERADAS: Record<string, Accion> = {
   "clientes/actions.ts#editarCliente": "editarClientes",
   "clientes/actions.ts#cambiarActivoCliente": "editarClientes",
   "cobranzas/hoy/actions.ts#registrarContacto": "registrarContactoCobranza",
+  // Ola 5 (5.5): facturar desde la venta. Emitir y resolver un pendiente son del mostrador (empleado incluido).
+  "comprobantes/actions.ts#emitirFactura": "emitirComprobante",
+  "comprobantes/actions.ts#resolverComprobantePendiente": "emitirComprobante",
   "compras/actions.ts#registrarCompra": "registrarCompra",
   "configuracion/actions.ts#guardarConfiguracion": "configuracion",
   "configuracion/actions.ts#crearMaquina": "configuracion",
@@ -245,6 +248,18 @@ function main() {
     String(/puede\(usuario, "verCostos"\) \? <AdvertenciaBajoCosto/.test(leerSrc("app", "listas-precios", "[id]", "page.tsx"))),
     "true",
   );
+
+  console.log("--- Facturar desde la venta (ola 5, 5.5) ---");
+  const panel = leerSrc("app", "ventas", "[id]", "_componentes", "factur-panel.tsx");
+  comprobar(
+    "FacturarPanel verifica verComprobantes ANTES de consultar la facturacion de la venta",
+    String(panel.includes('"verComprobantes"') && panel.indexOf('"verComprobantes"') < panel.indexOf("await estadoFacturacionDeVenta(")),
+    "true",
+  );
+  comprobar("el boton de facturar solo se pinta con emitirComprobante", String(/puedeEmitir = puede\(usuario, "emitirComprobante"\)/.test(panel) && /puedeEmitir \? \(\s*<div className="mt-3">\s*<FacturarBoton/.test(panel)), "true");
+  comprobar("el enlace a Configuracion solo se pinta con configuracion", String(/puedeConfigurar = puede\(usuario, "configuracion"\)/.test(panel) && /a\.codigo === "DATOS_FISCALES" && puedeConfigurar/.test(panel)), "true");
+  const consultasComprobantes = leerSrc("lib", "queries", "comprobantes.ts");
+  comprobar("las consultas de comprobantes no leen costos ni margenes", String(/costo|margen/i.test(consultasComprobantes.replace(/^.*\/\/.*$/gm, ""))), "false");
 
   console.log("--- Navbar: cada entrada pide lo mismo que su pagina ---");
   const navbar = leerSrc("components", "navbar.tsx");
