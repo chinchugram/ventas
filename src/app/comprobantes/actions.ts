@@ -7,6 +7,7 @@ import { verificarPermiso } from "@/lib/permisos";
 import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { mensajeDeError, primerError, SIN_BASE } from "@/lib/acciones";
 import { accesoSimulado, emitirFactura as emitirFacturaDeDominio, resolverPendiente } from "@/lib/dominio/comprobantes";
+import { esFactura } from "@/lib/comprobantes";
 import { entornoDelProceso, obtenerEmisorFiscal } from "@/lib/fiscal";
 import { revalidarVentas } from "@/lib/revalidar";
 
@@ -82,6 +83,13 @@ export async function resolverComprobantePendiente(datos: z.input<typeof esquema
   if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
   const { comprobanteId } = parsed.data;
+
+  // Resolver una nota de credito pendiente deshace una factura: es del dueño, igual que emitirla.
+  const tipo = (await prisma.comprobante.findUnique({ where: { id: comprobanteId }, select: { tipo: true } }))?.tipo;
+  if (tipo && !esFactura(tipo)) {
+    const permisoNota = await verificarPermiso("emitirNotaCredito");
+    if (!permisoNota.ok) return permisoNota;
+  }
 
   const obtenido = obtenerEmisorFiscal(entornoDelProceso(), accesoSimulado(prisma));
   if (!obtenido.ok) return { ok: false, error: obtenido.error };
