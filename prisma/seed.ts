@@ -37,6 +37,11 @@ async function main() {
   await prisma.compraItem.deleteMany();
   await prisma.compra.deleteMany();
   await prisma.pago.deleteMany();
+  // Ola 5: comprobantes antes que las ventas (FK RESTRICT); las notas de credito
+  // antes que sus facturas. Un trigger impide borrar uno que no sea SIMULADO:
+  // con comprobantes reales el seed falla, que es lo que tiene que pasar.
+  await prisma.comprobante.deleteMany({ where: { comprobanteAsociadoId: { not: null } } });
+  await prisma.comprobante.deleteMany();
   await prisma.ventaItem.deleteMany();
   // Ola 7: presupuestos (antes que las ventas en las que se convirtieron) y contactos de cobranza.
   await prisma.presupuestoItem.deleteMany();
@@ -82,6 +87,23 @@ async function main() {
     update: { valor: "45" },
     create: { clave: "margenObjetivo", valor: "45" },
   });
+  if (!PRODUCCION) {
+    // Datos fiscales de EJEMPLO (ola 5), solo fuera de produccion, para poder
+    // facturar con el emisor simulado apenas se levanta el entorno. El CUIT es
+    // ficticio pero valido (digito verificador correcto). En produccion los
+    // carga el dueno en Configuracion.
+    const fiscales = {
+      fiscalRazonSocial: "HL Laser de Ejemplo S.R.L.",
+      fiscalCuit: "20333333334",
+      fiscalCondicionIva: "RESPONSABLE_INSCRIPTO",
+      fiscalDomicilio: "Av. Siempre Viva 742, Córdoba",
+      fiscalInicioActividades: "2020-03-02",
+      fiscalPuntoVenta: "1",
+    };
+    for (const [clave, valor] of Object.entries(fiscales)) {
+      await prisma.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+    }
+  }
 
   console.log("Creando maquinas...");
   const plotter = await prisma.maquina.create({
