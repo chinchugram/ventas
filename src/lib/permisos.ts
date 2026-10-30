@@ -22,6 +22,7 @@ const QUE: Record<Accion, string> = {
   configuracion: "cambiar la configuración",
   gestionarUsuarios: "administrar usuarios",
   gestionarListasPrecios: "gestionar las listas de precios",
+  emitirNotaCredito: "emitir notas de crédito",
   verVentas: "ver ventas",
   cargarVenta: "cargar ventas",
   registrarCobro: "registrar cobros",
@@ -37,6 +38,8 @@ const QUE: Record<Accion, string> = {
   convertirPresupuesto: "convertir presupuestos en ventas",
   verRecordatorios: "ver los recordatorios de cobranza",
   registrarContactoCobranza: "registrar contactos de cobranza",
+  verComprobantes: "ver los comprobantes",
+  emitirComprobante: "emitir comprobantes",
 };
 
 export function mensajeSinPermiso(accion: Accion): string {

@@ -33,6 +33,7 @@ const SECUNDARIAS: Seccion[] = [
   { href: "/compras", etiqueta: "Compras", icono: "materiales", acciones: ["registrarCompra", "verCostos"] },
   { href: "/reposicion", etiqueta: "Reposición", icono: "materiales", acciones: ["verReposicion"] },
   { href: "/presupuestos", etiqueta: "Presupuestos", icono: "ventas", acciones: ["verPresupuestos"] },
+  { href: "/comprobantes", etiqueta: "Comprobantes", icono: "comprobantes", acciones: ["verComprobantes"] },
   { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas", acciones: ["verCobranzas"] },
   { href: RUTA_RECORDATORIOS, etiqueta: "Recordatorios", icono: "cobranzas", acciones: ["verRecordatorios"] },
   { href: "/reportes", etiqueta: "Reportes", icono: "reportes", acciones: ["verReportes", "verCostos", "verMargenes"] },

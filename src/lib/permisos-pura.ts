@@ -26,10 +26,12 @@ export type AccionDelDueno =
   | "exportarCsv"
   | "configuracion"
   | "gestionarUsuarios"
-  | "gestionarListasPrecios"; // listas de precios y asignarlas a un cliente
+  | "gestionarListasPrecios" // listas de precios y asignarlas a un cliente
+  // Ola 5: una nota de credito deshace una factura emitida (impacto fiscal): decision del dueno.
+  | "emitirNotaCredito";
 
 /**
- * ...y las que 4.3 y la ola 7 agregan para lo que `EMPLEADO` si puede hacer: tener un nombre
+ * ...y las que 4.3, la ola 5 y la ola 7 agregan para lo que `EMPLEADO` si puede hacer: tener un nombre
  * propio permite exigirlas en cada accion y pagina (y quitarselas a un rol
  * futuro) sin tocar el resto.
  */
@@ -49,7 +51,10 @@ export type AccionDelMostrador =
   | "cargarPresupuesto" // alta, edicion, duplicado y anulacion de un presupuesto
   | "convertirPresupuesto" // lo convierte en una venta con los precios congelados
   | "verRecordatorios" // /cobranzas/hoy: a quien llamar hoy
-  | "registrarContactoCobranza"; // deja constancia de un llamado o mensaje
+  | "registrarContactoCobranza" // deja constancia de un llamado o mensaje
+  // Ola 5: facturacion electronica (los comprobantes no llevan costos ni margenes).
+  | "verComprobantes" // listado, detalle e impresion de comprobantes
+  | "emitirComprobante"; // emite la factura de una venta
 
 export type Accion = AccionDelDueno | AccionDelMostrador;
 
@@ -71,6 +76,7 @@ export const PERMISOS: Readonly<Record<Accion, readonly Rol[]>> = {
   configuracion: SOLO_DUENO,
   gestionarUsuarios: SOLO_DUENO,
   gestionarListasPrecios: SOLO_DUENO,
+  emitirNotaCredito: SOLO_DUENO,
 
   verVentas: TODOS,
   cargarVenta: TODOS,
@@ -87,6 +93,8 @@ export const PERMISOS: Readonly<Record<Accion, readonly Rol[]>> = {
   convertirPresupuesto: TODOS,
   verRecordatorios: TODOS,
   registrarContactoCobranza: TODOS,
+  verComprobantes: TODOS,
+  emitirComprobante: TODOS,
 };
 
 export const ACCIONES = Object.keys(PERMISOS) as Accion[];

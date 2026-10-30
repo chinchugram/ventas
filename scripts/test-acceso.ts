@@ -78,7 +78,7 @@ const DIA = 24 * 60 * 60 * 1000;
 // la prueba. `dueno` = solo DUENO (el empleado va a /ventas/nueva); `ambos` =
 // DUENO y EMPLEADO; `publica` = sin sesion. Sale de `requierePermisoPagina(...)`
 // de cada pagina y de la tabla de `src/lib/permisos-pura.ts`.
-// /listas-precios/** es solo del dueno; /presupuestos/** y /cobranzas/hoy, de ambos.
+// /listas-precios/** es solo del dueno; /presupuestos/**, /comprobantes/** y /cobranzas/hoy, de ambos.
 
 type Clase = "publica" | "dueno" | "ambos";
 
@@ -118,6 +118,9 @@ const CLASIFICACION: Record<string, Clase> = {
   "/clientes/[id]/editar": "ambos",
   "/cobranzas": "ambos",
   "/cobranzas/hoy": "ambos",
+  "/comprobantes": "ambos",
+  "/comprobantes/[id]": "ambos",
+  "/comprobantes/[id]/imprimir": "ambos",
   "/materiales": "ambos",
   "/materiales/[id]": "ambos",
   "/presupuestos": "ambos",
@@ -513,12 +516,18 @@ async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Id
   return { articulo: articulo.id, cliente: cliente.id, maquina: maquina.id, lista: lista.id, material: material.id, presupuesto: presupuesto.id, venta: venta.id, usuario: usuarioId };
 }
 
+// Las paginas de /comprobantes son stubs que no consultan datos (todavia no hay comprobantes en el seed):
+// sirve cualquier uuid. Cuando las tareas 5.x las completen, hay que sembrar uno y usar su id real.
+const ID_COMPROBANTE_STUB = "00000000-0000-4000-8000-000000000005";
+
 /** Ids con los que se instancia cada segmento dinamico. */
 function ejemplares(ids: Ids): Record<string, string[]> {
   return {
     "/catalogo/[id]": [ids.articulo],
     "/clientes/[id]": [ids.cliente],
     "/clientes/[id]/editar": [ids.cliente],
+    "/comprobantes/[id]": [ID_COMPROBANTE_STUB],
+    "/comprobantes/[id]/imprimir": [ID_COMPROBANTE_STUB],
     "/configuracion/maquinas/[id]": [ids.maquina],
     "/listas-precios/[id]": [ids.lista],
     "/materiales/[id]": [ids.material],
