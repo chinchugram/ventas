@@ -36,6 +36,9 @@ para ver las pantallas con información realista antes de cargar nada real. Comp
 por la misma lógica que las pantallas, así que el stock de cada material coincide con su libro de
 movimientos.
 
+Fuera de producción, el seed también carga datos fiscales de ejemplo (CUIT ficticio y punto de venta 1)
+para poder facturar con el simulador. No carga comprobantes.
+
 **Para limpiar los datos de ejemplo y empezar de cero:** `npm run db:reset`
 
 ### Modo demo (sin base de datos)
@@ -52,12 +55,13 @@ responde o la consulta falla (por ejemplo, migraciones pendientes).
 
 Se entra por `/login` con usuario y clave. Hay dos roles:
 
-- **`DUENO`**: todo.
+- **`DUENO`**: todo, incluidas las notas de crédito y los datos fiscales del negocio.
 - **`EMPLEADO`**: carga ventas, registra cobros, marca ventas como entregadas, ve y edita clientes,
   ve el stock (solo cantidades) y la lista de reposición (sin costos), cotiza y convierte presupuestos
   (con precios, sin costos) y registra contactos de cobranza en `/cobranzas/hoy`. No ve costos ni
   márgenes y no puede anular, tocar el catálogo, cargar compras, ver reportes ni gestionar listas de
-  precios (ni asignarlas a un cliente: ese selector no le aparece). Su pantalla de inicio es
+  precios (ni asignarlas a un cliente: ese selector no le aparece). Factura las ventas desde `/ventas/[id]` y ve los
+  comprobantes, pero no emite notas de crédito ni toca los datos fiscales del negocio. Su pantalla de inicio es
   `/ventas/nueva`.
 
 **Primer dueño:** `npm run usuarios:crear-dueno` pide usuario, nombre y clave (la clave no se ve al
@@ -113,6 +117,8 @@ los botones no responden).
 | [`docs/03-stack-y-decisiones.md`](docs/03-stack-y-decisiones.md) | Stack, con el porqué de cada elección |
 | [`docs/05-respaldos.md`](docs/05-respaldos.md) | Respaldo diario, restauración y prueba de restauración |
 | [`docs/seguridad-ola-4-auth.md`](docs/seguridad-ola-4-auth.md) | Login, claves, sesiones y permisos: decisiones de seguridad y qué queda fuera |
+| [`docs/fiscal-5.1-decisiones.md`](docs/fiscal-5.1-decisiones.md) | Decisiones fiscales de la facturación (numeración, redondeo, receptor, notas de crédito) y dudas para el contador |
+| [`docs/06-facturacion-arca.md`](docs/06-facturacion-arca.md) | Facturación con ARCA: qué falta para pasar del simulador a la integración real (5.2) y qué necesita el dueño |
 
 ---
 
@@ -187,6 +193,59 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 
 ---
 
+## Facturación
+
+Desde la ola 5 hay facturas (A, B y C) y notas de crédito, con el emisor **simulado**. Hoy no hay conexión con ARCA.
+
+> **Sin ARCA, nada tiene validez fiscal.** Todo comprobante sale con ambiente `SIMULADO` y la marca **SIN VALIDEZ FISCAL**
+> en pantalla y en la impresión. No es una factura válida: no sirve para presentar ante ARCA ni para entregarla como tal.
+> La integración real es la tarea 5.2, diferida: ver [`docs/06-facturacion-arca.md`](docs/06-facturacion-arca.md).
+
+**Qué hay:**
+
+- **Facturar desde la venta.** En `/ventas/[id]`, el panel "Facturación" muestra si la venta ya tiene factura y, si no,
+  el botón para emitirla. La letra sale de la condición frente al IVA del emisor y del cliente:
+  - Emisor responsable inscripto: **A** a un cliente responsable inscripto con CUIT; **B** a cualquier otro cliente.
+  - Emisor monotributista: **C**, que no discrimina IVA. Si la venta tenía IVA, el sistema avisa antes de emitir.
+  - Un cliente responsable inscripto, monotributista o exento necesita CUIT para facturar.
+  - El documento que se informa: CUIT si el cliente lo tiene; si no, DNI; si no, la factura sale sin identificar, y solo
+    se admite si el total no supera el umbral de identificación del consumidor final.
+- **Numeración.** Cada comprobante toma el siguiente número de su serie (ambiente, punto de venta y tipo). Un intento
+  rechazado por el emisor queda como `RECHAZADO` con su motivo y **no ocupa el número**: el reintento usa el mismo.
+  Si el emisor no responde, queda `PENDIENTE`: mientras haya un pendiente en la serie no se emite otro, y el panel
+  ofrece "Resolver", que consulta al emisor cuando el pendiente tiene más de 2 minutos.
+- **`/comprobantes`**: facturas y notas de crédito, más nuevas primero, con filtros por tipo, estado, ambiente y fechas.
+  Los filtros van en la URL, así que el link de una búsqueda se puede mandar tal cual. Lo ven los dos roles y no muestra
+  costos.
+- **`/comprobantes/[id]`**: estado y CAE, emisor, receptor, líneas, IVA por alícuota, venta de origen y quién lo emitió.
+  Un rechazo muestra el motivo del emisor.
+- **Vista imprimible** (`/comprobantes/[id]/imprimir`): el comprobante en A4, con el QR fiscal y la marca SIN VALIDEZ
+  FISCAL repetida en cada hoja. Para el PDF: "Imprimir" y elegir **"Guardar como PDF"** como destino.
+- **Notas de crédito**: anulan el **total** de una factura emitida, desde `/ventas/[id]`. Solo el dueño las emite
+  (permiso `emitirNotaCredito`) y solo él ve el botón. Una factura tiene como máximo una nota de crédito vigente, y una
+  venta con factura vigente no se puede anular hasta que su nota de crédito quede emitida.
+- **Datos fiscales del negocio** (`/configuracion`, solo el dueño): razón social, CUIT, condición frente al IVA
+  (responsable inscripto o monotributo), domicilio, inicio de actividades, ingresos brutos (opcional), punto de venta y,
+  opcional, el umbral de identificación del consumidor final. Sin los obligatorios no se factura, y la venta dice qué falta.
+- **Clientes** (`/clientes`): cada cliente tiene su **condición frente al IVA** (por defecto, consumidor final) y un
+  **DNI** opcional de 7 u 8 dígitos, sin puntos. Con eso se decide la letra y el documento que figuran en la factura.
+
+**Variables de entorno** (en `.env`; si no se definen, rige el simulado):
+
+| Variable | Valor | Qué hace |
+|---|---|---|
+| `EMISOR_FISCAL` | `simulado` (por defecto) | Emisor simulado, sin validez fiscal |
+| `EMISOR_FISCAL` | `arca` | Reservado. Hoy responde "no implementado" y no se puede facturar |
+| `PERMITIR_EMISOR_SIMULADO` | `1` | Con `NODE_ENV=production`, el simulado exige exactamente `1`. Sin esa variable, facturar queda deshabilitado y la pantalla dice por qué |
+
+> **En producción, sin ARCA, todo comprobante sale con SIN VALIDEZ FISCAL.** `PERMITIR_EMISOR_SIMULADO=1` existe para una
+> demo: no habilita comprobantes con validez. Sin base de datos no se factura.
+
+Las decisiones fiscales (numeración, redondeo, receptor, umbral) y las dudas para el contador están en
+[`docs/fiscal-5.1-decisiones.md`](docs/fiscal-5.1-decisiones.md).
+
+---
+
 ## Pantallas
 
 | Ruta | Qué resuelve |
@@ -194,8 +253,11 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 | `/` | Cómo va el mes: facturado, cobrado, costo, ganancia, márgenes, alertas |
 | `/ventas` | Historial de ventas con margen y estado de pago |
 | `/ventas/nueva` | Carga de venta: calcula en vivo y guarda (descuenta stock) |
-| `/ventas/[id]` | Detalle de una venta, pagos y anulación |
-| `/clientes` | Quién es cada cliente y cuánto debe; alta, edición y baja con CUIT validado. Cada cliente puede tener una lista de precios (la asigna solo el dueño) |
+| `/ventas/[id]` | Detalle de una venta, pagos, anulación, facturación y nota de crédito (solo `DUENO`) |
+| `/comprobantes` | Facturas y notas de crédito, con filtros por tipo, estado, ambiente y fechas (en la URL) |
+| `/comprobantes/[id]` | Detalle de un comprobante: estado y CAE, foto del emisor y del receptor, líneas, IVA y venta de origen |
+| `/comprobantes/[id]/imprimir` | Vista para imprimir o "Guardar como PDF", con QR fiscal y la marca SIN VALIDEZ FISCAL |
+| `/clientes` | Quién es cada cliente y cuánto debe; alta, edición y baja con CUIT validado. Cada cliente puede tener una lista de precios (la asigna solo el dueño), su condición frente al IVA y su DNI |
 | `/clientes/[id]` | Ficha: ventas, pagos y saldo del cliente |
 | `/catalogo` | Costo por receta, precio, margen y precio necesario para la meta |
 | `/catalogo/nuevo`, `/catalogo/[id]` | Alta y edición de artículo con editor de receta y costo/margen en vivo |
@@ -210,7 +272,7 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 | `/presupuestos/nuevo`, `/presupuestos/[id]`, `/presupuestos/[id]/editar`, `/presupuestos/[id]/imprimir` | Alta, detalle (convertir en venta, duplicar, anular), edición mientras esté abierto y vigente, y vista para imprimir o mandar por WhatsApp |
 | `/materiales/nuevo`, `/materiales/[id]/editar` | Alta y edición; al cambiar el costo muestra qué artículos cambian de margen |
 | `/cortes` | Calculadora de cortes: precio de una medida a partir del precio de la plancha entera (solo `DUENO`, usa costos) |
-| `/configuracion` | Nombre del negocio, costo/hora de mano de obra, IVA por defecto, margen objetivo y máquinas (solo `DUENO`) |
+| `/configuracion` | Nombre del negocio, costo/hora de mano de obra, IVA por defecto, margen objetivo y máquinas, y los datos fiscales del negocio para facturar (solo `DUENO`) |
 | `/configuracion/maquinas/nueva`, `/configuracion/maquinas/[id]` | Alta y edición de una máquina con su costo por hora (solo `DUENO`) |
 | `/compras` | Historial de compras; `/compras/nueva` registra una (suma stock y actualiza el costo) |
 | `/reportes` | Resumen, ganancia por producto, más rentables, deuda por cliente y consumo de materiales; filtro por mes o rango de fechas en la URL y botón "Exportar CSV" por reporte |
@@ -222,7 +284,7 @@ entregada. `/cobranzas` muestra quién debe, cuánto y desde cuándo.
 | `/usuarios/mi-clave` | Cambiar la clave propia; la pide cualquier rol |
 
 Desde la ola 4, el detalle de una venta (y cada cobro) y el libro de movimientos de un material
-muestran "Registrado por" con quién lo cargó, y el listado de compras también. Desde la ola 7 (integrada
+muestran "Registrado por" con quién lo cargó, y el listado de compras también. Desde la ola 5, el detalle de un comprobante muestra "Emitido por". Desde la ola 7 (integrada
 con la 4), el detalle de un presupuesto y cada contacto de `/cobranzas/hoy` muestran "Registrado por", y
 la ficha de una lista de precios muestra "Creada por". Lo anterior a los usuarios muestra "—".
 
@@ -268,6 +330,13 @@ el mostrador con el teléfono en la mano.
 | `npm run test:permisos` | Matriz rol × acción y qué permiso exige cada acción y página, más acciones reales invocadas con un empleado contra Postgres |
 | `npm run test:usuarios` | Administración de usuarios (alta, baja, rol, reinicio de clave, clave propia) contra Postgres de desarrollo o de prueba; se niega con `NODE_ENV=production` |
 | `npm run test:acceso` | Autorización por HTTP contra la app de producción (`next build && next start` en el puerto 3103) y una base descartable `ventas_acceso`: rutas sin sesión, empleado, sesión expirada o de baja, y que el HTML y el RSC del empleado no traigan costos ni márgenes. Reconstruye `.next`. Ver el encabezado de `scripts/test-acceso.ts` |
+| `npm run test:datos-fiscales` | Validación y normalización de los datos fiscales del negocio: cada campo con sus bordes y lo que falta para emitir. Sin base |
+| `npm run test:comprobantes` | Lógica pura de facturación: letras y códigos ARCA, documento del receptor y umbral, importes por alícuota con sus redondeos, factura C, guarda de producción y emisor simulado con acceso en memoria. Sin base |
+| `npm run test:comprobantes:db` | Emisión contra Postgres real: A, B y C con sus estados, la foto, numeración por serie, un rechazo que reusa el número, un corte que deja `PENDIENTE`, los CHECK, índices y triggers de la migración, y dos emisiones simultáneas. No deja rastro |
+| `npm run test:qr` | Armado del QR fiscal (JSON, URL e importe) contra un ejemplo escrito a mano según la especificación, no el oficial de ARCA. Sin base |
+| `npm run test:facturar` | Lógica pura de "Facturar desde la venta" y del listado: filtros de la URL, estado de facturación derivado, avisos antes de emitir y la marca SIN VALIDEZ FISCAL. Sin base |
+| `npm run test:facturar:db` | Las server actions de facturación con sesiones reales de dueño, empleado y sin sesión; doble pedido simultáneo; producción sin `PERMITIR_EMISOR_SIMULADO`. Borra lo que crea |
+| `npm run test:notas-credito` | Notas de crédito contra Postgres real: una venta facturada no se anula sin NC, letra y asociación, la NC copia la foto de la factura, una sola NC por factura, y el permiso (solo dueño). Borra lo que crea |
 
 ---
 
@@ -300,6 +369,9 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
    inactiva se ignora por completo. El navegador manda solo artículo y cantidad: al confirmar,
    el servidor recalcula el precio. La única excepción es convertir un presupuesto, que usa los
    precios congelados en él.
+9. **El comprobante es una foto.** Emisor, receptor, líneas e importes se copian al emitir y no cambian después.
+   Lo que un comprobante emitido tiene mal se corrige con una nota de crédito, nunca editándolo. Lo garantizan los
+   triggers de la base, no solo la app.
 
 ---
 
@@ -307,7 +379,7 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 
 **Andamiaje completo y verificado:**
 
-- Esquema Prisma migrado, con 25 `CHECK` constraints, 2 índices parciales y configuración sembrada.
+- Esquema Prisma migrado, con sus `CHECK`, índices parciales y triggers (también los de facturación), y configuración sembrada.
 - `prisma/seed.ts` con datos de ejemplo de un comercio de láser.
 - `src/lib/costing.ts`: motor de costeo y margen, puro y sin dependencias de infraestructura.
 - `src/lib/money.ts`: aritmética decimal y formateo es-AR.
@@ -331,6 +403,7 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 - [x] Recordatorios de cobranza: a quién llamar hoy (ola 7.3)
 - [x] Login con usuarios y roles, permisos por rol, trazabilidad (quién cargó cada venta, cobro, compra y movimiento) y administración de usuarios (ola 4)
 - [x] Integración 4+7 (rama `integracion-4-7`): permisos de las pantallas de la ola 7, trazabilidad de presupuestos, contactos de cobranza y listas de precios, y `npm run test:acceso`
+- [x] Facturación con emisor simulado (ola 5, etapa 4): facturar desde la venta, listado y detalle de comprobantes, vista imprimible con QR, notas de crédito totales y datos fiscales. La integración con ARCA (5.2) está diferida
 
 El plan completo, por olas y pensado para repartir a subagentes en paralelo, está en
 `docs/04-checklist-olas.md`.
@@ -341,6 +414,9 @@ permisos: `gestionarListasPrecios`, solo dueño; `verPresupuestos`, `cargarPresu
 tablas de la ola 7 tienen `usuarioId` (nullable, histórico en "—"). La advertencia de precios por debajo
 del costo en `/listas-precios/[id]` usa costos de receta: como la pantalla es solo del dueño, solo la ve él.
 `npm run test:acceso` verifica por HTTP que el empleado no reciba costos ni márgenes en las rutas que clasifica.
+
+**La ola 5 (facturación) está integrada** en `ola-5`, salvo la 5.2 (integración con ARCA), que está **diferida**: hasta
+entonces, todo comprobante es simulado y sin validez fiscal. El estado de cada tarea está en `docs/04-checklist-olas.md`.
 
 ---
 

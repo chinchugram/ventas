@@ -4,9 +4,10 @@ Plan de trabajo para que un agente orquestador reparta tareas a subagentes en pa
 Cada **ola** es un conjunto de tareas **independientes entre sí** (no tocan los mismos archivos):
 se lanzan juntas y, cuando todas terminan y se integran, empieza la ola siguiente.
 
-Estado al día de hoy: **etapas 1, 2, 3 y comercial (ola 7) hechas; olas 0 a 4 y 7 cerradas.**
-Pendiente de las etapas 4 a 6 de `docs/01-alcance-funcional.md`: ola 5 (facturación, etapa 4) y
-ola 6 (productividad, etapa 5).
+Estado al día de hoy: **etapas 1, 2, 3, comercial (ola 7) y la etapa 4 (facturación con emisor simulado) hechas;
+olas 0 a 5 y 7 cerradas, salvo la 5.2.** La etapa 4 está hecha sin ARCA real: todo comprobante es simulado y sin
+validez fiscal. Pendiente de las etapas 4 a 6 de `docs/01-alcance-funcional.md`: la 5.2 (integración con ARCA,
+diferida) y la ola 6 (productividad, etapa 5).
 
 Leyenda: `[x]` hecho · `[ ]` pendiente · `(R)` toca archivos compartidos, ver "Reglas".
 
@@ -16,7 +17,9 @@ Leyenda: `[x]` hecho · `[ ]` pendiente · `(R)` toca archivos compartidos, ver 
 
 **Orquestador**
 1. Por cada ola: crear una rama de ola desde la rama base (`ola-N`), lanzar un subagente por
-   tarea con `isolation: "worktree"` y rama propia `ola-N/<tarea>`, en paralelo.
+   tarea con `isolation: "worktree"` y rama propia `ola-N-<tarea>` (con guion, por ejemplo `ola-5-5.7`), en
+   paralelo. No se usa `ola-N/<tarea>`: git no admite `ola-5/5.7` si ya existe la rama `ola-5`, porque no puede
+   haber a la vez una rama `ola-5` y un grupo de ramas `ola-5/...`.
 2. Cada subagente recibe: el texto de su tarea, esta sección de reglas y los archivos que le
    pertenecen. Nada más: no hace falta pasarle toda la conversación.
 3. Integrar de a una tarea, en el orden listado, corriendo `npm run typecheck` y los tests
@@ -133,15 +136,24 @@ El modelo cambia en todas partes, por eso arranca con una tarea sola. Migracione
 ## Ola 5 — Etapa 4: facturación electrónica (serie → paralela)
 
 Requisito legal. Necesita datos del dueño: CUIT, punto de venta, certificado digital ARCA.
-Migraciones: `20260301…`.
+Migraciones: `20260301…`. Hecha con emisor simulado; la integración real (5.2) quedó diferida.
 
-- [ ] **5.1 Modelo y emisor abstracto (en serie, primero) (R)**: tablas `Comprobante` (tipo, punto de venta,
+- [x] **5.0 Permisos, navegación y rutas de comprobantes**: permisos de comprobantes, entrada "Comprobantes" en el
+      navbar y páginas protegidas.
+- [x] **5.1 Modelo y emisor abstracto (en serie, primero) (R)**: tablas `Comprobante` (tipo, punto de venta,
       número, CAE, vencimiento CAE, estado) y una interfaz `EmisorFiscal` con una implementación simulada
       para desarrollo.
-- [ ] **5.2 Integración ARCA (WSAA + WSFE)**: autenticación con certificado, solicitud de CAE, manejo de
-      errores y reintentos, ambiente de homologación. *(Paralela a 5.3.)*
-- [ ] **5.3 Comprobante imprimible/PDF**: Factura A/B con QR fiscal, a partir de una venta. *(Paralela a 5.2.)*
-- [ ] **5.4 Notas de crédito**: anulación fiscal de una factura emitida. Después de 5.2.
+- [x] **5.1b Datos fiscales y condición del cliente**: datos fiscales del negocio en `/configuracion` (solo dueño);
+      condición frente al IVA y DNI en la ficha del cliente.
+- [ ] **5.2 Integración ARCA (WSAA + WSFE)**: **DIFERIDA**. Sin ARCA real todo comprobante es simulado. Ver la guía en
+      [`docs/06-facturacion-arca.md`](06-facturacion-arca.md). Autenticación con certificado, solicitud de CAE, manejo de
+      errores y reintentos, ambiente de homologación.
+- [x] **5.3 Comprobante imprimible/PDF**: Factura A/B con QR fiscal, a partir de una venta.
+- [x] **5.4 Notas de crédito**: anulación fiscal total de una factura emitida, con emisor simulado. No esperó a la 5.2.
+- [x] **5.5 Facturar desde la venta y listado**: botón "Facturar" en `/ventas/[id]`, `/comprobantes` con filtros, detalle
+      y resolución de pendientes.
+- [x] **5.6 Guía de facturación con ARCA**: `docs/06-facturacion-arca.md`, qué falta para la integración real y qué necesita el dueño.
+- [x] **5.7 Documentación de la ola 5**: README, modelo de datos, esta lista y `docs/fiscal-5.1-decisiones.md` al día.
 
 ## Ola 6 — Etapa 5: productividad (paralela, 3 tareas)
 
