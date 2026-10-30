@@ -1,8 +1,8 @@
 # Modelo de datos
 
-Un solo modelo para todo el sistema, tal como queda con las olas 0 a 4 y 7 integradas (rama
-`integracion-4-7`). La fuente de verdad es `prisma/schema.prisma`; lo que Prisma no expresa
-(`CHECK`, índices únicos parciales) está en las migraciones de `prisma/migrations/`, listadas al final.
+Un solo modelo para todo el sistema, tal como queda con las olas 0 a 5 y 7 integradas (ramas
+`integracion-4-7` y `ola-5`). La fuente de verdad es `prisma/schema.prisma`; lo que Prisma no expresa
+(`CHECK`, índices únicos parciales, triggers) está en las migraciones de `prisma/migrations/`, listadas al final.
 
 ## Ideas de diseño
 
@@ -29,12 +29,17 @@ Un solo modelo para todo el sistema, tal como queda con las olas 0 a 4 y 7 integ
    nullable: lo anterior a los usuarios queda en `NULL` y se muestra "—", sin inventar un autor. Los usuarios
    no se borran (FK `RESTRICT`), así que la trazabilidad no se pierde.
 
+8. **El comprobante es una foto.** Una factura o nota de crédito copia emisor, receptor, líneas e importes
+   al emitirse. Después no lee el cliente, el artículo ni la configuración: editarlos no cambia ni un byte del
+   comprobante. Lo que un comprobante emitido tiene mal se corrige con una nota de crédito, nunca editándolo.
+
 ## Mapa de tablas
 
 | Grupo | Tablas |
 |---|---|
 | Usuarios y acceso | `usuarios`, `sesiones` (enum `Rol`) |
-| Clientes | `clientes` |
+| Clientes | `clientes` (con `condicionIva` y `dni`) |
+| Facturación | `comprobantes`, `comprobante_items`, `comprobante_iva` |
 | Catálogo y costos | `articulos`, `recetas`, `receta_componentes`, `materiales`, `maquinas`, `configuracion` |
 | Ventas y cobros | `ventas`, `venta_items`, `pagos` |
 | Compras y stock | `compras`, `compra_items`, `movimientos_stock` |
@@ -109,6 +114,8 @@ Decisiones:
 | `telefono`, `email`, `direccion`, `notas` | text? | |
 | `activo` | bool | Baja lógica |
 | `listaPrecioId` | uuid? FK | Lista de precios asignada (`ListaPrecio`). Null = precio de catálogo. FK `RESTRICT`, con índice |
+| `condicionIva` | enum `CondicionIva` | Condición frente al IVA del cliente. Por defecto `CONSUMIDOR_FINAL`. Decide la letra de la factura (ver "Facturación") |
+| `dni` | text? | 7 u 8 dígitos, sin puntos. CHECK `^[0-9]{7,8}$` (o null). Sin CUIT ni DNI, el consumidor final va sin identificar |
 | `creadoEn`, `actualizadoEn` | timestamptz | |
 
 Una lista asignada no se borra (`ON DELETE RESTRICT`): la app solo la da de baja. Asignarla requiere el
@@ -180,10 +187,28 @@ Restricción de integridad (CHECK en SQL de Prisma):
 `costo_hora` de `MANO_OBRA` sale de `Configuracion.clave = 'costoHoraManoObra'`.
 
 #### `Configuracion`
+Clave-valor. Todo se guarda como texto y se castea al leer; una clave que falta vale su default de
+`src/lib/configuracion.ts`, así que una clave nueva no necesita migración (se crea con upsert la primera vez).
+
 | Campo | Tipo | Notas |
 |---|---|---|
-| `clave` | text PK | `costoHoraManoObra`, `nombreNegocio`, `ivaDefault`, `moneda` |
+| `clave` | text PK | Ver la tabla de claves abajo |
 | `valor` | text | Todo como texto; se castea al leer |
+
+Claves de negocio (`src/lib/configuracion.ts`): `nombreNegocio`, `costoHoraManoObra`, `ivaPorDefecto`, `margenObjetivo`.
+
+Claves fiscales (ola 5, `src/lib/datos-fiscales.ts`, `CLAVES_FISCALES`). Solo las edita el dueño en `/configuracion`:
+
+| Clave | Valor | Notas |
+|---|---|---|
+| `fiscalRazonSocial` | texto | Obligatoria. Hasta 200 caracteres |
+| `fiscalCuit` | 11 dígitos | Obligatoria. Validada con `validarCuit`, sin guiones |
+| `fiscalCondicionIva` | `RESPONSABLE_INSCRIPTO` o `MONOTRIBUTO` | Vacía = responsable inscripto. Decide si el emisor factura A/B o C |
+| `fiscalDomicilio` | texto | Obligatoria. Hasta 200 caracteres |
+| `fiscalInicioActividades` | fecha ISO `aaaa-mm-dd` | Obligatoria. Se tipea como dd/mm/aaaa; no futura ni anterior a 1900 |
+| `fiscalIibb` | texto | Opcional (ingresos brutos). Hasta 30 caracteres; `""` borra la clave |
+| `fiscalPuntoVenta` | entero 1–99999 | Obligatoria. El de alta en ARCA para factura electrónica |
+| `fiscalUmbralIdentificacion` | importe en pesos | Opcional; `""` = `UMBRAL_IDENTIFICACION_POR_DEFECTO` ($ 10.000.000, a confirmar con el contador) |
 
 ### Ventas y cobros
 
@@ -203,6 +228,9 @@ Restricción de integridad (CHECK en SQL de Prisma):
 | `creadoEn`, `actualizadoEn` | timestamptz | |
 
 `numero` es único **por `anio`**, no global. Una venta puede salir de un presupuesto (`Presupuesto.ventaId`).
+
+Una venta con factura vigente (PENDIENTE o EMITIDA) **no se anula**: la base lo impide hasta que una nota de
+crédito EMITIDA anule la factura (trigger `ventas_validar_anulacion_facturada`). Ver "Facturación".
 
 #### `VentaItem`
 | Campo | Tipo | Notas |
@@ -336,6 +364,103 @@ se calculan desde ventas y pagos.
 
 Índices `(clienteId, fecha)` y `usuarioId`.
 
+### Facturación
+
+Las tres tablas se escriben solo al emitir (ver "Decisiones de la ola 5"). El comprobante es una **foto**: emisor,
+receptor, líneas e importes se copian de la venta, del cliente y de `Configuracion` en el momento de emitir.
+
+Enums:
+
+| Enum | Valores | Notas |
+|---|---|---|
+| `CondicionIva` | `CONSUMIDOR_FINAL`, `RESPONSABLE_INSCRIPTO`, `MONOTRIBUTO`, `EXENTO` | Condición del cliente (`clientes.condicionIva`) y del emisor (foto). El emisor solo puede ser RI o monotributo |
+| `TipoComprobante` | `FACTURA_A`, `FACTURA_B`, `FACTURA_C`, `NOTA_CREDITO_A`, `NOTA_CREDITO_B`, `NOTA_CREDITO_C` | La letra sale de la condición del emisor y del receptor |
+| `AmbienteFiscal` | `SIMULADO`, `HOMOLOGACION`, `PRODUCCION` | `SIMULADO` es lo que emite hoy el emisor simulado. Toda fila `SIMULADO` lleva la marca "SIN VALIDEZ FISCAL" |
+| `EstadoComprobante` | `PENDIENTE`, `EMITIDO`, `RECHAZADO` | `PENDIENTE` = número reservado, sin CAE. `RECHAZADO` = el emisor no lo autorizó |
+
+#### `Comprobante`
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `ambiente` | enum `AmbienteFiscal` | |
+| `tipo` | enum `TipoComprobante` | |
+| `codigoArca` | int | Código ARCA del tipo: factura A 1, B 6, C 11; nota de crédito A 3, B 8, C 13. CHECK coherente con `tipo` |
+| `puntoVenta` | int | CHECK 1–99999 |
+| `numero` | int | CHECK `> 0`. Único vigente por (ambiente, punto de venta, tipo) |
+| `fecha` | date | Hoy en Argentina al emitir |
+| `estado` | enum `EstadoComprobante` | Por defecto `PENDIENTE` (y un comprobante solo nace así) |
+| `emisorRazonSocial`, `emisorDomicilio` | text | Foto. No vacíos (CHECK) |
+| `emisorCuit` | text | Foto. 11 dígitos (CHECK) |
+| `emisorCondicionIva` | enum `CondicionIva` | Foto. CHECK: RI o monotributo. RI emite A/B; monotributo emite C |
+| `emisorInicioActividades` | date | Foto |
+| `emisorIibb` | text? | Foto. Opcional |
+| `receptorNombre` | text | Foto. No vacío (CHECK) |
+| `receptorDocTipo` | int | Código ARCA: 80 CUIT, 96 DNI, 99 sin identificar. CHECK con el formato del número |
+| `receptorDocNro` | text | 11 dígitos (80), 7–8 (96), o `"0"` (99) |
+| `receptorCondicionIva` | enum `CondicionIva` | Foto |
+| `receptorDomicilio` | text? | Foto. Opcional |
+| `importeNeto`, `importeIva`, `importeTotal` | decimal(14,2) | Todos ≥ 0. CHECK: total = neto + IVA. En la C, el neto es el total e IVA = 0 |
+| `cae` | text? | 14 dígitos. Solo (y siempre) en `EMITIDO` (CHECK) |
+| `caeVencimiento` | date? | Solo (y siempre) en `EMITIDO` (CHECK) |
+| `observaciones` | text? | En `RECHAZADO` es el motivo del emisor, obligatorio (CHECK) |
+| `comprobanteAsociadoId` | uuid? FK | Solo en notas de crédito: la factura que anulan. Obligatorio en la NC, prohibido en la factura, y nunca apunta a sí mismo (CHECK) |
+| `ventaId` | uuid FK | `RESTRICT` |
+| `usuarioId` | uuid? FK | Quien emitió. `NULL` = histórico, se muestra "—". `RESTRICT` |
+| `creadoEn` | timestamptz(3) | |
+| `actualizadoEn` | timestamptz(3) | Lo único que cambia en un `EMITIDO` o `RECHAZADO` (Prisma lo toca en cada update) |
+
+CHECK (además de los de arriba): la factura C no discrimina IVA (`importeIva = 0`); la A solo a un RI identificado
+con CUIT; "EMITIDO" ⇔ CAE ⇔ vencimiento; "RECHAZADO" siempre con motivo; la NC ⇔ comprobante asociado.
+
+Índices: `ventaId`, `comprobanteAsociadoId`, `usuarioId`, `fecha`, `estado`. Únicos **parciales**:
+
+| Índice | Columnas | Condición | Para qué |
+|---|---|---|---|
+| `comprobantes_numero_vigente_key` | (ambiente, puntoVenta, tipo, numero) | `estado IN (PENDIENTE, EMITIDO)` | Un número vigente por serie. Un `RECHAZADO` no ocupa el número |
+| `comprobantes_un_pendiente_por_serie_key` | (ambiente, puntoVenta, tipo) | `estado = PENDIENTE` | Mientras un intento no se resuelve, no se sabe cuál es el próximo número |
+| `comprobantes_factura_vigente_por_venta_key` | (ventaId) | factura y vigente | Una sola factura vigente por venta |
+| `comprobantes_nc_vigente_por_factura_key` | (comprobanteAsociadoId) | NC y vigente | Una sola nota de crédito vigente por factura (la NC es total) |
+
+Triggers:
+
+- **Alta** (`comprobantes_validar_alta`): nace `PENDIENTE`. No se factura una venta `ANULADA`. Una NC solo
+  anula una factura **EMITIDA** de la misma venta, ambiente y letra.
+- **Cambio** (`comprobantes_validar_cambio`): de un `PENDIENTE` solo cambian `estado`, `cae`, `caeVencimiento` y
+  `observaciones`. `EMITIDO` y `RECHAZADO` son inmutables.
+- **Baja** (`comprobantes_validar_baja`): solo los `SIMULADO` (datos de desarrollo). Uno de homologación o
+  producción no se borra nunca; el seed falla si hay alguno, a propósito.
+- **Detalle** (`comprobante_items_validar_detalle`, `comprobante_iva_validar_detalle`): las líneas y alícuotas se
+  cargan solo mientras el comprobante está `PENDIENTE`, no se modifican y no se borran sueltas (solo en cascada).
+- **Importes** (`comprobantes_verificar_importes`, **diferido**: se verifica al confirmar la transacción): las líneas
+  suman el total; en A y B, las alícuotas y las líneas cierran con neto e IVA; en la C no hay alícuotas.
+- **Venta** (`ventas_validar_anulacion_facturada`, sobre `ventas`): una venta con factura vigente no se anula
+  hasta que una NC `EMITIDA` la anule.
+
+#### `ComprobanteItem`
+Copia de cada línea de la venta, con su orden. Sin costos: un comprobante no lleva costos ni márgenes.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `comprobanteId` | uuid FK | `ON DELETE CASCADE` |
+| `orden` | int | Posición en el comprobante (1, 2, …). Único por comprobante. CHECK `> 0` |
+| `descripcion` | text | Copia del nombre del artículo |
+| `cantidad` | decimal(14,3) | CHECK `> 0` |
+| `precioUnitario` | decimal(14,4) | Con IVA incluido, como en la venta. CHECK `>= 0` |
+| `ivaPct` | decimal(5,2) | CHECK entre 0 y 100 |
+| `subtotalNeto`, `subtotalIva`, `subtotalBruto` | decimal(14,2) | CHECK: bruto = neto + IVA, todos ≥ 0 |
+
+#### `ComprobanteIva`
+Una fila por alícuota presente: lo que ARCA recibe como arreglo `Iva`. La factura C no tiene filas.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `comprobanteId` | uuid FK | `ON DELETE CASCADE` |
+| `alicuotaPct` | decimal(5,2) | Único por comprobante. Valores admitidos: 0, 2,5, 5, 10,5, 21, 27 |
+| `codigoArca` | int | Coherente con la alícuota: 0 % → 3, 2,5 % → 9, 5 % → 8, 10,5 % → 4, 21 % → 5, 27 % → 6 (CHECK) |
+| `baseImponible`, `importe` | decimal(14,2) | Base = neto gravado de la alícuota; importe = IVA. CHECK ≥ 0 |
+
 ---
 
 ## Trazabilidad (`usuarioId`)
@@ -352,10 +477,11 @@ nullable (lo histórico queda en `NULL` y se muestra "—"), FK `RESTRICT` a `us
 | `presupuestos` | Quien lo creó |
 | `contactos_cobranza` | Quien registró el contacto |
 | `listas_precios` | Quien la creó |
+| `comprobantes` | Quien emitió la factura o la nota de crédito. Histórico (NULL) = "—" |
 
 Se muestra como "Registrado por" en el detalle de venta y de cada cobro, en el libro de movimientos de un
 material, en el listado de compras, en el detalle de presupuesto y en cada contacto de `/cobranzas/hoy`. En las listas de precios,
-"Creada por" aparece en la ficha de la lista.
+"Creada por" aparece en la ficha de la lista. En cada comprobante, "Emitido por" muestra quién lo emitió.
 
 ---
 
@@ -380,6 +506,35 @@ material, en el listado de compras, en el detalle de presupuesto y en cada conta
   `/cobranzas`: la antigüedad es desde la venta impaga más vieja del cliente. `ContactoCobranza` no guarda
   saldo ni antigüedad, solo el contacto.
 
+## Decisiones de la ola 5 (facturación)
+
+Detalle fiscal y dudas para el contador: [`docs/fiscal-5.1-decisiones.md`](fiscal-5.1-decisiones.md).
+
+- **Emisión en dos fases.** Si todo pasara en una transacción, un corte o un error al guardar el resultado
+  desharía también el `PENDIENTE`, y ARCA podría haber autorizado un número que la base no tiene. Por eso,
+  con un emisor real: (1) una transacción corta reserva el número y guarda el `PENDIENTE` con la foto completa,
+  y se confirma; (2) el CAE se pide **fuera** de toda transacción; (3) otra transacción corta pasa el
+  comprobante a `EMITIDO` o `RECHAZADO`. Si el paso 2 no responde, el `PENDIENTE` queda y se resuelve después
+  consultando al emisor. `emitirFactura` recorre estas tres fases; `emitirFacturaEnTx` hace todo en una sola
+  transacción y solo acepta el emisor simulado (seed y pruebas).
+- **Un RECHAZADO no ocupa el número.** ARCA no consume el número de un comprobante rechazado: el próximo a
+  autorizar sigue siendo el último autorizado + 1. Por eso la unicidad del número es un índice parcial sobre
+  los vigentes (`PENDIENTE` o `EMITIDO`), no sobre todas las filas. El reintento reusa el número. Es un desvío
+  consciente de la letra del contrato: con unicidad total, después de un rechazo el sistema pediría N+1 y ARCA
+  lo rechazaría siempre.
+- **Numeración por serie.** Un advisory lock por (ambiente, punto de venta, tipo) serializa la emisión. Si hay
+  un `PENDIENTE` en la serie, no se emite.
+- **Una factura vigente por venta, una NC vigente por factura.** Dos pedidos simultáneos de la misma venta: uno
+  gana el bloqueo de la venta y el otro recibe un mensaje claro ("La venta ya está facturada…"), nunca un error
+  crudo de unicidad.
+- **Claves fiscales en `Configuracion`.** Los datos del negocio (emisor) se guardan como claves de texto, sin
+  tabla propia: son pocos, los edita solo el dueño y se validan con `src/lib/datos-fiscales.ts`. La lista de
+  claves está en la sección `Configuracion` de este documento.
+- **Trazabilidad.** `comprobantes.usuarioId` registra quién emitió la factura o la nota de crédito (la acción
+  sale del usuario de la sesión). Como en el resto del modelo, lo histórico queda en `NULL` y se muestra "—".
+- **Foto, no referencia.** Lo que un comprobante muestra (emisor, receptor, líneas, importes) sale solo de la
+  propia fila y de sus hijas. Una NC copia la foto de su factura, no lee la venta actual.
+
 ## Migraciones (en orden)
 
 Están en `prisma/migrations/`. Cada una tiene su encabezado con el porqué.
@@ -395,6 +550,9 @@ Están en `prisma/migrations/`. Cada una tiene su encabezado con el porqué.
 8. `20260510000000_presupuestos`: enum `EstadoPresupuesto`, `presupuestos` y `presupuesto_items`.
 9. `20260515000000_contactos_cobranza`: `contactos_cobranza`.
 10. `20260520000000_trazabilidad_ola7`: `usuarioId` en `presupuestos`, `contactos_cobranza` y `listas_precios`.
+11. `20260301000000_comprobantes`: enums `CondicionIva`, `TipoComprobante`, `AmbienteFiscal` y `EstadoComprobante`;
+    tablas `comprobantes`, `comprobante_items` y `comprobante_iva`; `clientes.condicionIva` y `clientes.dni`. Con sus
+    `CHECK`, índices parciales y triggers (ver "Facturación").
 
 ---
 
@@ -413,6 +571,10 @@ precio_linea      = resolverPrecio: específico → catálogo − descuento → 
 valido_hasta      = presupuesto.fecha + validezDias
 vencido           = estado = ABIERTO AND hoy > valido_hasta
 total_presupuesto = totalizarPresupuesto(líneas)   -- neto, IVA y bruto; sin costos
+
+-- Facturación (ola 5)
+situacion_facturacion = derivarFacturacion(comprobantes de la venta, anulada):
+    VENTA_ANULADA | SIN_FACTURA | PENDIENTE | RECHAZADA | EMITIDA | CON_NOTA_CREDITO
 ```
 
 Margen objetivo por defecto: 40% (configurable). Es el número contra el que se comparan los artículos
