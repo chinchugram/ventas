@@ -1,5 +1,6 @@
 import { aCosto, CERO, d, fmtNumero, type Dinero } from "@/lib/money";
 import { ErrorDeNegocio } from "@/lib/acciones";
+import { NOMBRE_TIPO, numeroFormateado, TIPOS_FACTURA } from "@/lib/comprobantes";
 import { costearLineaVenta, totalizarVenta } from "@/lib/costing";
 import { configNumero, recetaResuelta } from "@/lib/receta";
 import { resolverPrecio } from "@/lib/precios";
@@ -199,6 +200,10 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
  *
  * La venta no se borra: queda ANULADA y deja de contar en saldos y reportes.
  * Los movimientos de reversa quedan a nombre de quien anula (`usuarioId`).
+ *
+ * Una venta con factura vigente (PENDIENTE o EMITIDA) no se anula hasta que una
+ * nota de credito EMITIDA anule esa factura (la base tambien lo impone; aca se
+ * verifica antes para dar un mensaje claro).
  */
 export async function anularVentaEnTx(tx: Tx, ventaId: string, usuarioId?: string | null): Promise<void> {
   const filas = await tx.$queryRaw<{ estado: string; numero: number; anio: number }[]>`
@@ -206,6 +211,30 @@ export async function anularVentaEnTx(tx: Tx, ventaId: string, usuarioId?: strin
   const venta = filas[0];
   if (!venta) throw new ErrorDeNegocio("La venta no existe.");
   if (venta.estado === "ANULADA") throw new ErrorDeNegocio("La venta ya estaba anulada.");
+
+  const factura = await tx.comprobante.findFirst({
+    where: { ventaId, tipo: { in: [...TIPOS_FACTURA] }, estado: { in: ["PENDIENTE", "EMITIDO"] } },
+    select: {
+      tipo: true,
+      puntoVenta: true,
+      numero: true,
+      estado: true,
+      notasDeCredito: { where: { estado: { in: ["PENDIENTE", "EMITIDO"] } }, select: { estado: true } },
+    },
+  });
+  if (factura && !factura.notasDeCredito.some((nc) => nc.estado === "EMITIDO")) {
+    const cual = `${NOMBRE_TIPO[factura.tipo]} ${numeroFormateado(factura.puntoVenta, factura.numero)}`;
+    if (factura.estado === "PENDIENTE") {
+      throw new ErrorDeNegocio(
+        `La venta tiene la ${cual} esperando respuesta del emisor: resolvela desde Comprobantes antes de anular la venta (si queda emitida, hará falta una nota de crédito).`,
+      );
+    }
+    throw new ErrorDeNegocio(
+      factura.notasDeCredito.length > 0
+        ? `La venta tiene la ${cual} y su nota de crédito está esperando respuesta del emisor: resolvela desde Comprobantes antes de anular la venta.`
+        : `La venta tiene la ${cual}: primero hay que emitir la nota de crédito.`,
+    );
+  }
 
   await tx.venta.update({ where: { id: ventaId }, data: { estado: "ANULADA" } });
 
