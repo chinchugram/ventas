@@ -206,7 +206,7 @@ async function main() {
 
   console.log("--- Permisos ---");
   // La matriz completa rol × accion, escrita a mano, esta en `npm run test:permisos`.
-  comprobar("28 acciones (13 solo del dueno + 15 del mostrador)", String(ACCIONES.length), "28");
+  comprobar("31 acciones (14 solo del dueno + 17 del mostrador)", String(ACCIONES.length), "31");
   comprobar("el dueno puede todo", String(ACCIONES.every((a) => puede({ rol: "DUENO" }, a))), "true");
   const DEL_CONTRATO: Accion[] = [
     "verCostos", "verMargenes", "anularVenta", "anularPago", "ajustarStock", "registrarCompra",

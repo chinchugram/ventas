@@ -70,6 +70,10 @@ const MATRIZ: Fila[] = [
   { accion: "convertirPresupuesto", DUENO: true, EMPLEADO: true },
   { accion: "verRecordatorios", DUENO: true, EMPLEADO: true },
   { accion: "registrarContactoCobranza", DUENO: true, EMPLEADO: true },
+  // Ola 5: facturacion electronica. Emitir una factura es del mostrador; deshacerla (nota de credito) es del dueno.
+  { accion: "verComprobantes", DUENO: true, EMPLEADO: true },
+  { accion: "emitirComprobante", DUENO: true, EMPLEADO: true },
+  { accion: "emitirNotaCredito", DUENO: true, EMPLEADO: false },
 ];
 
 // ─── 2. Que exige cada pagina y cada accion (a mano) ───────────────────────────
@@ -85,6 +89,9 @@ const PAGINAS_ESPERADAS: Record<string, Accion[]> = {
   "/clientes/[id]/editar": ["editarClientes"],
   "/cobranzas": ["verCobranzas"],
   "/cobranzas/hoy": ["verRecordatorios"],
+  "/comprobantes": ["verComprobantes"],
+  "/comprobantes/[id]": ["verComprobantes"],
+  "/comprobantes/[id]/imprimir": ["verComprobantes"],
   "/compras": ["registrarCompra", "verCostos"],
   "/compras/nueva": ["registrarCompra", "verCostos"],
   "/configuracion": ["configuracion"],
@@ -247,7 +254,7 @@ function main() {
     href: m[1] ?? rutas.get(m[2]!) ?? `(constante ${m[2]} sin resolver)`,
     acciones: [...m[3]!.matchAll(/"([A-Za-z]+)"/g)].map((x) => x[1]!),
   }));
-  comprobar("entradas del navbar leidas", String(entradas.length), "15");
+  comprobar("entradas del navbar leidas", String(entradas.length), "16");
   for (const e of entradas) {
     if (e.href === "/usuarios") {
       comprobar("navbar /usuarios: solo con gestionarUsuarios (la pagina la crea 4.4)", lista(e.acciones), "gestionarUsuarios");
@@ -259,11 +266,11 @@ function main() {
   }
   const visibles = (rol: "DUENO" | "EMPLEADO") => entradas.filter((e) => puedeTodo({ rol }, e.acciones as Accion[])).map((e) => e.href);
   comprobar(
-    "el empleado ve solo ventas, clientes, materiales, reposicion, presupuestos, cobranzas y recordatorios",
+    "el empleado ve solo ventas, clientes, materiales, reposicion, presupuestos, comprobantes, cobranzas y recordatorios",
     lista(visibles("EMPLEADO")),
-    lista(["/ventas", "/clientes", "/materiales", "/reposicion", "/presupuestos", "/cobranzas", "/cobranzas/hoy"]),
+    lista(["/ventas", "/clientes", "/materiales", "/reposicion", "/presupuestos", "/comprobantes", "/cobranzas", "/cobranzas/hoy"]),
   );
-  comprobar("el dueno ve las 15 entradas", String(visibles("DUENO").length), "15");
+  comprobar("el dueno ve las 16 entradas", String(visibles("DUENO").length), "16");
 
   console.log("--- El auditor detecta lo que tiene que detectar ---");
   const base = (cuerpo: string, extra = "") => `"use server";\n${extra}\nexport async function f(datos: { a: string }): Promise<{ ok: true } | { ok: false; error: string }> {\n${cuerpo}\n}\n`;
