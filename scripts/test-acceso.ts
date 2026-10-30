@@ -62,6 +62,8 @@ import { Client } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { generarToken, hashDeToken, hashearClave, nombreCookie } from "../src/lib/auth-pura";
+import { accesoSimulado, emitirFactura } from "../src/lib/dominio/comprobantes";
+import { crearEmisorSimulado } from "../src/lib/fiscal/emisor-simulado";
 
 // ─── Configuracion ────────────────────────────────────────────────────────────
 
@@ -490,7 +492,7 @@ async function sembrarDistintivos(prisma: Prisma) {
   }
 }
 
-type Ids = { articulo: string; cliente: string; maquina: string; lista: string; material: string; presupuesto: string; venta: string; usuario: string };
+type Ids = { articulo: string; cliente: string; maquina: string; lista: string; material: string; presupuesto: string; venta: string; usuario: string; comprobante: string };
 
 /** Lo que el seed no trae (lista de precios y presupuesto) y los ids para instanciar las rutas dinamicas. */
 async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Ids> {
@@ -513,12 +515,13 @@ async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Id
   // La venta con mas renglones: la pantalla de detalle muestra mas cosas.
   const ventas = await prisma.venta.findMany({ include: { _count: { select: { items: true } } }, orderBy: { numero: "asc" } });
   const venta = ventas.sort((a, b) => b._count.items - a._count.items)[0]!;
-  return { articulo: articulo.id, cliente: cliente.id, maquina: maquina.id, lista: lista.id, material: material.id, presupuesto: presupuesto.id, venta: venta.id, usuario: usuarioId };
+  // Una factura EMITIDA (simulada) de esa venta: la usan /comprobantes/[id] y su vista imprimible.
+  // El seed deja los datos fiscales de ejemplo fuera de produccion; si faltaran, la emision falla fuerte.
+  const emisor = crearEmisorSimulado(accesoSimulado(prisma));
+  const emitida = await emitirFactura(prisma, venta.id, usuarioId, { emisor });
+  if (emitida.estado !== "EMITIDO") throw new Error(`No se pudo sembrar la factura de prueba: ${emitida.mensaje}`);
+  return { articulo: articulo.id, cliente: cliente.id, maquina: maquina.id, lista: lista.id, material: material.id, presupuesto: presupuesto.id, venta: venta.id, usuario: usuarioId, comprobante: emitida.id };
 }
-
-// Las paginas de /comprobantes son stubs que no consultan datos (todavia no hay comprobantes en el seed):
-// sirve cualquier uuid. Cuando las tareas 5.x las completen, hay que sembrar uno y usar su id real.
-const ID_COMPROBANTE_STUB = "00000000-0000-4000-8000-000000000005";
 
 /** Ids con los que se instancia cada segmento dinamico. */
 function ejemplares(ids: Ids): Record<string, string[]> {
@@ -526,8 +529,8 @@ function ejemplares(ids: Ids): Record<string, string[]> {
     "/catalogo/[id]": [ids.articulo],
     "/clientes/[id]": [ids.cliente],
     "/clientes/[id]/editar": [ids.cliente],
-    "/comprobantes/[id]": [ID_COMPROBANTE_STUB],
-    "/comprobantes/[id]/imprimir": [ID_COMPROBANTE_STUB],
+    "/comprobantes/[id]": [ids.comprobante],
+    "/comprobantes/[id]/imprimir": [ids.comprobante],
     "/configuracion/maquinas/[id]": [ids.maquina],
     "/listas-precios/[id]": [ids.lista],
     "/materiales/[id]": [ids.material],
@@ -877,7 +880,7 @@ async function probarRuta(patron: string, clase: Clase, url: string, ctx: Contex
 
 // ─── Huella de la base: los pedidos rechazados no pueden escribir nada ────────
 
-const TABLAS = ["ventas", "venta_items", "pagos", "compras", "compra_items", "movimientos_stock", "clientes", "materiales", "articulos", "recetas", "receta_componentes", "maquinas", "configuracion", "listas_precios", "lista_precio_items", "presupuestos", "presupuesto_items", "contactos_cobranza", "usuarios"];
+const TABLAS = ["ventas", "venta_items", "pagos", "compras", "compra_items", "movimientos_stock", "clientes", "materiales", "articulos", "recetas", "receta_componentes", "maquinas", "configuracion", "listas_precios", "lista_precio_items", "presupuestos", "presupuesto_items", "contactos_cobranza", "usuarios", "comprobantes", "comprobante_items", "comprobante_iva"];
 
 /** Hash del contenido de cada tabla (no se mira `sesiones`: el proxy renueva su vencimiento al pasar). */
 async function huella(prisma: Prisma): Promise<Record<string, string>> {
@@ -910,8 +913,11 @@ const CLASIFICACION_ACCIONES: Record<string, Clase> = {
   "clientes/actions.ts#editarCliente": "ambos",
   "clientes/actions.ts#cambiarActivoCliente": "ambos",
   "cobranzas/hoy/actions.ts#registrarContacto": "ambos",
+  "comprobantes/actions.ts#emitirFactura": "ambos",
+  "comprobantes/actions.ts#resolverComprobantePendiente": "ambos",
   "compras/actions.ts#registrarCompra": "dueno",
   "configuracion/actions.ts#guardarConfiguracion": "dueno",
+  "configuracion/actions.ts#guardarDatosFiscales": "dueno",
   "configuracion/actions.ts#crearMaquina": "dueno",
   "configuracion/actions.ts#editarMaquina": "dueno",
   "configuracion/actions.ts#cambiarActivoMaquina": "dueno",
@@ -942,6 +948,7 @@ const CLASIFICACION_ACCIONES: Record<string, Clase> = {
   "ventas/[id]/actions.ts#marcarEntregada": "ambos",
   "ventas/[id]/actions.ts#anularPago": "dueno",
   "ventas/[id]/actions.ts#anularVenta": "dueno",
+  "ventas/[id]/actions.ts#emitirNotaCredito": "dueno",
 };
 
 type AccionHttp = { id: string; clave: string; paginas: string[] };
