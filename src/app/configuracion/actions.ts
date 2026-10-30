@@ -11,7 +11,9 @@ import {
   crearMaquinaEnTx,
   editarMaquinaEnTx,
   guardarConfiguracionEnTx,
+  guardarDatosFiscalesEnTx,
 } from "@/lib/dominio/configuracion";
+import { CLAVES_FISCALES, validarDatosFiscales, type CampoFiscal } from "@/lib/datos-fiscales";
 
 /**
  * Guarda nombre, costo/hora de mano de obra, IVA y margen objetivo.
@@ -32,6 +34,62 @@ export async function guardarConfiguracion(datos: DatosConfiguracion): Promise<R
   } catch (error) {
     console.error("[guardarConfiguracion]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar la configuración.") };
+  }
+
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+// ─── Datos fiscales ───────────────────────────────────────────────────────────
+// El emisor de los comprobantes. La validacion de fondo es `validarDatosFiscales`
+// (src/lib/datos-fiscales.ts), que el servidor vuelve a correr sobre todo lo
+// recibido: el formulario solo informa. Los topes de zod son solo para no
+// recibir basura de tamaño desmedido.
+
+const esquemaDatosFiscales = z.object({
+  razonSocial: z.string().max(500, "Razón social demasiado larga"),
+  cuit: z.string().max(40, "CUIT demasiado largo"),
+  condicionIva: z.string().max(40, "Condición frente al IVA demasiado larga"),
+  domicilio: z.string().max(500, "Domicilio demasiado largo"),
+  inicioActividades: z.string().max(40, "Fecha de inicio demasiado larga"),
+  iibb: z.string().max(100, "Ingresos brutos demasiado largo"),
+  puntoVenta: z.string().max(20, "Punto de venta demasiado largo"),
+});
+
+export type DatosFiscalesFormulario = z.input<typeof esquemaDatosFiscales>;
+
+/**
+ * Lo que guarda el formulario. El umbral de identificacion del consumidor final
+ * no esta en la pantalla: no se toca desde aca.
+ */
+const CAMPOS_FORMULARIO = [
+  "razonSocial",
+  "cuit",
+  "condicionIva",
+  "domicilio",
+  "inicioActividades",
+  "iibb",
+  "puntoVenta",
+] as const satisfies readonly CampoFiscal[];
+
+/** Guarda los datos fiscales del negocio. Solo el dueño (permiso `configuracion`). */
+export async function guardarDatosFiscales(datos: DatosFiscalesFormulario): Promise<Resultado> {
+  const permiso = await verificarPermiso("configuracion");
+  if (!permiso.ok) return permiso;
+  const parsed = esquemaDatosFiscales.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  const revision = validarDatosFiscales(parsed.data);
+  if (!revision.ok) return { ok: false, error: Object.values(revision.errores)[0] ?? "Revisá los datos fiscales." };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+
+  const valores = Object.fromEntries(
+    CAMPOS_FORMULARIO.map((campo) => [CLAVES_FISCALES[campo], revision.valores[CLAVES_FISCALES[campo]] ?? ""]),
+  );
+  try {
+    await prisma.$transaction((tx) => guardarDatosFiscalesEnTx(tx, valores));
+  } catch (error) {
+    console.error("[guardarDatosFiscales]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudieron guardar los datos fiscales.") };
   }
 
   revalidatePath("/", "layout");

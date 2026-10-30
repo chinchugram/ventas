@@ -59,6 +59,22 @@ export async function cambiarActivoMaquinaEnTx(tx: Tx, id: string, activo: boole
   return { recetas: await contarRecetasConMaquina(tx, id) };
 }
 
+/**
+ * Guarda los datos fiscales del formulario (claves de `CLAVES_FISCALES`, ya
+ * validadas por `validarDatosFiscales`). Un valor "" borra la clave: es lo que
+ * queda para las opcionales vacias (ingresos brutos). Las que no van en el
+ * formulario (el umbral de identificacion) no se tocan: quien llama decide.
+ */
+export async function guardarDatosFiscalesEnTx(tx: Tx, valores: Record<string, string>): Promise<void> {
+  for (const [clave, valor] of Object.entries(valores)) {
+    if (valor === "") {
+      await tx.configuracion.deleteMany({ where: { clave } });
+    } else {
+      await tx.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+    }
+  }
+}
+
 /** Recetas distintas (de articulos activos) que usan la maquina. */
 export async function contarRecetasConMaquina(tx: Tx, maquinaId: string): Promise<number> {
   const filas = await tx.recetaComponente.findMany({

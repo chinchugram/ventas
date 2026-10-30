@@ -38,7 +38,9 @@ export default async function EditarClientePage({ params }: { params: Promise<{ 
         listas={listas?.map((l) => ({ valor: l.id, etiqueta: l.activo ? l.nombre : `${l.nombre} (de baja)` }))}
         inicial={{
           nombre: cliente.nombre,
+          condicionIva: cliente.condicionIva,
           cuit: formatearCuit(cliente.cuit),
+          dni: cliente.dni ?? "",
           telefono: cliente.telefono ?? "",
           email: cliente.email ?? "",
           direccion: cliente.direccion ?? "",

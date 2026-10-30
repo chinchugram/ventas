@@ -5,10 +5,16 @@ import { useRouter } from "next/navigation";
 import { crearCliente, editarCliente, type DatosCliente } from "@/app/clientes/actions";
 import { AvisoDemo, BloqueError, BotonEnviar, CampoNotas, CampoSelect, CampoTexto, useAccion, type Opcion } from "@/components/form";
 import { normalizarCuit, validarCuit } from "@/lib/cuit";
+import { normalizarDni } from "@/lib/comprobantes";
+import { ETIQUETA_CONDICION_IVA } from "@/lib/datos-fiscales";
+import { CONDICIONES_IVA_CLIENTE, type CondicionIvaCliente } from "@/lib/dominio/clientes";
 
 export type ValoresCliente = {
   nombre: string;
+  condicionIva: CondicionIvaCliente;
   cuit: string;
+  /** Tal como se tipea (puede tener puntos). */
+  dni: string;
   telefono: string;
   email: string;
   direccion: string;
@@ -19,13 +25,20 @@ export type ValoresCliente = {
 
 export const CLIENTE_VACIO: ValoresCliente = {
   nombre: "",
+  condicionIva: "CONSUMIDOR_FINAL",
   cuit: "",
+  dni: "",
   telefono: "",
   email: "",
   direccion: "",
   notas: "",
   listaPrecioId: "",
 };
+
+const OPCIONES_CONDICION_IVA: Opcion[] = CONDICIONES_IVA_CLIENTE.map((valor) => ({
+  valor,
+  etiqueta: ETIQUETA_CONDICION_IVA[valor] ?? valor,
+}));
 
 /**
  * Alta y edicion de cliente. Sin `id` crea; con `id` edita. El CUIT se revisa
@@ -65,6 +78,16 @@ export function ClienteForm({
   const revision = valores.cuit.trim() && !cuitSinCambios && terminoDeTipear ? validarCuit(valores.cuit) : null;
   const avisoCuit = revision && !revision.ok ? revision.error : null;
 
+  // DNI opcional: si se tipea, tiene que ser de 7 u 8 digitos (puntos aparte).
+  const errorDni = valores.dni.trim() && normalizarDni(valores.dni) === null
+    ? "El DNI tiene 7 u 8 dígitos, sin puntos."
+    : null;
+  // Factura A exige CUIT del receptor: se avisa, no se bloquea (quien decide al emitir es el sistema).
+  const avisoFacturaA =
+    valores.condicionIva === "RESPONSABLE_INSCRIPTO" && !valores.cuit.trim()
+      ? "Para facturarle como Factura A hace falta su CUIT."
+      : null;
+
   return (
     <form
       onSubmit={(e) => {
@@ -84,6 +107,14 @@ export function ClienteForm({
         autoComplete="off"
         required
       />
+      <CampoSelect
+        etiqueta="Condición frente al IVA"
+        valor={valores.condicionIva}
+        alCambiar={(v) => setValores((x) => ({ ...x, condicionIva: v as CondicionIvaCliente }))}
+        opciones={OPCIONES_CONDICION_IVA}
+        ayuda="Consumidor final si no se indica otra cosa. Decide la letra de la factura."
+        required
+      />
       <CampoTexto
         etiqueta="CUIT (opcional)"
         valor={valores.cuit}
@@ -94,6 +125,22 @@ export function ClienteForm({
         maxLength={20}
         error={avisoCuit}
         ayuda={avisoCuit ? undefined : "Con o sin guiones. Se verifica el dígito verificador."}
+      />
+      {avisoFacturaA ? (
+        <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          {avisoFacturaA}
+        </p>
+      ) : null}
+      <CampoTexto
+        etiqueta="DNI (opcional)"
+        valor={valores.dni}
+        alCambiar={cambiar("dni")}
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="12.345.678"
+        maxLength={12}
+        error={errorDni}
+        ayuda={errorDni ? undefined : "Para consumidores finales. Sin CUIT ni DNI, la factura sale a consumidor final sin identificar."}
       />
       <div className="grid gap-4 sm:grid-cols-2">
         <CampoTexto

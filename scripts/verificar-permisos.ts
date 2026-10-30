@@ -127,6 +127,7 @@ const ACCIONES_ESPERADAS: Record<string, Accion> = {
   "cobranzas/hoy/actions.ts#registrarContacto": "registrarContactoCobranza",
   "compras/actions.ts#registrarCompra": "registrarCompra",
   "configuracion/actions.ts#guardarConfiguracion": "configuracion",
+  "configuracion/actions.ts#guardarDatosFiscales": "configuracion",
   "configuracion/actions.ts#crearMaquina": "configuracion",
   "configuracion/actions.ts#editarMaquina": "configuracion",
   "configuracion/actions.ts#cambiarActivoMaquina": "configuracion",

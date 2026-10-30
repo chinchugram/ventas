@@ -4,6 +4,7 @@ import { demoClientes, demoVentas } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { aMoneda, CERO, d, type Dinero, sumar } from "@/lib/money";
 import { estadoPago, type EstadoPago } from "@/lib/costing";
+import type { CondicionIvaCliente } from "@/lib/dominio/clientes";
 
 export type ClienteListado = {
   id: string;
@@ -130,6 +131,8 @@ export type FichaCliente = {
   id: string;
   nombre: string;
   cuit: string | null;
+  condicionIva: CondicionIvaCliente;
+  dni: string | null;
   telefono: string | null;
   email: string | null;
   direccion: string | null;
@@ -208,6 +211,8 @@ async function fichaDesdeBase(id: string): Promise<FichaCliente | null> {
     id: c.id,
     nombre: c.nombre,
     cuit: c.cuit,
+    condicionIva: c.condicionIva,
+    dni: c.dni,
     telefono: c.telefono,
     email: c.email,
     direccion: c.direccion,
@@ -263,6 +268,9 @@ function fichaDemo(id: string): FichaCliente | null {
     id: c.id,
     nombre: c.nombre,
     cuit: c.cuit,
+    // La demo no guarda condicion ni DNI: consumidor final sin identificar.
+    condicionIva: "CONSUMIDOR_FINAL",
+    dni: null,
     telefono: c.telefono,
     email: null,
     direccion: null,

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fmtFecha, fmtMoneda, fmtNumero } from "@/lib/money";
 import { formatearCuit } from "@/lib/cuit";
+import { ETIQUETA_CONDICION_IVA } from "@/lib/datos-fiscales";
 import { getCliente } from "@/lib/queries/clientes";
 import { getListaDeCliente } from "@/lib/queries/listas-precios";
 import { ESTILO_ESTADO_PAGO, ETIQUETA_ESTADO_PAGO } from "@/lib/queries/ventas";
@@ -28,7 +29,9 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
 
   const debe = c.saldo.cmp(0) > 0;
   const datos = [
+    { etiqueta: "Condición frente al IVA", valor: ETIQUETA_CONDICION_IVA[c.condicionIva] ?? c.condicionIva },
     { etiqueta: "CUIT", valor: formatearCuit(c.cuit) },
+    { etiqueta: "DNI", valor: c.dni },
     { etiqueta: "Teléfono", valor: c.telefono },
     { etiqueta: "Email", valor: c.email },
     { etiqueta: "Dirección", valor: c.direccion },
