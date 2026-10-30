@@ -1,11 +1,20 @@
 import { ErrorDeNegocio } from "@/lib/acciones";
+import { normalizarDni } from "@/lib/comprobantes";
 import { normalizarCuit, validarCuit } from "@/lib/cuit";
 import type { Tx } from "./tx";
+
+/** Condiciones frente al IVA de un cliente (el enum `CondicionIva` de la base). */
+export const CONDICIONES_IVA_CLIENTE = ["CONSUMIDOR_FINAL", "RESPONSABLE_INSCRIPTO", "MONOTRIBUTO", "EXENTO"] as const;
+export type CondicionIvaCliente = (typeof CONDICIONES_IVA_CLIENTE)[number];
 
 export type DatosCliente = {
   nombre: string;
   /** Tal como lo tipeo el usuario; null o "" si no informo CUIT. */
   cuit: string | null;
+  /** Sin informar (`undefined`) no la toca al editar; el alta deja consumidor final. */
+  condicionIva?: CondicionIvaCliente;
+  /** Tal como lo tipeo el usuario (puede tener puntos); null o "" si no informo. `undefined` no lo toca. */
+  dni?: string | null;
   telefono: string | null;
   email: string | null;
   direccion: string | null;
@@ -35,6 +44,14 @@ function cuitParaGuardar(texto: string | null, cuitActual: string | null = null)
   const r = validarCuit(texto);
   if (!r.ok) throw new ErrorDeNegocio(r.error);
   return r.cuit;
+}
+
+/** DNI listo para guardar (7 u 8 digitos) o null si no informo. */
+function dniParaGuardar(texto: string | null | undefined): string | null {
+  if (!texto || !texto.trim()) return null;
+  const dni = normalizarDni(texto);
+  if (!dni) throw new ErrorDeNegocio("El DNI tiene que tener 7 u 8 dígitos, sin puntos.");
+  return dni;
 }
 
 /**
@@ -68,7 +85,7 @@ export async function crearClienteEnTx(tx: Tx, datos: DatosCliente): Promise<{ i
   await verificarCuitLibre(tx, cuit);
   await verificarLista(tx, datos.listaPrecioId);
   const creado = await tx.cliente.create({
-    data: { ...datos, nombre: datos.nombre.trim(), cuit },
+    data: { ...datos, nombre: datos.nombre.trim(), cuit, dni: dniParaGuardar(datos.dni) },
     select: { id: true },
   });
   return creado;
@@ -80,7 +97,8 @@ export async function editarClienteEnTx(tx: Tx, id: string, datos: DatosCliente)
   const cuit = cuitParaGuardar(datos.cuit, actual.cuit);
   await verificarCuitLibre(tx, cuit, id);
   await verificarLista(tx, datos.listaPrecioId, actual.listaPrecioId);
-  await tx.cliente.update({ where: { id }, data: { ...datos, nombre: datos.nombre.trim(), cuit } });
+  const dni = datos.dni === undefined ? undefined : dniParaGuardar(datos.dni);
+  await tx.cliente.update({ where: { id }, data: { ...datos, nombre: datos.nombre.trim(), cuit, dni } });
 }
 
 /**

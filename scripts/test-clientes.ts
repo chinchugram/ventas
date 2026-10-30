@@ -141,6 +141,44 @@ async function main() {
     );
   });
 
+  await escenario("Condicion frente al IVA y DNI: alta, edicion y validacion", async (tx) => {
+    const sinDatos = await crearClienteEnTx(tx, datos({ nombre: "Sin datos fiscales" }));
+    const base = await tx.cliente.findUniqueOrThrow({ where: { id: sinDatos.id } });
+    comprobar("alta sin condicion: consumidor final", base.condicionIva, "CONSUMIDOR_FINAL");
+    comprobar("alta sin DNI: null", String(base.dni), "null");
+
+    const empresa = await crearClienteEnTx(tx, datos({ nombre: "Empresa", cuit: CUIT_A, condicionIva: "RESPONSABLE_INSCRIPTO" }));
+    comprobar(
+      "responsable inscripto guardado",
+      (await tx.cliente.findUniqueOrThrow({ where: { id: empresa.id } })).condicionIva,
+      "RESPONSABLE_INSCRIPTO",
+    );
+
+    const persona = await crearClienteEnTx(tx, datos({ nombre: "Persona", dni: " 12.345.678 " }));
+    comprobar(
+      "DNI con puntos se guarda normalizado",
+      String((await tx.cliente.findUniqueOrThrow({ where: { id: persona.id } })).dni),
+      "12345678",
+    );
+    await rechaza("DNI de 6 digitos", "7 u 8 dígitos", () => crearClienteEnTx(tx, datos({ dni: "123456" })));
+    await rechaza("DNI con letras", "7 u 8 dígitos", () => crearClienteEnTx(tx, datos({ dni: "12A45678" })));
+
+    await editarClienteEnTx(tx, persona.id, datos({ nombre: "Persona", dni: "30.111.222", condicionIva: "MONOTRIBUTO" }));
+    const editada = await tx.cliente.findUniqueOrThrow({ where: { id: persona.id } });
+    comprobar("editar cambia DNI y condicion", `${editada.dni} ${editada.condicionIva}`, "30111222 MONOTRIBUTO");
+
+    // Sin informar (undefined) no se tocan: el formulario siempre los manda, pero otros llamados no.
+    await editarClienteEnTx(tx, persona.id, datos({ nombre: "Persona renombrada" }));
+    const sinTocar = await tx.cliente.findUniqueOrThrow({ where: { id: persona.id } });
+    comprobar("sin informar, DNI y condicion se conservan", `${sinTocar.dni} ${sinTocar.condicionIva}`, "30111222 MONOTRIBUTO");
+
+    await editarClienteEnTx(tx, persona.id, datos({ nombre: "Persona", dni: "" }));
+    comprobar("DNI vacio lo quita", String((await tx.cliente.findUniqueOrThrow({ where: { id: persona.id } })).dni), "null");
+    await rechaza("editar con DNI invalido", "7 u 8 dígitos", () =>
+      editarClienteEnTx(tx, persona.id, datos({ dni: "1234" })),
+    );
+  });
+
   await escenario("Baja logica y reactivacion: no se borra nada", async (tx) => {
     const { id } = await crearClienteEnTx(tx, datos({ nombre: "Para dar de baja" }));
     await cambiarActivoClienteEnTx(tx, id, false);

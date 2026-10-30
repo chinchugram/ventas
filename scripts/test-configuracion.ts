@@ -20,7 +20,9 @@ import {
   crearMaquinaEnTx,
   editarMaquinaEnTx,
   guardarConfiguracionEnTx,
+  guardarDatosFiscalesEnTx,
 } from "../src/lib/dominio/configuracion";
+import { faltantesParaEmitir } from "../src/lib/datos-fiscales";
 
 let fallos = 0;
 
@@ -164,6 +166,38 @@ async function main() {
 
     await cambiarActivoMaquinaEnTx(tx, id, true);
     comprobar("reactivada", String((await tx.maquina.findUniqueOrThrow({ where: { id } })).activo), "true");
+  });
+
+  await escenario("Datos fiscales: guarda lo del formulario, borra lo opcional vacío y no toca el umbral", async (tx) => {
+    await tx.configuracion.upsert({
+      where: { clave: "fiscalUmbralIdentificacion" },
+      update: { valor: "5000000" },
+      create: { clave: "fiscalUmbralIdentificacion", valor: "5000000" },
+    });
+    await tx.configuracion.upsert({
+      where: { clave: "fiscalIibb" },
+      update: { valor: "901-234567-8" },
+      create: { clave: "fiscalIibb", valor: "901-234567-8" },
+    });
+    const formulario = {
+      fiscalRazonSocial: "HL Laser S.R.L.",
+      fiscalCuit: "30712345671",
+      fiscalCondicionIva: "RESPONSABLE_INSCRIPTO",
+      fiscalDomicilio: "Av. Colón 1234, Córdoba",
+      fiscalInicioActividades: "2020-03-02",
+      fiscalIibb: "",
+      fiscalPuntoVenta: "1",
+    };
+    await guardarDatosFiscalesEnTx(tx, formulario);
+    await guardarDatosFiscalesEnTx(tx, { ...formulario, fiscalRazonSocial: "HL Laser SRL" });
+
+    const leer = async (clave: string) => (await tx.configuracion.findUnique({ where: { clave } }))?.valor ?? "(sin clave)";
+    comprobar("segundo guardado actualiza", await leer("fiscalRazonSocial"), "HL Laser SRL");
+    comprobar("ingresos brutos vacíos se borran", await leer("fiscalIibb"), "(sin clave)");
+    comprobar("el umbral no está en el formulario y no se toca", await leer("fiscalUmbralIdentificacion"), "5000000");
+
+    const guardada = Object.fromEntries((await tx.configuracion.findMany()).map((f) => [f.clave, f.valor]));
+    comprobar("con esto ya se puede emitir", JSON.stringify(faltantesParaEmitir(guardada)), "[]");
   });
 
   await prisma.$disconnect();

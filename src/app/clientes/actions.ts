@@ -7,15 +7,19 @@ import { dbDisponible, prisma } from "@/lib/prisma";
 import { puede, verificarPermiso } from "@/lib/permisos";
 import type { UsuarioSesion } from "@/lib/auth";
 import { mensajeDeError, primerError, SIN_BASE, textoOpcional, type Resultado } from "@/lib/acciones";
-import { cambiarActivoClienteEnTx, crearClienteEnTx, editarClienteEnTx } from "@/lib/dominio/clientes";
+import { CONDICIONES_IVA_CLIENTE, cambiarActivoClienteEnTx, crearClienteEnTx, editarClienteEnTx } from "@/lib/dominio/clientes";
+import { normalizarDni } from "@/lib/comprobantes";
 
 export type { Resultado } from "@/lib/acciones";
 
 // El CUIT llega como texto libre ("30-71234567-1"): la forma y el digito
 // verificador los valida el dominio (`src/lib/cuit.ts`), que lo normaliza.
+// El DNI se valida aca (7 u 8 digitos, con o sin puntos) y el dominio lo guarda normalizado.
 const esquemaCliente = z.object({
   nombre: z.string().trim().min(1, "Falta el nombre o razón social").max(120, "Máximo 120 caracteres"),
   cuit: textoOpcional(20),
+  condicionIva: z.enum(CONDICIONES_IVA_CLIENTE, "Condición frente al IVA inválida").optional(),
+  dni: textoOpcional(20).refine((v) => v === null || normalizarDni(v) !== null, "El DNI tiene que tener 7 u 8 dígitos, sin puntos."),
   telefono: textoOpcional(40),
   email: textoOpcional(120).refine((v) => v === null || z.email().safeParse(v).success, "El email no es válido"),
   direccion: textoOpcional(200),

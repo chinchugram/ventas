@@ -2,19 +2,35 @@ import Link from "next/link";
 import { fmtMoneda } from "@/lib/money";
 import { estadoDemo } from "@/lib/respaldo";
 import { getArticulosConManoObra, getConfiguracion, getMaquinas } from "@/lib/queries/configuracion";
+import { getConfig } from "@/lib/queries/catalogo";
+import { entradaDesdeConfiguracion, faltantesParaEmitir } from "@/lib/datos-fiscales";
+import { formatearCuit } from "@/lib/cuit";
 import { Seccion, Vacio } from "@/components/ui";
 import { ConfiguracionForm } from "./_componentes/configuracion-form";
+import { DatosFiscalesForm, type ValoresDatosFiscales } from "./_componentes/datos-fiscales-form";
 import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConfiguracionPage() {
   await requierePermisoPagina("configuracion");
-  const [config, maquinas, articulosConManoObra] = await Promise.all([
+  const [config, maquinas, articulosConManoObra, configCruda] = await Promise.all([
     getConfiguracion(),
     getMaquinas(),
     getArticulosConManoObra(),
+    getConfig(),
   ]);
+
+  const fiscal = entradaDesdeConfiguracion(configCruda);
+  const datosFiscales: ValoresDatosFiscales = {
+    razonSocial: fiscal.razonSocial ?? "",
+    cuit: formatearCuit(fiscal.cuit),
+    condicionIva: fiscal.condicionIva || "RESPONSABLE_INSCRIPTO",
+    domicilio: fiscal.domicilio ?? "",
+    inicioActividades: fiscal.inicioActividades ?? "",
+    iibb: fiscal.iibb ?? "",
+    puntoVenta: fiscal.puntoVenta ?? "",
+  };
 
   return (
     <>
@@ -29,6 +45,14 @@ export default async function ConfiguracionPage() {
             margenObjetivo: config.margenObjetivo.toString(),
           }}
           articulosConManoObra={articulosConManoObra}
+          esModoDemo={estadoDemo().activo}
+        />
+      </div>
+
+      <div className="mb-6">
+        <DatosFiscalesForm
+          inicial={datosFiscales}
+          faltantes={faltantesParaEmitir(configCruda)}
           esModoDemo={estadoDemo().activo}
         />
       </div>
