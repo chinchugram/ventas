@@ -5,11 +5,15 @@ import { hoyArgentinaISO } from "@/lib/acciones";
 import { ETIQUETA_METODO, tieneSaldo } from "@/lib/cobranzas";
 import { ESTILO_ESTADO_PAGO, ETIQUETA_ESTADO_PAGO, getVenta } from "@/lib/queries/ventas";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
+import { dbDisponible, prisma } from "@/lib/prisma";
+import { facturaAnulableDeVenta } from "@/lib/dominio/notas-credito";
 import { AnularVentaBoton } from "@/components/anular-venta-boton";
 import { Seccion, Tarjeta } from "@/components/ui";
 import { RegistrarPagoForm } from "./_componentes/registrar-pago-form";
 import { AnularPagoBoton } from "./_componentes/anular-pago-boton";
 import { MarcarEntregadaBoton } from "./_componentes/marcar-entregada-boton";
+import { FacturarPanel } from "./_componentes/factur-panel";
+import { EmitirNotaCreditoBoton } from "./_componentes/emitir-nota-credito-boton";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +42,13 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
   const puedeEntregar = puede(usuario, "marcarEntregada");
   const puedeAnularPago = puede(usuario, "anularPago");
   const puedeAnularVenta = puede(usuario, "anularVenta");
+  const puedeNotaCredito = puede(usuario, "emitirNotaCredito");
 
   const anulada = venta.estado === "ANULADA";
   const debe = !anulada && tieneSaldo(venta.saldo);
+  // Solo el dueño ve el botón (la acción vuelve a verificar el permiso); sin base no hay facturas.
+  const facturaAnulable =
+    puedeNotaCredito && !anulada && (await dbDisponible()) ? await facturaAnulableDeVenta(prisma, venta.id) : null;
 
   return (
     <>
@@ -94,6 +102,8 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
           <MarcarEntregadaBoton ventaId={venta.id} debe={debe} />
         </div>
       ) : null}
+
+      <FacturarPanel ventaId={venta.id} />
 
       <ul className="mb-4 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
         {venta.items.map((i) => (
@@ -159,6 +169,16 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
         <p className="mb-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
           {venta.observaciones}
         </p>
+      ) : null}
+
+      {facturaAnulable ? (
+        <div className="mb-4">
+          <EmitirNotaCreditoBoton
+            ventaId={venta.id}
+            comprobanteId={facturaAnulable.id}
+            etiquetaFactura={facturaAnulable.etiqueta}
+          />
+        </div>
       ) : null}
 
       {!anulada && puedeAnularVenta ? <AnularVentaBoton ventaId={venta.id} /> : null}
