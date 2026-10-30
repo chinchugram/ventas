@@ -155,6 +155,7 @@ const ACCIONES_ESPERADAS: Record<string, Accion> = {
   "ventas/[id]/actions.ts#registrarPago": "registrarCobro",
   "ventas/[id]/actions.ts#anularPago": "anularPago",
   "ventas/[id]/actions.ts#marcarEntregada": "marcarEntregada",
+  "ventas/[id]/actions.ts#emitirNotaCredito": "emitirNotaCredito",
   // Dos acciones con el mismo cuerpo (solo precios): cada pantalla exige su propio permiso.
   "ventas/nueva/actions.ts#preciosParaCliente": "cargarVenta",
   "ventas/nueva/actions.ts#preciosParaPresupuesto": "cargarPresupuesto",

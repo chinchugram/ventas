@@ -109,6 +109,9 @@ async function laBaseAcepta(tx: Tx, etiqueta: string, fn: () => Promise<unknown>
   await tx.$executeRaw`ROLLBACK TO SAVEPOINT prueba`;
 }
 
+/** Anula la venta saltandose el dominio: prueba el trigger de la base, no el mensaje de `anularVentaEnTx`. */
+const anularDirecto = (tx: Tx, ventaId: string) => tx.venta.update({ where: { id: ventaId }, data: { estado: "ANULADA" } });
+
 /** Corre ya los controles diferidos (los importes cierran) que si no correrian al confirmar. */
 async function controlesDiferidos(tx: Tx) {
   await tx.$executeRaw`SET CONSTRAINTS ALL IMMEDIATE`;
@@ -332,7 +335,9 @@ async function main() {
     comprobar("una sola factura de esa venta", String(await tx.comprobante.count({ where: { ventaId: v } })), "1");
     comprobar("y es la primera", String((await tx.comprobante.findFirstOrThrow({ where: { ventaId: v } })).id === primera.id), "true");
 
-    await violaLaBase(tx, "una venta facturada no se anula sin nota de crédito", () => anularVentaEnTx(tx, v), "nota de credito");
+    // La base lo impone aunque se la salteen (update directo); `anularVentaEnTx` lo avisa antes con un mensaje claro (tarea 5.4).
+    await violaLaBase(tx, "una venta facturada no se anula sin nota de crédito (la base)", () => anularDirecto(tx, v), "nota de credito");
+    await rechaza("una venta facturada no se anula sin nota de crédito (mensaje claro)", "primero hay que emitir la nota de crédito", () => anularVentaEnTx(tx, v));
 
     const riSinCuit = await venta(tx, t.riSinCuit.id, [{ articuloId: t.x.id, cantidad: 1 }]);
     await rechaza("RI sin CUIT", "responsable inscripto pero no tiene CUIT", () => emitirFacturaEnTx(tx, riSinCuit, null, e()));
@@ -390,7 +395,8 @@ async function main() {
     await rechaza("la misma venta con un PENDIENTE", "esperando respuesta del emisor", () => emitirFacturaEnTx(tx, v3, null, { emisor: simulado(tx) }));
     const v4 = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
     await rechaza("otra venta en la misma serie con un PENDIENTE", "esperando respuesta del emisor", () => emitirFacturaEnTx(tx, v4, null, { emisor: simulado(tx) }));
-    await violaLaBase(tx, "una venta con factura PENDIENTE no se anula", () => anularVentaEnTx(tx, v3), "nota de credito");
+    await violaLaBase(tx, "una venta con factura PENDIENTE no se anula (la base)", () => anularDirecto(tx, v3), "nota de credito");
+    await rechaza("una venta con factura PENDIENTE no se anula (mensaje claro)", "esperando respuesta del emisor", () => anularVentaEnTx(tx, v3));
 
     // Llega la respuesta: se registra y la serie sigue.
     const llego = await registrarResultadoEnTx(tx, corte.id, { aprobado: true, cae: "71234567890123", vencimiento: f("2099-01-10"), observaciones: [] });
@@ -547,7 +553,8 @@ async function main() {
     }, "comprobantes_nc_vigente_por_factura_key");
     await laBaseAcepta(tx, "con la NC EMITIDA, la venta se puede anular", async () => {
       const n1 = await tx.comprobante.create({ data: { ...nc(), items: { create: [linea] }, alicuotas: { create: [alicuota21] } } });
-      await violaLaBase(tx, "  (mientras la NC está PENDIENTE, no)", () => anularVentaEnTx(tx, libre), "nota de credito");
+      await violaLaBase(tx, "  (mientras la NC está PENDIENTE, no: la base)", () => anularDirecto(tx, libre), "nota de credito");
+      await rechaza("  (mientras la NC está PENDIENTE, no: mensaje claro)", "esperando respuesta del emisor", () => anularVentaEnTx(tx, libre));
       await tx.comprobante.update({ where: { id: n1.id }, data: { estado: "EMITIDO", cae: "71234567890123", caeVencimiento: f("2099-01-01") } });
       await anularVentaEnTx(tx, libre);
     });
@@ -757,7 +764,7 @@ async function concurrencia() {
       await prisma.$transaction((tx) => anularVentaEnTx(tx, vCorte));
       comprobar("anular una venta facturada (confirmada)", "anulada", "rechazada por la base");
     } catch (error) {
-      comprobar("anular una venta facturada (confirmada)", String(error).includes("nota de credito") ? "rechazada por la base" : String(error), "rechazada por la base");
+      comprobar("anular una venta facturada (confirmada)", /nota de cr[eé]dito/.test(String(error)) ? "rechazada por la base" : String(error), "rechazada por la base");
     }
   } catch (error) {
     fallos += 1;

@@ -21,6 +21,9 @@ import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { anularVentaEnTx } from "@/lib/dominio/ventas";
 import { anularPagoEnTx, marcarEntregadaEnTx, registrarPagoEnTx } from "@/lib/dominio/pagos";
 import { revalidarVentas } from "@/lib/revalidar";
+import { accesoSimulado } from "@/lib/dominio/comprobantes";
+import { emitirNotaCredito as emitirNotaCreditoDeVenta } from "@/lib/dominio/notas-credito";
+import { entornoDelProceso, obtenerEmisorFiscal } from "@/lib/fiscal";
 
 /** Todo lo que muestra el saldo o el estado de una venta. */
 function revalidarCobranza(ventaId: string) {
@@ -141,4 +144,51 @@ export async function marcarEntregada(datos: z.input<typeof esquema>): Promise<R
 
   revalidarCobranza(ventaId);
   return { ok: true };
+}
+
+// ─── Nota de credito (tarea 5.4) ──────────────────────────────────────────────
+
+const esquemaNotaCredito = z.object({
+  ventaId: z.uuid("Venta inválida"),
+  /** La factura que la persona vio en pantalla: si cambio mientras tanto, no se anula a ciegas. */
+  comprobanteId: z.uuid("Comprobante inválido"),
+});
+
+export type ResultadoNotaCredito =
+  | { ok: true; estado: "PENDIENTE" | "EMITIDO" | "RECHAZADO"; mensaje: string }
+  | { ok: false; error: string };
+
+/**
+ * Emite la nota de credito TOTAL de la factura de la venta (la deshace fiscalmente
+ * y habilita anular la venta). Solo el dueno. Dos fases: reserva el numero, pide el
+ * CAE fuera de la transaccion y registra el resultado. Un rechazo del emisor o una
+ * falta de respuesta no son errores del pedido: se devuelven en `estado` y
+ * `mensaje` para mostrarlos.
+ */
+export async function emitirNotaCredito(datos: z.input<typeof esquemaNotaCredito>): Promise<ResultadoNotaCredito> {
+  const permiso = await verificarPermiso("emitirNotaCredito");
+  if (!permiso.ok) return permiso;
+  const parsed = esquemaNotaCredito.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const { ventaId, comprobanteId } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
+
+  const emisor = obtenerEmisorFiscal(entornoDelProceso(), accesoSimulado(prisma));
+  if (!emisor.ok) return { ok: false, error: emisor.error };
+
+  let procesado;
+  try {
+    procesado = await emitirNotaCreditoDeVenta(prisma, ventaId, usuarioId, { emisor: emisor.emisor, facturaId: comprobanteId });
+  } catch (error) {
+    console.error("[emitirNotaCredito]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo emitir la nota de crédito.") };
+  }
+
+  revalidarCobranza(ventaId);
+  revalidatePath("/comprobantes");
+  revalidatePath("/comprobantes/[id]", "page");
+  return { ok: true, estado: procesado.estado, mensaje: procesado.mensaje };
 }
