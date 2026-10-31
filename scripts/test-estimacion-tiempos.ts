@@ -32,6 +32,9 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+
 const ROTULO = "zz-est63";
 const ANIO = 2099;
 const ID_INEXISTENTE = "00000000-0000-4000-8000-000000000000";
@@ -68,13 +71,13 @@ async function limpiar() {
 }
 
 async function articulo(nombre: string, activo = true) {
-  const a = await prisma.articulo.create({ data: { nombre: `${ROTULO} ${nombre}`, precioVenta: "1000", activo } });
+  const a = await prisma.articulo.create({ data: { negocioId, nombre: `${ROTULO} ${nombre}`, precioVenta: "1000", activo } });
   creados.articulos.push(a.id);
   return a.id;
 }
 
 async function maquina(nombre: string) {
-  const m = await prisma.maquina.create({ data: { nombre: `${ROTULO} ${nombre}`, costoHora: "7777" } });
+  const m = await prisma.maquina.create({ data: { negocioId, nombre: `${ROTULO} ${nombre}`, costoHora: "7777" } });
   creados.maquinas.push(m.id);
   return m.id;
 }
@@ -98,6 +101,7 @@ async function sembrar(s: Siembra) {
   numeroVenta += 1;
   const venta = await prisma.venta.create({
     data: {
+      negocioId,
       numero: numeroVenta,
       anio: ANIO,
       clienteId: s.clienteId,
@@ -108,6 +112,7 @@ async function sembrar(s: Siembra) {
   creados.ventas.push(venta.id);
   const item = await prisma.ventaItem.create({
     data: {
+      negocioId,
       ventaId: venta.id,
       articuloId: s.articuloId,
       descripcion: "Linea de prueba",
@@ -123,6 +128,7 @@ async function sembrar(s: Siembra) {
   });
   await prisma.trabajoProduccion.create({
     data: {
+      negocioId,
       ventaItemId: item.id,
       fecha: new Date(`${s.fecha}T00:00:00Z`),
       minutosManoObra: String(s.manoObra),
@@ -130,7 +136,7 @@ async function sembrar(s: Siembra) {
       costoHoraManoObraSnapshot: "9999",
       ...(s.anulado ? { anuladoEn: new Date(), motivoAnulacion: "Carga equivocada" } : {}),
       tiempos: {
-        create: (s.tiempos ?? []).map(([maquinaId, minutos]) => ({ maquinaId, minutos: String(minutos), costoHoraSnapshot: "8888" })),
+        create: (s.tiempos ?? []).map(([maquinaId, minutos]) => ({ negocioId, maquinaId, minutos: String(minutos), costoHoraSnapshot: "8888" })),
       },
     },
   });
@@ -139,8 +145,9 @@ async function sembrar(s: Siembra) {
 const dia = (n: number) => `2026-09-${String(n).padStart(2, "0")}`;
 
 async function main() {
+  negocioId = (await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } })).id;
   await limpiar();
-  const cliente = await prisma.cliente.create({ data: { nombre: `${ROTULO} cliente` } });
+  const cliente = await prisma.cliente.create({ data: { negocioId, nombre: `${ROTULO} cliente` } });
   creados.clientes.push(cliente.id);
   const clienteId = cliente.id;
 

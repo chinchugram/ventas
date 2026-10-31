@@ -40,11 +40,11 @@ export type TrabajoNuevo = {
  * carga y la anulacion de la venta, se serializan. La segunda ve el trabajo vigente y
  * recibe un error claro (nunca el del indice unico). NO mueve stock.
  */
-export async function cargarTrabajoEnTx(tx: Tx, t: TrabajoNuevo): Promise<{ id: string }> {
+export async function cargarTrabajoEnTx(tx: Tx, negocioId: string, t: TrabajoNuevo): Promise<{ id: string }> {
   const filas = await tx.$queryRaw<{ ventaId: string; estado: string; numero: number; anio: number }[]>`
     SELECT v.id::text AS "ventaId", v.estado::text AS estado, v.numero, v.anio
     FROM "venta_items" vi JOIN "ventas" v ON v.id = vi."ventaId"
-    WHERE vi.id = ${t.ventaItemId}::uuid FOR UPDATE OF v`;
+    WHERE vi.id = ${t.ventaItemId}::uuid AND vi."negocioId" = ${negocioId}::uuid FOR UPDATE OF v`;
   const venta = filas[0];
   if (!venta) throw new ErrorDeNegocio("La línea de la venta no existe.");
   if (venta.estado === "ANULADA") {
@@ -52,7 +52,7 @@ export async function cargarTrabajoEnTx(tx: Tx, t: TrabajoNuevo): Promise<{ id: 
   }
 
   const vigente = await tx.trabajoProduccion.findFirst({
-    where: { ventaItemId: t.ventaItemId, anuladoEn: null },
+    where: { negocioId, ventaItemId: t.ventaItemId, anuladoEn: null },
     select: { id: true },
   });
   if (vigente) {
@@ -66,23 +66,24 @@ export async function cargarTrabajoEnTx(tx: Tx, t: TrabajoNuevo): Promise<{ id: 
   if (problema) throw new ErrorDeNegocio(problema);
 
   const maquinas = await tx.maquina.findMany({
-    where: { id: { in: t.tiempos.map((x) => x.maquinaId) }, activo: true },
+    where: { negocioId, id: { in: t.tiempos.map((x) => x.maquinaId) }, activo: true },
     select: { id: true, costoHora: true },
   });
   if (maquinas.length !== t.tiempos.length) throw new ErrorDeNegocio("Alguna máquina ya no existe o está dada de baja.");
   const materiales = await tx.material.findMany({
-    where: { id: { in: t.consumos.map((x) => x.materialId) }, activo: true },
+    where: { negocioId, id: { in: t.consumos.map((x) => x.materialId) }, activo: true },
     select: { id: true, costoUnitario: true },
   });
   if (materiales.length !== t.consumos.length) throw new ErrorDeNegocio("Algún material ya no existe o está dado de baja.");
   const costoHoraMaquina = new Map(maquinas.map((m) => [m.id, m.costoHora]));
   const costoMaterial = new Map(materiales.map((m) => [m.id, m.costoUnitario]));
 
-  const config = await tx.configuracion.findMany();
+  const config = await tx.configuracion.findMany({ where: { negocioId } });
   const costoHoraManoObra = configNumero(Object.fromEntries(config.map((c) => [c.clave, c.valor])), "costoHoraManoObra", "0");
 
   const creado = await tx.trabajoProduccion.create({
     data: {
+      negocioId,
       ventaItemId: t.ventaItemId,
       fecha: t.fecha,
       minutosManoObra: t.minutosManoObra,
@@ -91,6 +92,7 @@ export async function cargarTrabajoEnTx(tx: Tx, t: TrabajoNuevo): Promise<{ id: 
       usuarioId: t.usuarioId ?? null,
       tiempos: {
         create: t.tiempos.map((x) => ({
+          negocioId,
           maquinaId: x.maquinaId,
           minutos: x.minutos,
           costoHoraSnapshot: costoHoraMaquina.get(x.maquinaId)!,
@@ -98,6 +100,7 @@ export async function cargarTrabajoEnTx(tx: Tx, t: TrabajoNuevo): Promise<{ id: 
       },
       consumos: {
         create: t.consumos.map((x) => ({
+          negocioId,
           materialId: x.materialId,
           cantidad: x.cantidad,
           costoUnitarioSnapshot: costoMaterial.get(x.materialId)!,
@@ -117,6 +120,7 @@ export async function cargarTrabajoEnTx(tx: Tx, t: TrabajoNuevo): Promise<{ id: 
  */
 export async function anularTrabajoEnTx(
   tx: Tx,
+  negocioId: string,
   anulacion: { trabajoId: string; motivo: string; usuarioId?: string | null },
 ): Promise<{ ventaItemId: string }> {
   const motivo = anulacion.motivo.trim();
@@ -125,7 +129,7 @@ export async function anularTrabajoEnTx(
 
   const filas = await tx.$queryRaw<{ ventaItemId: string; anuladoEn: Date | null }[]>`
     SELECT "ventaItemId"::text AS "ventaItemId", "anuladoEn" FROM "trabajos_produccion"
-    WHERE id = ${anulacion.trabajoId}::uuid FOR UPDATE`;
+    WHERE id = ${anulacion.trabajoId}::uuid AND "negocioId" = ${negocioId}::uuid FOR UPDATE`;
   const trabajo = filas[0];
   if (!trabajo) throw new ErrorDeNegocio("El trabajo no existe.");
   if (trabajo.anuladoEn) throw new ErrorDeNegocio("El trabajo ya estaba anulado.");
@@ -133,7 +137,7 @@ export async function anularTrabajoEnTx(
   // El modelo guarda un solo `usuarioId` (quien CARGO el trabajo, que no se pisa): quien anula
   // queda en el propio motivo, que es lo que se muestra en el historial.
   const quien = anulacion.usuarioId
-    ? (await tx.usuario.findUnique({ where: { id: anulacion.usuarioId }, select: { nombre: true } }))?.nombre
+    ? (await tx.usuario.findFirst({ where: { id: anulacion.usuarioId, OR: [{ negocioId }, { negocioId: null }] }, select: { nombre: true } }))?.nombre
     : null;
   await tx.trabajoProduccion.update({
     where: { id: anulacion.trabajoId },
@@ -143,18 +147,18 @@ export async function anularTrabajoEnTx(
 }
 
 /** Lo ya ajustado por una linea: suma (con signo de stock) de sus movimientos AJUSTE de produccion, por material. */
-export async function ajustadoPorLinea(tx: Tx, ventaItemId: string): Promise<ConsumoMaterial[]> {
+export async function ajustadoPorLinea(tx: Tx, negocioId: string, ventaItemId: string): Promise<ConsumoMaterial[]> {
   const movimientos = await tx.movimientoStock.findMany({
-    where: { tipo: "AJUSTE", motivo: { contains: marcaDeLinea(ventaItemId) } },
+    where: { negocioId, tipo: "AJUSTE", motivo: { contains: marcaDeLinea(ventaItemId) } },
     select: { materialId: true, cantidad: true },
   });
   return movimientos.map((m) => ({ materialId: m.materialId, cantidad: m.cantidad }));
 }
 
 /** Componentes de la receta (sin costos) del articulo de una linea, mas lo que hace falta para el calculo. */
-export async function recetaDeLinea(tx: Tx, ventaItemId: string) {
-  const linea = await tx.ventaItem.findUnique({
-    where: { id: ventaItemId },
+export async function recetaDeLinea(tx: Tx, negocioId: string, ventaItemId: string) {
+  const linea = await tx.ventaItem.findFirst({
+    where: { id: ventaItemId, negocioId },
     select: {
       cantidad: true,
       venta: { select: { id: true, numero: true, anio: true, estado: true } },
@@ -190,10 +194,11 @@ export async function recetaDeLinea(tx: Tx, ventaItemId: string) {
  */
 export async function ajustarStockDeTrabajoEnTx(
   tx: Tx,
+  negocioId: string,
   ajuste: { trabajoId: string; usuarioId?: string | null },
 ): Promise<{ ajustados: { materialId: string; movimiento: Dinero }[] }> {
-  const trabajo = await tx.trabajoProduccion.findUnique({
-    where: { id: ajuste.trabajoId },
+  const trabajo = await tx.trabajoProduccion.findFirst({
+    where: { id: ajuste.trabajoId, negocioId },
     select: { id: true, ventaItemId: true, anuladoEn: true, consumos: { select: { materialId: true, cantidad: true } } },
   });
   if (!trabajo) throw new ErrorDeNegocio("El trabajo no existe.");
@@ -201,14 +206,14 @@ export async function ajustarStockDeTrabajoEnTx(
   if (trabajo.consumos.length === 0) throw new ErrorDeNegocio("El trabajo no tiene materiales cargados: no hay nada que ajustar.");
 
   // Serializa con otras cargas/ajustes de la misma venta.
-  const linea = await recetaDeLinea(tx, trabajo.ventaItemId);
+  const linea = await recetaDeLinea(tx, negocioId, trabajo.ventaItemId);
   if (!linea) throw new ErrorDeNegocio("La línea de la venta no existe.");
-  await tx.$executeRaw`SELECT 1 FROM "ventas" WHERE id = ${linea.venta.id}::uuid FOR UPDATE`;
+  await tx.$executeRaw`SELECT 1 FROM "ventas" WHERE id = ${linea.venta.id}::uuid AND "negocioId" = ${negocioId}::uuid FOR UPDATE`;
   if (linea.venta.estado === "ANULADA") {
     throw new ErrorDeNegocio(`La venta #${linea.venta.numero}/${linea.venta.anio} está anulada: su stock ya volvió, no se ajusta.`);
   }
 
-  const yaAjustado = await ajustadoPorLinea(tx, trabajo.ventaItemId);
+  const yaAjustado = await ajustadoPorLinea(tx, negocioId, trabajo.ventaItemId);
   const filas = calcularAjusteDeStock({
     receta: consumoDeRecetaEnStock(linea.componentes, linea.cantidad, linea.esServicio),
     real: trabajo.consumos.map((c) => ({ materialId: c.materialId, cantidad: c.cantidad })),
@@ -229,7 +234,7 @@ export async function ajustarStockDeTrabajoEnTx(
   for (const fila of pendientes) {
     const [actual] = await tx.$queryRaw<{ stockActual: string; nombre: string; unidad: string }[]>`
       SELECT "stockActual"::text AS "stockActual", nombre, unidad::text AS unidad
-      FROM "materiales" WHERE id = ${fila.materialId}::uuid AND activo = true FOR UPDATE`;
+      FROM "materiales" WHERE id = ${fila.materialId}::uuid AND "negocioId" = ${negocioId}::uuid AND activo = true FOR UPDATE`;
     if (!actual) throw new ErrorDeNegocio("Algún material ya no existe o está dado de baja.");
     const nuevo = d(actual.stockActual).plus(fila.movimiento);
     if (nuevo.lt(0)) {
@@ -238,7 +243,7 @@ export async function ajustarStockDeTrabajoEnTx(
         `${actual.nombre}: el stock (${fmtNumero(actual.stockActual)} ${unidad}) no alcanza para descontar ${fmtNumero(fila.movimiento.abs())} ${unidad}. No se ajustó nada.`,
       );
     }
-    await ajustarStockEnTx(tx, { materialId: fila.materialId, stockContado: nuevo, motivo, usuarioId: ajuste.usuarioId ?? null });
+    await ajustarStockEnTx(tx, negocioId, { materialId: fila.materialId, stockContado: nuevo, motivo, usuarioId: ajuste.usuarioId ?? null });
     ajustados.push({ materialId: fila.materialId, movimiento: fila.movimiento });
   }
   return { ajustados };
@@ -251,11 +256,12 @@ export async function ajustarStockDeTrabajoEnTx(
  */
 export async function cargarTrabajoYAjustarEnTx(
   tx: Tx,
+  negocioId: string,
   trabajo: TrabajoNuevo,
   ajustarStock: boolean,
 ): Promise<{ id: string; ajustados: { materialId: string; movimiento: Dinero }[] }> {
-  const { id } = await cargarTrabajoEnTx(tx, trabajo);
+  const { id } = await cargarTrabajoEnTx(tx, negocioId, trabajo);
   if (!ajustarStock) return { id, ajustados: [] };
-  const { ajustados } = await ajustarStockDeTrabajoEnTx(tx, { trabajoId: id, usuarioId: trabajo.usuarioId });
+  const { ajustados } = await ajustarStockDeTrabajoEnTx(tx, negocioId, { trabajoId: id, usuarioId: trabajo.usuarioId });
   return { id, ajustados };
 }

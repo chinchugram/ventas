@@ -15,6 +15,7 @@ DECLARE
   u UUID := gen_random_uuid(); l UUID := gen_random_uuid(); c UUID := gen_random_uuid();
   m UUID := gen_random_uuid(); a UUID := gen_random_uuid(); v UUID := gen_random_uuid();
   p UUID := gen_random_uuid(); f UUID := gen_random_uuid(); vi UUID := gen_random_uuid();
+  mq UUID := gen_random_uuid(); tr UUID := gen_random_uuid();
 BEGIN
   SET CONSTRAINTS ALL DEFERRED;
   INSERT INTO usuarios (id, "negocioId", usuario, nombre, rol, "hashClave", "actualizadoEn")
@@ -35,6 +36,12 @@ BEGIN
   INSERT INTO presupuestos (id, "negocioId", numero, anio, "clienteId", fecha, "actualizadoEn")
     VALUES (p, neg, 1, 2026, c, '2026-05-05', now());
   INSERT INTO configuracion ("negocioId", clave, valor) VALUES (neg, 'ivaPorDefecto', '21');
+  -- Produccion (ola 6): un trabajo de la linea de venta con un tiempo de maquina y un consumo de material.
+  INSERT INTO maquinas (id, "negocioId", nombre, "costoHora", "actualizadoEn") VALUES (mq, neg, 'Plotter', 2500, now());
+  INSERT INTO trabajos_produccion (id, "negocioId", "ventaItemId", fecha, "usuarioId", "actualizadoEn")
+    VALUES (tr, neg, vi, '2026-05-02', u, now());
+  INSERT INTO trabajo_tiempos (id, "negocioId", "trabajoId", "maquinaId", minutos) VALUES (gen_random_uuid(), neg, tr, mq, 30);
+  INSERT INTO trabajo_consumos (id, "negocioId", "trabajoId", "materialId", cantidad) VALUES (gen_random_uuid(), neg, tr, m, 1);
   -- Misma serie fiscal en los dos negocios: SIMULADO, punto de venta 1, FACTURA_C, numero 1.
   INSERT INTO comprobantes (id, "negocioId", ambiente, tipo, "codigoArca", "puntoVenta", numero, fecha, estado,
     "emisorRazonSocial", "emisorCuit", "emisorCondicionIva", "emisorDomicilio", "emisorInicioActividades",
@@ -48,7 +55,8 @@ BEGIN
   SET CONSTRAINTS ALL IMMEDIATE;  -- verifica los importes del comprobante ahora
   SET CONSTRAINTS ALL DEFERRED;
   RETURN jsonb_build_object('usuario', u, 'lista', l, 'cliente', c, 'material', m, 'articulo', a,
-                            'venta', v, 'presupuesto', p, 'comprobante', f, 'ventaItem', vi);
+                            'venta', v, 'presupuesto', p, 'comprobante', f, 'ventaItem', vi,
+                            'maquina', mq, 'trabajo', tr);
 END;
 $$;
 
@@ -87,6 +95,7 @@ BEGIN
   ia := pg_temp.cargar(a, 'dueno');
   ib := pg_temp.cargar(b, 'dueno');
   RAISE NOTICE 'ok  dos negocios con venta 2026/1, presupuesto 2026/1, mismo CUIT, usuario, lista, serie fiscal y configuracion';
+  RAISE NOTICE 'ok  dos negocios con su propio trabajo de produccion (con tiempos y consumos)';
 
   -- Un SUPERADMIN (sin negocio) puede figurar como autor en cualquier negocio.
   INSERT INTO usuarios (id, "negocioId", usuario, nombre, rol, "hashClave", "actualizadoEn")
@@ -193,6 +202,41 @@ BEGIN
   PERFORM pg_temp.debe_fallar('cambiar el negocio de una clave de configuracion', format(
     $q$UPDATE configuracion SET "negocioId" = %L WHERE "negocioId" = %L$q$, b, a),
     'el negocio de una fila no se cambia');
+
+  -- Produccion (ola 6): cada FK del trabajo y de sus tiempos y consumos tiene que ser del mismo negocio.
+  PERFORM pg_temp.debe_fallar('trabajo de produccion de otro negocio que su linea de venta', format(
+    $q$INSERT INTO trabajos_produccion (id, "negocioId", "ventaItemId", fecha, "actualizadoEn")
+       VALUES (gen_random_uuid(), %L, %L, '2026-05-03', now())$q$, b, ia->>'ventaItem'),
+    'trabajos_produccion.ventaItemId');
+  PERFORM pg_temp.debe_fallar('trabajo de produccion cargado por un usuario CON negocio de otro negocio', format(
+    $q$INSERT INTO trabajos_produccion (id, "negocioId", "ventaItemId", fecha, "usuarioId", "actualizadoEn")
+       VALUES (gen_random_uuid(), %L, %L, '2026-05-03', %L, now())$q$, a, ia->>'ventaItem', ib->>'usuario'),
+    'trabajos_produccion.usuarioId');
+  PERFORM pg_temp.debe_fallar('tiempo de maquina de otro negocio que su trabajo', format(
+    $q$INSERT INTO trabajo_tiempos (id, "negocioId", "trabajoId", "maquinaId", minutos)
+       VALUES (gen_random_uuid(), %L, %L, %L, 5)$q$, b, ia->>'trabajo', ib->>'maquina'),
+    'trabajo_tiempos.trabajoId');
+  PERFORM pg_temp.debe_fallar('tiempo de maquina con una maquina de otro negocio', format(
+    $q$INSERT INTO trabajo_tiempos (id, "negocioId", "trabajoId", "maquinaId", minutos)
+       VALUES (gen_random_uuid(), %L, %L, %L, 5)$q$, a, ia->>'trabajo', ib->>'maquina'),
+    'trabajo_tiempos.maquinaId');
+  PERFORM pg_temp.debe_fallar('consumo de otro negocio que su trabajo', format(
+    $q$INSERT INTO trabajo_consumos (id, "negocioId", "trabajoId", "materialId", cantidad)
+       VALUES (gen_random_uuid(), %L, %L, %L, 1)$q$, b, ia->>'trabajo', ib->>'material'),
+    'trabajo_consumos.trabajoId');
+  PERFORM pg_temp.debe_fallar('consumo con un material de otro negocio', format(
+    $q$INSERT INTO trabajo_consumos (id, "negocioId", "trabajoId", "materialId", cantidad)
+       VALUES (gen_random_uuid(), %L, %L, %L, 1)$q$, a, ia->>'trabajo', ib->>'material'),
+    'trabajo_consumos.materialId');
+  PERFORM pg_temp.debe_fallar('cambiar el negocio de un trabajo de produccion (con hijos)', format(
+    $q$UPDATE trabajos_produccion SET "negocioId" = %L WHERE id = %L$q$, b, ia->>'trabajo'),
+    'el negocio de una fila no se cambia');
+  PERFORM pg_temp.debe_fallar('cambiar el negocio de un tiempo de maquina', format(
+    $q$UPDATE trabajo_tiempos SET "negocioId" = %L WHERE "trabajoId" = %L$q$, b, ia->>'trabajo'),
+    'de otro negocio');
+  PERFORM pg_temp.debe_fallar('borrar una linea de venta con trabajos (ON DELETE RESTRICT)', format(
+    $q$DELETE FROM venta_items WHERE id = %L$q$, ia->>'ventaItem'),
+    'trabajos_produccion_ventaItemId_fkey');
 
   -- Comprobantes: negocio distinto del de su venta (la venta de A, el comprobante de B).
   PERFORM pg_temp.debe_fallar('comprobante de otro negocio que su venta', format(

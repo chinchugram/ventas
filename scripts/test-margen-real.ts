@@ -63,6 +63,7 @@ let original: Original | null = null;
 
 async function main() {
   await limpiar();
+  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
 
   const cliente = await prisma.cliente.findFirstOrThrow();
   const [artX, artY] = await prisma.articulo.findMany({ orderBy: { nombre: "asc" }, take: 2 });
@@ -75,6 +76,7 @@ async function main() {
   };
 
   const renglon = (articuloId: string, cantidad: string, neto: string, receta: string) => ({
+    negocioId,
     articuloId,
     descripcion: "Renglon de prueba (margen real)",
     cantidad,
@@ -88,6 +90,7 @@ async function main() {
   });
   const venta1 = await prisma.venta.create({
     data: {
+      negocioId,
       anio: ANIO,
       numero: 9001,
       clienteId: cliente.id,
@@ -105,6 +108,7 @@ async function main() {
   });
   const anulada = await prisma.venta.create({
     data: {
+      negocioId,
       anio: ANIO,
       numero: 9002,
       clienteId: cliente.id,
@@ -120,20 +124,21 @@ async function main() {
   // A: fecha = primer dia de marzo (el filtro "desde" es inclusivo). Materiales 9.101, maquinas 7.500, mano de obra 3.000.
   const A = await prisma.trabajoProduccion.create({
     data: {
+      negocioId,
       ventaItemId: itemA!.id,
       fecha: fechaDesdeISO("2031-03-01"),
       minutosManoObra: "45",
       costoHoraManoObraSnapshot: "4000",
       consumos: {
         create: [
-          { materialId: mat1.id, cantidad: "2", costoUnitarioSnapshot: "4200.50" },
-          { materialId: mat2.id, cantidad: "0.5", costoUnitarioSnapshot: "1400" },
+          { negocioId, materialId: mat1.id, cantidad: "2", costoUnitarioSnapshot: "4200.50" },
+          { negocioId, materialId: mat2.id, cantidad: "0.5", costoUnitarioSnapshot: "1400" },
         ],
       },
       tiempos: {
         create: [
-          { maquinaId: maq1.id, minutos: "90", costoHoraSnapshot: "3000" },
-          { maquinaId: maq2.id, minutos: "30", costoHoraSnapshot: "6000" },
+          { negocioId, maquinaId: maq1.id, minutos: "90", costoHoraSnapshot: "3000" },
+          { negocioId, maquinaId: maq2.id, minutos: "30", costoHoraSnapshot: "6000" },
         ],
       },
     },
@@ -141,32 +146,36 @@ async function main() {
   // Un trabajo ANULADO de la misma linea (con un costo enorme que no puede contar) y despues el vigente: asi se corrige.
   await prisma.trabajoProduccion.create({
     data: {
+      negocioId,
       ventaItemId: itemA!.id,
       fecha: fechaDesdeISO("2031-03-02"),
       anuladoEn: new Date(),
       motivoAnulacion: "Se cargo mal (prueba)",
-      consumos: { create: [{ materialId: mat1.id, cantidad: "1000", costoUnitarioSnapshot: "5000" }] },
+      consumos: { create: [{ negocioId, materialId: mat1.id, cantidad: "1000", costoUnitarioSnapshot: "5000" }] },
     },
   });
   // B: ultimo dia de marzo (incluido).
   await prisma.trabajoProduccion.create({
     data: {
+      negocioId,
       ventaItemId: itemB!.id,
       fecha: fechaDesdeISO("2031-03-31"),
-      consumos: { create: [{ materialId: mat1.id, cantidad: "1", costoUnitarioSnapshot: "5000" }] },
+      consumos: { create: [{ negocioId, materialId: mat1.id, cantidad: "1", costoUnitarioSnapshot: "5000" }] },
     },
   });
   // C: primer dia de abril (hasta es exclusivo: no entra en marzo).
   await prisma.trabajoProduccion.create({
     data: {
+      negocioId,
       ventaItemId: itemC!.id,
       fecha: fechaDesdeISO("2031-04-01"),
-      consumos: { create: [{ materialId: mat1.id, cantidad: "1", costoUnitarioSnapshot: "1000" }] },
+      consumos: { create: [{ negocioId, materialId: mat1.id, cantidad: "1", costoUnitarioSnapshot: "1000" }] },
     },
   });
   // D: mayo.
   await prisma.trabajoProduccion.create({
     data: {
+      negocioId,
       ventaItemId: itemD!.id,
       fecha: fechaDesdeISO("2031-05-15"),
       minutosManoObra: "60",
@@ -176,9 +185,10 @@ async function main() {
   // De una venta ANULADA: vigente, en marzo, pero no cuenta.
   await prisma.trabajoProduccion.create({
     data: {
+      negocioId,
       ventaItemId: anulada.items[0]!.id,
       fecha: fechaDesdeISO("2031-03-10"),
-      consumos: { create: [{ materialId: mat1.id, cantidad: "1", costoUnitarioSnapshot: "88888" }] },
+      consumos: { create: [{ negocioId, materialId: mat1.id, cantidad: "1", costoUnitarioSnapshot: "88888" }] },
     },
   });
 
@@ -228,9 +238,10 @@ async function main() {
   await prisma.trabajoProduccion.update({ where: { id: A.id }, data: { anuladoEn: new Date(), motivoAnulacion: "Se recarga (prueba)" } });
   await prisma.trabajoProduccion.create({
     data: {
+      negocioId,
       ventaItemId: itemA!.id,
       fecha: fechaDesdeISO("2031-03-03"),
-      consumos: { create: [{ materialId: mat2.id, cantidad: "10", costoUnitarioSnapshot: "1800" }] },
+      consumos: { create: [{ negocioId, materialId: mat2.id, cantidad: "10", costoUnitarioSnapshot: "1800" }] },
     },
   });
   const recargado = await getMargenReal(rango("2031-03-01", "2031-03-31"));
