@@ -62,7 +62,7 @@ enum CondicionIva {
 
 /// Negocio (tenant): dueno de todos los datos. Baja logica (`activo = false`):
 /// nunca se borra. `negocioId` esta en todas las tablas de datos (tambien en las
-/// hijas, para que RLS no necesite joins). `Configuracion` la resuelve F1.2.
+/// hijas, para que RLS no necesite joins). `Configuracion` tiene clave (negocioId, clave).
 model Negocio {
   id            String   @id @default(uuid()) @db.Uuid
   nombre        String
@@ -95,6 +95,7 @@ model Negocio {
   comprobantes      Comprobante[]
   comprobanteItems  ComprobanteItem[]
   comprobanteIva    ComprobanteIva[]
+  configuracion     Configuracion[]
 
   @@map("negocios")
 }
@@ -211,7 +212,7 @@ model ListaPrecio {
   id           String   @id @default(uuid()) @db.Uuid
   /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
   negocioId String @db.Uuid
-  nombre       String   @unique
+  nombre       String
   /// Porcentaje (0-100) que se descuenta del precio de catalogo.
   descuentoPct Decimal  @default(0) @db.Decimal(5, 2)
   activo       Boolean  @default(true)
@@ -225,6 +226,7 @@ model ListaPrecio {
   clientes Cliente[]
   negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
+  @@unique([negocioId, nombre])
   @@index([activo])
   @@index([usuarioId])
   @@index([negocioId])
@@ -327,7 +329,7 @@ model Venta {
   comprobantes Comprobante[]
   negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
-  @@unique([anio, numero])
+  @@unique([negocioId, anio, numero])
   @@index([usuarioId])
   @@index([fecha])
   @@index([clienteId])
@@ -402,9 +404,14 @@ model Pago {
 }
 
 model Configuracion {
-  clave String   @id
-  valor String
+  /// Negocio dueno de la clave (multi-tenant): cada negocio tiene su propia configuracion.
+  negocioId String @db.Uuid
+  clave     String
+  valor     String
 
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
+
+  @@id([negocioId, clave])
   @@map("configuracion")
 }
 
@@ -549,7 +556,7 @@ model Presupuesto {
   items       PresupuestoItem[]
   negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
-  @@unique([anio, numero])
+  @@unique([negocioId, anio, numero])
   @@index([clienteId])
   @@index([estado])
   @@index([fecha])
@@ -598,8 +605,9 @@ model Usuario {
   id        String  @id @default(uuid()) @db.Uuid
   /// Negocio dueno de la fila. NULL solo para el futuro SUPERADMIN (sin negocio); hoy todos tienen.
   negocioId String? @db.Uuid
-  /// Nombre para entrar, en minusculas. Unico.
-  usuario   String  @unique
+  /// Nombre para entrar, en minusculas. Unico por negocio (y entre los que no tienen negocio:
+  /// indice parcial `usuarios_usuario_key`, solo en SQL).
+  usuario   String
   /// Nombre para mostrar ("Laura", "Mostrador").
   nombre    String
   rol       Rol
@@ -630,6 +638,7 @@ model Usuario {
   comprobantes      Comprobante[]
   negocio Negocio? @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
+  @@unique([negocioId, usuario])
   @@index([negocioId])
   @@map("usuarios")
 }

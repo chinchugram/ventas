@@ -1,17 +1,27 @@
 import { ErrorDeNegocio } from "@/lib/acciones";
 import { d } from "@/lib/money";
 import { CLAVES, type ConfiguracionValidada, type MaquinaValidada } from "@/lib/configuracion";
+import { negocioUnico } from "@/lib/dominio/auth";
 import type { Tx } from "@/lib/dominio/tx";
 
 // Escrituras de configuracion y maquinas. Reciben datos ya validados por zod
 // (`esquemaConfiguracion`, `esquemaMaquina`) y un `tx`, asi las llaman tanto las
 // server actions como `scripts/test-configuracion.ts`.
 
+// TRANSITORIO (F1.2): `configuracion` tiene clave (negocioId, clave). Hasta que F3.1
+// traiga el negocio de la sesion, estas funciones usan el negocio unico y no cambian
+// de firma.
+
 /** Guarda las cuatro claves con upsert: las que no existian se crean. */
 export async function guardarConfiguracionEnTx(tx: Tx, datos: ConfiguracionValidada): Promise<void> {
+  const negocioId = await negocioUnico(tx);
   for (const clave of Object.values(CLAVES)) {
     const valor = datos[clave];
-    await tx.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+    await tx.configuracion.upsert({
+      where: { negocioId_clave: { negocioId, clave } },
+      update: { valor },
+      create: { negocioId, clave, valor },
+    });
   }
 }
 
@@ -66,11 +76,16 @@ export async function cambiarActivoMaquinaEnTx(tx: Tx, id: string, activo: boole
  * formulario (el umbral de identificacion) no se tocan: quien llama decide.
  */
 export async function guardarDatosFiscalesEnTx(tx: Tx, valores: Record<string, string>): Promise<void> {
+  const negocioId = await negocioUnico(tx);
   for (const [clave, valor] of Object.entries(valores)) {
     if (valor === "") {
-      await tx.configuracion.deleteMany({ where: { clave } });
+      await tx.configuracion.deleteMany({ where: { negocioId, clave } });
     } else {
-      await tx.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+      await tx.configuracion.upsert({
+        where: { negocioId_clave: { negocioId, clave } },
+        update: { valor },
+        create: { negocioId, clave, valor },
+      });
     }
   }
 }
