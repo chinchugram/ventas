@@ -88,6 +88,7 @@ const CONCEPTO_PRODUCTOS = 1;
  */
 export async function reservarNotaCreditoEnTx(
   tx: Tx,
+  negocioId: string,
   ventaId: string,
   usuarioId: string | null | undefined,
   { emisor, hoy = hoyArgentina(), facturaId }: OpcionesNotaCredito,
@@ -163,6 +164,7 @@ export async function reservarNotaCreditoEnTx(
 
   const creado = await tx.comprobante.create({
     data: {
+      negocioId,
       ambiente,
       tipo,
       codigoArca: CODIGO_ARCA[tipo],
@@ -189,6 +191,7 @@ export async function reservarNotaCreditoEnTx(
       usuarioId: usuarioId ?? null,
       items: {
         create: factura.items.map((i) => ({
+          negocioId,
           orden: i.orden,
           descripcion: i.descripcion,
           cantidad: i.cantidad,
@@ -201,6 +204,7 @@ export async function reservarNotaCreditoEnTx(
       },
       alicuotas: {
         create: factura.alicuotas.map((a) => ({
+          negocioId,
           alicuotaPct: a.alicuotaPct,
           codigoArca: a.codigoArca,
           baseImponible: a.baseImponible,
@@ -275,6 +279,7 @@ function quedoPendiente(reserva: NotaCreditoReservada): ComprobanteProcesado {
  */
 export async function emitirNotaCreditoEnTx(
   tx: Tx,
+  negocioId: string,
   ventaId: string,
   usuarioId: string | null | undefined,
   opciones: OpcionesNotaCredito,
@@ -282,7 +287,7 @@ export async function emitirNotaCreditoEnTx(
   if (opciones.emisor.ambiente !== "SIMULADO") {
     throw new Error("emitirNotaCreditoEnTx es solo para el emisor simulado: con un emisor real usá emitirNotaCredito (dos fases).");
   }
-  const reserva = await reservarNotaCreditoEnTx(tx, ventaId, usuarioId, opciones);
+  const reserva = await reservarNotaCreditoEnTx(tx, negocioId, ventaId, usuarioId, opciones);
   let resultado: ResultadoCae;
   try {
     resultado = await opciones.emisor.solicitarCae(reserva.solicitud);
@@ -302,13 +307,14 @@ const OPCIONES_TX = { timeout: 30_000 } as const;
  */
 export async function emitirNotaCredito(
   db: BaseDeDatos,
+  negocioId: string,
   ventaId: string,
   usuarioId: string | null | undefined,
   opciones: OpcionesNotaCredito,
 ): Promise<ComprobanteProcesado> {
   let reserva: NotaCreditoReservada;
   try {
-    reserva = await db.$transaction((tx) => reservarNotaCreditoEnTx(tx, ventaId, usuarioId, opciones), OPCIONES_TX);
+    reserva = await db.$transaction((tx) => reservarNotaCreditoEnTx(tx, negocioId, ventaId, usuarioId, opciones), OPCIONES_TX);
   } catch (error) {
     throw traducirErrorDeEmision(error);
   }

@@ -69,6 +69,19 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 async function escenario(titulo: string, fn: (tx: Tx) => Promise<void>) {
@@ -111,6 +124,7 @@ async function sesiones(tx: Tx, usuarioId: string) {
 }
 
 async function main() {
+  await resolverNegocio();
   hashDeCLAVE = await hashearClave(CLAVE);
 
   // ─── Reglas copiadas para los formularios ───────────────────────────────────
@@ -229,8 +243,8 @@ async function main() {
     const d = await crear(tx, "test44.dueno", "DUENO");
     const e = await crear(tx, "test44.empleado", "EMPLEADO");
     await soloDuenosActivos(tx, [d.id]);
-    const s1 = await crearSesion(tx, e.id);
-    await crearSesion(tx, e.id);
+    const s1 = await crearSesion(tx, negocioId, e.id);
+    await crearSesion(tx, negocioId, e.id);
     comprobar("el empleado tiene 2 sesiones", String(await sesiones(tx, e.id)), "2");
 
     const baja = await cambiarActivoUsuarioEnTx(tx, d, e.id, false);
@@ -254,7 +268,7 @@ async function main() {
     const d = await crear(tx, "test44.dueno", "DUENO");
     const e = await crear(tx, "test44.empleado", "EMPLEADO");
     await soloDuenosActivos(tx, [d.id]);
-    const s = await crearSesion(tx, d.id);
+    const s = await crearSesion(tx, negocioId, d.id);
 
     await rechaza("el unico dueno se da de baja a si mismo", "último dueño activo", () => cambiarActivoUsuarioEnTx(tx, d, d.id, false));
     comprobar("sigue activo", String((await tx.usuario.findUniqueOrThrow({ where: { id: d.id } })).activo), "true");
@@ -277,7 +291,7 @@ async function main() {
     const d = await crear(tx, "test44.dueno", "DUENO");
     const e = await crear(tx, "test44.empleado", "EMPLEADO");
     await soloDuenosActivos(tx, [d.id]);
-    const sE = await crearSesion(tx, e.id);
+    const sE = await crearSesion(tx, negocioId, e.id);
 
     comprobar("empleado a dueno", String((await cambiarRolUsuarioEnTx(tx, d, e.id, "DUENO")).cambio), "true");
     comprobar("rol guardado", (await tx.usuario.findUniqueOrThrow({ where: { id: e.id } })).rol, "DUENO");
@@ -285,7 +299,7 @@ async function main() {
     comprobar("mismo rol: sin cambio", String((await cambiarRolUsuarioEnTx(tx, d, e.id, "DUENO")).cambio), "false");
 
     // Ahora hay dos duenos: d degrada a e.
-    const sE2 = await crearSesion(tx, e.id);
+    const sE2 = await crearSesion(tx, negocioId, e.id);
     comprobar("dueno a empleado (hay otro dueno)", String((await cambiarRolUsuarioEnTx(tx, d, e.id, "EMPLEADO")).cambio), "true");
     comprobar("sesiones cerradas tambien al bajar el rol", String(await resolverSesion(tx, sE2.token)), "null");
 
@@ -315,8 +329,8 @@ async function main() {
     const d = await crear(tx, "test44.dueno", "DUENO");
     const e = await crear(tx, "test44.empleado", "EMPLEADO");
     await soloDuenosActivos(tx, [d.id]);
-    const sE = await crearSesion(tx, e.id);
-    const sD = await crearSesion(tx, d.id);
+    const sE = await crearSesion(tx, negocioId, e.id);
+    const sD = await crearSesion(tx, negocioId, d.id);
 
     const t = new Date();
     for (let i = 0; i < 5; i++) await verificarCredenciales(tx, "test44.empleado", `mala-${i}-xxxxxxxx`, new Date(t.getTime() + i * 1000));
@@ -350,8 +364,8 @@ async function main() {
   // ─── Clave propia ───────────────────────────────────────────────────────────
   await escenario("Cambiar la clave propia: pide la actual, valida, cierra sesiones", async (tx) => {
     const e = await crear(tx, "test44.empleado", "EMPLEADO");
-    const s1 = await crearSesion(tx, e.id);
-    const s2 = await crearSesion(tx, e.id);
+    const s1 = await crearSesion(tx, negocioId, e.id);
+    const s2 = await crearSesion(tx, negocioId, e.id);
     const datos = { actual: CLAVE, nueva: CLAVE_NUEVA, repetir: CLAVE_NUEVA };
 
     await rechaza("sin clave actual", "Escribí tu clave actual", () => cambiarClavePropia(tx, e, { ...datos, actual: "" }));
@@ -536,7 +550,7 @@ async function probarConcurrencia() {
     // 6. Cambio de clave propia con la verificacion fuera de la transaccion: el fallo queda contado.
     {
       const e = await crear(prisma, `${PREFIJO}i1`, "EMPLEADO");
-      const vieja = await crearSesion(prisma, e.id);
+      const vieja = await crearSesion(prisma, negocioId, e.id);
       const datos = { actual: CLAVE, nueva: CLAVE_NUEVA, repetir: CLAVE_NUEVA };
       await rechaza("clave actual mala con el cliente real", ERROR_CLAVE_ACTUAL, () => cambiarClavePropia(prisma, e, { ...datos, actual: "mala-mala-mala" }));
       comprobar("el intento fallido quedo anotado (no se deshizo)", String((await prisma.usuario.findUniqueOrThrow({ where: { id: e.id } })).intentosFallidos), "1");

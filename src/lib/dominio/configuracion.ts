@@ -30,10 +30,10 @@ async function exigirNombreLibre(tx: Tx, nombre: string, excepto?: string) {
   }
 }
 
-export async function crearMaquinaEnTx(tx: Tx, datos: MaquinaValidada): Promise<{ id: string }> {
+export async function crearMaquinaEnTx(tx: Tx, negocioId: string, datos: MaquinaValidada): Promise<{ id: string }> {
   await exigirNombreLibre(tx, datos.nombre);
   return tx.maquina.create({
-    data: { nombre: datos.nombre, costoHora: d(datos.costoHora), notas: datos.notas },
+    data: { negocioId, nombre: datos.nombre, costoHora: d(datos.costoHora), notas: datos.notas },
     select: { id: true },
   });
 }

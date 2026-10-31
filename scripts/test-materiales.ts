@@ -44,6 +44,19 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 async function escenario(titulo: string, fn: (tx: Tx) => Promise<void>) {
@@ -78,8 +91,9 @@ const nuevo = (extra: Partial<MaterialNuevo> = {}): MaterialNuevo => ({
 });
 
 async function main() {
+  await resolverNegocio();
   await escenario("Alta con stock inicial: deja un AJUSTE y el libro cuadra", async (tx) => {
-    const { id } = await crearMaterialEnTx(tx, nuevo({ stockInicial: d("12.5"), precioVenta: d(3000) }));
+    const { id } = await crearMaterialEnTx(tx, negocioId, nuevo({ stockInicial: d("12.5"), precioVenta: d(3000) }));
     const m = await tx.material.findUniqueOrThrow({ where: { id } });
     const movs = await tx.movimientoStock.findMany({ where: { materialId: id } });
     comprobar("stock", m.stockActual.toString(), "12.5");
@@ -94,19 +108,19 @@ async function main() {
   });
 
   await escenario("Alta sin stock: no deja movimiento", async (tx) => {
-    const { id } = await crearMaterialEnTx(tx, nuevo());
+    const { id } = await crearMaterialEnTx(tx, negocioId, nuevo());
     comprobar("movimientos", String(await tx.movimientoStock.count({ where: { materialId: id } })), "0");
   });
 
   await escenario("Nombre repetido (sin mirar mayusculas ni tildes)", async (tx) => {
-    await crearMaterialEnTx(tx, nuevo({ nombre: `Acrílico ${sufijo}` }));
+    await crearMaterialEnTx(tx, negocioId, nuevo({ nombre: `Acrílico ${sufijo}` }));
     await rechaza("alta repetida", "Ya hay un material", () =>
-      crearMaterialEnTx(tx, nuevo({ nombre: `  ACRILICO   ${sufijo} ` })),
+      crearMaterialEnTx(tx, negocioId, nuevo({ nombre: `  ACRILICO   ${sufijo} ` })),
     );
   });
 
   await escenario("Edicion: no toca el stock y el costo solo si cambio", async (tx) => {
-    const { id } = await crearMaterialEnTx(tx, nuevo({ stockInicial: d(10) }));
+    const { id } = await crearMaterialEnTx(tx, negocioId, nuevo({ stockInicial: d(10) }));
     const base = { id, nombre: `Renombrado ${sufijo}`, unidad: "M2" as const, stockMinimo: d(3), precioVenta: d(2500), notas: "nota" };
 
     const r1 = await editarMaterialEnTx(tx, { ...base, costoOriginal: d("1200.5"), costoUnitario: d("1200.5") });
@@ -126,8 +140,8 @@ async function main() {
   });
 
   await escenario("Edicion: una compra cambio el costo mientras se editaba", async (tx) => {
-    const { id } = await crearMaterialEnTx(tx, nuevo());
-    await registrarCompraEnTx(tx, {
+    const { id } = await crearMaterialEnTx(tx, negocioId, nuevo());
+    await registrarCompraEnTx(tx, negocioId, {
       fecha: new Date("2026-01-20T00:00:00Z"),
       proveedor: "Proveedor",
       comprobante: null,
@@ -146,19 +160,19 @@ async function main() {
   });
 
   await escenario("Unidad: solo se cambia si no hay movimientos ni recetas", async (tx) => {
-    const libre = await crearMaterialEnTx(tx, nuevo());
+    const libre = await crearMaterialEnTx(tx, negocioId, nuevo());
     const base = { nombre: `Prueba materiales ${sufijo}`, stockMinimo: d(5), precioVenta: null, notas: null, costoOriginal: d("1200.5"), costoUnitario: d("1200.5") };
     await editarMaterialEnTx(tx, { ...base, id: libre.id, unidad: "KG" });
     comprobar("unidad cambiada", (await tx.material.findUniqueOrThrow({ where: { id: libre.id } })).unidad, "KG");
 
-    const conStock = await crearMaterialEnTx(tx, nuevo({ nombre: `Con stock ${sufijo}`, stockInicial: d(1) }));
+    const conStock = await crearMaterialEnTx(tx, negocioId, nuevo({ nombre: `Con stock ${sufijo}`, stockInicial: d(1) }));
     await rechaza("con movimientos", "No se puede cambiar la unidad", () =>
       editarMaterialEnTx(tx, { ...base, nombre: `Con stock ${sufijo}`, id: conStock.id, unidad: "KG" }),
     );
   });
 
   await escenario("Baja y reactivacion", async (tx) => {
-    const { id } = await crearMaterialEnTx(tx, nuevo({ stockInicial: d(2) }));
+    const { id } = await crearMaterialEnTx(tx, negocioId, nuevo({ stockInicial: d(2) }));
     await cambiarEstadoMaterialEnTx(tx, id, false);
     comprobar("de baja", String((await tx.material.findUniqueOrThrow({ where: { id } })).activo), "false");
     comprobar("conserva movimientos", String(await tx.movimientoStock.count({ where: { materialId: id } })), "1");
@@ -176,7 +190,7 @@ async function main() {
       }),
     );
     await rechaza("compra de un material de baja", "dado de baja", () =>
-      registrarCompraEnTx(tx, {
+      registrarCompraEnTx(tx, negocioId, {
         fecha: new Date("2026-01-20T00:00:00Z"),
         proveedor: "X",
         comprobante: null,
@@ -187,7 +201,7 @@ async function main() {
     );
 
     // Mientras estaba de baja se creo otro con el mismo nombre: no se puede reactivar.
-    const otro = await crearMaterialEnTx(tx, nuevo());
+    const otro = await crearMaterialEnTx(tx, negocioId, nuevo());
     await rechaza("reactivar con nombre tomado", "Ya hay un material", () => cambiarEstadoMaterialEnTx(tx, id, true));
     await cambiarEstadoMaterialEnTx(tx, otro.id, false);
     await cambiarEstadoMaterialEnTx(tx, id, true);

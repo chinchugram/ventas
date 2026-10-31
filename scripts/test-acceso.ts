@@ -496,20 +496,22 @@ type Ids = { articulo: string; cliente: string; maquina: string; lista: string; 
 
 /** Lo que el seed no trae (lista de precios y presupuesto) y los ids para instanciar las rutas dinamicas. */
 async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Ids> {
+  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
   const articulo = (await prisma.articulo.findFirst({ where: { nombre: { startsWith: "Sticker" } } }))!;
   const cliente = (await prisma.cliente.findFirst({ orderBy: { nombre: "asc" } }))!;
   const maquina = (await prisma.maquina.findFirst({ orderBy: { nombre: "asc" } }))!;
   const material = (await prisma.material.findFirst({ where: { nombre: { startsWith: "Vinil" } } }))!;
   const lista = await prisma.listaPrecio.create({
-    data: { nombre: "Lista de prueba (acceso)", descuentoPct: "10", items: { create: [{ articuloId: articulo.id, precio: "3100" }] } },
+    data: { negocioId, nombre: "Lista de prueba (acceso)", descuentoPct: "10", items: { create: [{ negocioId, articuloId: articulo.id, precio: "3100" }] } },
   });
   const presupuesto = await prisma.presupuesto.create({
     data: {
+      negocioId,
       numero: 1,
       anio: new Date().getFullYear(),
       clienteId: cliente.id,
       fecha: new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())),
-      items: { create: [{ articuloId: articulo.id, descripcion: articulo.nombre, cantidad: "10", precioUnitario: "3500", ivaPct: "21" }] },
+      items: { create: [{ negocioId, articuloId: articulo.id, descripcion: articulo.nombre, cantidad: "10", precioUnitario: "3500", ivaPct: "21" }] },
     },
   });
   // La venta con mas renglones: la pantalla de detalle muestra mas cosas.
@@ -518,7 +520,7 @@ async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Id
   // Una factura EMITIDA (simulada) de esa venta: la usan /comprobantes/[id] y su vista imprimible.
   // El seed deja los datos fiscales de ejemplo fuera de produccion; si faltaran, la emision falla fuerte.
   const emisor = crearEmisorSimulado(accesoSimulado(prisma));
-  const emitida = await emitirFactura(prisma, venta.id, usuarioId, { emisor });
+  const emitida = await emitirFactura(prisma, negocioId, venta.id, usuarioId, { emisor });
   if (emitida.estado !== "EMITIDO") throw new Error(`No se pudo sembrar la factura de prueba: ${emitida.mensaje}`);
   return { articulo: articulo.id, cliente: cliente.id, maquina: maquina.id, lista: lista.id, material: material.id, presupuesto: presupuesto.id, venta: venta.id, usuario: usuarioId, comprobante: emitida.id };
 }
@@ -778,7 +780,8 @@ async function crearSesionDirecta(prisma: Prisma, usuarioId: string, opciones: {
   // CHECK de la base: el vencimiento es posterior a la creacion. Una sesion vencida se crea "en el pasado".
   const creadaEn = new Date(opciones.vencida ? ahora - 40 * DIA : ahora);
   const expiraEn = new Date(opciones.vencida ? ahora - 10 * DIA : ahora + 30 * DIA);
-  await prisma.sesion.create({ data: { tokenHash: hashDeToken(token), usuarioId, creadaEn, renovadaEn: creadaEn, expiraEn } });
+  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
+  await prisma.sesion.create({ data: { negocioId, tokenHash: hashDeToken(token), usuarioId, creadaEn, renovadaEn: creadaEn, expiraEn } });
   return token;
 }
 

@@ -63,6 +63,19 @@ function nuevoCliente() {
 }
 const prisma = nuevoCliente();
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 async function escenario(titulo: string, fn: (tx: Tx) => Promise<void>) {
@@ -154,14 +167,14 @@ type Prueba = Awaited<ReturnType<typeof preparar>>;
  */
 async function preparar(tx: Tx, prefijo = "Prueba comprobantes") {
   await configurarFiscal(tx);
-  const x = await tx.articulo.create({ data: { nombre: `${prefijo} X`, precioVenta: d(1210), ivaPct: d(21), esServicio: true } });
-  const y = await tx.articulo.create({ data: { nombre: `${prefijo} Y`, precioVenta: d("110.5"), ivaPct: d("10.5"), esServicio: true } });
-  const z = await tx.articulo.create({ data: { nombre: `${prefijo} Z`, precioVenta: d(500), ivaPct: d(0), esServicio: true } });
-  const final = await tx.cliente.create({ data: { nombre: `${prefijo} consumidor final`, direccion: "Mostrador" } });
+  const x = await tx.articulo.create({ data: { negocioId, nombre: `${prefijo} X`, precioVenta: d(1210), ivaPct: d(21), esServicio: true } });
+  const y = await tx.articulo.create({ data: { negocioId, nombre: `${prefijo} Y`, precioVenta: d("110.5"), ivaPct: d("10.5"), esServicio: true } });
+  const z = await tx.articulo.create({ data: { negocioId, nombre: `${prefijo} Z`, precioVenta: d(500), ivaPct: d(0), esServicio: true } });
+  const final = await tx.cliente.create({ data: { negocioId, nombre: `${prefijo} consumidor final`, direccion: "Mostrador" } });
   const ri = await tx.cliente.create({
-    data: { nombre: `${prefijo} RI`, cuit: CUIT_RI, condicionIva: "RESPONSABLE_INSCRIPTO", direccion: "Av. Colón 1, Córdoba" },
+    data: { negocioId, nombre: `${prefijo} RI`, cuit: CUIT_RI, condicionIva: "RESPONSABLE_INSCRIPTO", direccion: "Av. Colón 1, Córdoba" },
   });
-  const riSinCuit = await tx.cliente.create({ data: { nombre: `${prefijo} RI sin CUIT`, condicionIva: "RESPONSABLE_INSCRIPTO" } });
+  const riSinCuit = await tx.cliente.create({ data: { negocioId, nombre: `${prefijo} RI sin CUIT`, condicionIva: "RESPONSABLE_INSCRIPTO" } });
   const usuario = await tx.usuario.create({
     data: {
       usuario: `zz-${Math.random().toString(36).slice(2, 10)}`,
@@ -174,7 +187,7 @@ async function preparar(tx: Tx, prefijo = "Prueba comprobantes") {
 }
 
 async function venta(tx: Tx, clienteId: string, items: { articuloId: string; cantidad: string | number }[], fecha = HOY) {
-  const v = await registrarVentaEnTx(tx, {
+  const v = await registrarVentaEnTx(tx, negocioId, {
     clienteId,
     fecha,
     observaciones: null,
@@ -190,6 +203,7 @@ const simulado = (tx: Tx, opciones?: OpcionesSimulador) => crearEmisorSimulado(a
 /** Datos minimos de un comprobante para probar los CHECK directo contra la base. */
 function crudo(ventaId: string, extra: Record<string, unknown> = {}) {
   return {
+    negocioId,
     ambiente: "SIMULADO",
     tipo: "FACTURA_B",
     codigoArca: 6,
@@ -214,10 +228,12 @@ function crudo(ventaId: string, extra: Record<string, unknown> = {}) {
   } as Parameters<Tx["comprobante"]["create"]>[0]["data"];
 }
 
-const linea = { orden: 1, descripcion: "Algo", cantidad: d(1), precioUnitario: d(121), ivaPct: d(21), subtotalNeto: d(100), subtotalIva: d(21), subtotalBruto: d(121) };
-const alicuota21 = { alicuotaPct: d(21), codigoArca: 5, baseImponible: d(100), importe: d(21) };
+// `negocioId` como getter: se resuelve en `main`, despues de crear estas constantes.
+const linea = { get negocioId() { return negocioId; }, orden: 1, descripcion: "Algo", cantidad: d(1), precioUnitario: d(121), ivaPct: d(21), subtotalNeto: d(100), subtotalIva: d(21), subtotalBruto: d(121) };
+const alicuota21 = { get negocioId() { return negocioId; }, alicuotaPct: d(21), codigoArca: 5, baseImponible: d(100), importe: d(21) };
 
 async function main() {
+  await resolverNegocio();
   const antes = await contarTodo(prisma);
 
   await escenario("Factura B: emisión, foto y estados", async (tx) => {
@@ -229,7 +245,7 @@ async function main() {
       { articuloId: t.y.id, cantidad: 3 },
       { articuloId: t.z.id, cantidad: 2 },
     ]);
-    const r = await emitirFacturaEnTx(tx, v, t.usuario.id, { emisor: simulado(tx) });
+    const r = await emitirFacturaEnTx(tx, negocioId, v, t.usuario.id, { emisor: simulado(tx) });
     comprobar("estado", r.estado, "EMITIDO");
     comprobar("tipo y número", `${r.tipo} ${r.puntoVenta} ${r.numero}`, `FACTURA_B ${PV} 1`);
     comprobar("CAE de 14 dígitos", String(/^\d{14}$/.test(r.cae ?? "")), "true");
@@ -267,8 +283,8 @@ async function main() {
     // Correlativos dentro de la serie (ambiente, punto, tipo).
     const v2 = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
     const v3 = await venta(tx, t.final.id, [{ articuloId: t.z.id, cantidad: 1 }]);
-    const r2 = await emitirFacturaEnTx(tx, v2, null, { emisor: simulado(tx) });
-    const r3 = await emitirFacturaEnTx(tx, v3, undefined, { emisor: simulado(tx) });
+    const r2 = await emitirFacturaEnTx(tx, negocioId, v2, null, { emisor: simulado(tx) });
+    const r3 = await emitirFacturaEnTx(tx, negocioId, v3, undefined, { emisor: simulado(tx) });
     comprobar("números correlativos", `${r.numero},${r2.numero},${r3.numero}`, "1,2,3");
     comprobar("sin usuario queda NULL", String((await tx.comprobante.findUniqueOrThrow({ where: { id: r2.id } })).usuarioId), "null");
 
@@ -280,8 +296,8 @@ async function main() {
     const t = await preparar(tx);
     const vB = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
     const vA = await venta(tx, t.ri.id, [{ articuloId: t.x.id, cantidad: 1 }, { articuloId: t.y.id, cantidad: 1 }]);
-    const b = await emitirFacturaEnTx(tx, vB, null, { emisor: simulado(tx) });
-    const a = await emitirFacturaEnTx(tx, vA, null, { emisor: simulado(tx) });
+    const b = await emitirFacturaEnTx(tx, negocioId, vB, null, { emisor: simulado(tx) });
+    const a = await emitirFacturaEnTx(tx, negocioId, vA, null, { emisor: simulado(tx) });
     comprobar("RI con CUIT: factura A", `${a.estado} ${a.tipo} ${a.numero}`, "EMITIDO FACTURA_A 1");
     comprobar("la B tiene su propia numeración", `${b.tipo} ${b.numero}`, "FACTURA_B 1");
     const ca = await tx.comprobante.findUniqueOrThrow({ where: { id: a.id } });
@@ -290,7 +306,7 @@ async function main() {
     // El negocio pasa a monotributo: factura C, sin discriminar IVA (y avisa).
     await configurarFiscal(tx, { condicionIva: "MONOTRIBUTO" });
     const vC = await venta(tx, t.ri.id, [{ articuloId: t.x.id, cantidad: 2 }]);
-    const c = await emitirFacturaEnTx(tx, vC, null, { emisor: simulado(tx) });
+    const c = await emitirFacturaEnTx(tx, negocioId, vC, null, { emisor: simulado(tx) });
     comprobar("monotributo: factura C", `${c.estado} ${c.tipo} ${c.numero}`, "EMITIDO FACTURA_C 1");
     comprobar("C con IVA en la venta: advierte", String(c.advertencias.some((x) => x.includes("no discrimina IVA"))), "true");
     const cc = await tx.comprobante.findUniqueOrThrow({ where: { id: c.id }, include: { alicuotas: true } });
@@ -302,7 +318,7 @@ async function main() {
   await escenario("La foto no cambia al editar cliente, artículo o configuración", async (tx) => {
     const t = await preparar(tx);
     const v = await venta(tx, t.ri.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    const r = await emitirFacturaEnTx(tx, v, null, { emisor: simulado(tx) });
+    const r = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
     const foto = async () => {
       const c = await tx.comprobante.findUniqueOrThrow({ where: { id: r.id }, include: { items: true, alicuotas: true } });
       const { actualizadoEn: _a, ...resto } = c;
@@ -325,29 +341,29 @@ async function main() {
     const e = () => ({ emisor: simulado(tx) });
 
     const anulada = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    await anularVentaEnTx(tx, anulada);
-    await rechaza("venta anulada", "anulada", () => emitirFacturaEnTx(tx, anulada, null, e()));
-    await rechaza("venta inexistente", "no existe", () => emitirFacturaEnTx(tx, "00000000-0000-4000-8000-0000000000aa", null, e()));
+    await anularVentaEnTx(tx, negocioId, anulada);
+    await rechaza("venta anulada", "anulada", () => emitirFacturaEnTx(tx, negocioId, anulada, null, e()));
+    await rechaza("venta inexistente", "no existe", () => emitirFacturaEnTx(tx, negocioId, "00000000-0000-4000-8000-0000000000aa", null, e()));
 
     const v = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    const primera = await emitirFacturaEnTx(tx, v, null, e());
-    await rechaza("la misma venta dos veces", "ya está facturada (Factura B 4321-00000001)", () => emitirFacturaEnTx(tx, v, null, e()));
+    const primera = await emitirFacturaEnTx(tx, negocioId, v, null, e());
+    await rechaza("la misma venta dos veces", "ya está facturada (Factura B 4321-00000001)", () => emitirFacturaEnTx(tx, negocioId, v, null, e()));
     comprobar("una sola factura de esa venta", String(await tx.comprobante.count({ where: { ventaId: v } })), "1");
     comprobar("y es la primera", String((await tx.comprobante.findFirstOrThrow({ where: { ventaId: v } })).id === primera.id), "true");
 
     // La base lo impone aunque se la salteen (update directo); `anularVentaEnTx` lo avisa antes con un mensaje claro (tarea 5.4).
     await violaLaBase(tx, "una venta facturada no se anula sin nota de crédito (la base)", () => anularDirecto(tx, v), "nota de credito");
-    await rechaza("una venta facturada no se anula sin nota de crédito (mensaje claro)", "primero hay que emitir la nota de crédito", () => anularVentaEnTx(tx, v));
+    await rechaza("una venta facturada no se anula sin nota de crédito (mensaje claro)", "primero hay que emitir la nota de crédito", () => anularVentaEnTx(tx, negocioId, v));
 
     const riSinCuit = await venta(tx, t.riSinCuit.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    await rechaza("RI sin CUIT", "responsable inscripto pero no tiene CUIT", () => emitirFacturaEnTx(tx, riSinCuit, null, e()));
+    await rechaza("RI sin CUIT", "responsable inscripto pero no tiene CUIT", () => emitirFacturaEnTx(tx, negocioId, riSinCuit, null, e()));
 
     // Umbral de identificacion: con 1000 de umbral, 1210 sin documento no se factura; con DNI si.
     await configurarFiscal(tx, { umbralIdentificacion: "1000" });
     const grande = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    await rechaza("consumidor final sin identificar sobre el umbral", "exige identificar", () => emitirFacturaEnTx(tx, grande, null, e()));
+    await rechaza("consumidor final sin identificar sobre el umbral", "exige identificar", () => emitirFacturaEnTx(tx, negocioId, grande, null, e()));
     await tx.cliente.update({ where: { id: t.final.id }, data: { dni: "30123456" } });
-    const conDni = await emitirFacturaEnTx(tx, grande, null, e());
+    const conDni = await emitirFacturaEnTx(tx, negocioId, grande, null, e());
     const cd = await tx.comprobante.findUniqueOrThrow({ where: { id: conDni.id } });
     comprobar("con DNI sí: documento 96", `${conDni.estado} ${cd.receptorDocTipo} ${cd.receptorDocNro}`, "EMITIDO 96 30123456");
 
@@ -355,24 +371,24 @@ async function main() {
     await configurarFiscal(tx, { umbralIdentificacion: "" });
     const sinDatos = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
     await tx.configuracion.deleteMany({ where: { clave: { startsWith: "fiscal" } } });
-    await rechaza("sin datos fiscales", "completá los datos fiscales", () => emitirFacturaEnTx(tx, sinDatos, null, e()));
+    await rechaza("sin datos fiscales", "completá los datos fiscales", () => emitirFacturaEnTx(tx, negocioId, sinDatos, null, e()));
     await configurarFiscal(tx, { puntoVenta: "" });
-    await rechaza("sin punto de venta: lo dice", "Falta el punto de venta", () => emitirFacturaEnTx(tx, sinDatos, null, e()));
+    await rechaza("sin punto de venta: lo dice", "Falta el punto de venta", () => emitirFacturaEnTx(tx, negocioId, sinDatos, null, e()));
     await configurarFiscal(tx, { cuit: "20333333335" });
-    await rechaza("con el CUIT del negocio inválido", "dígito verificador", () => emitirFacturaEnTx(tx, sinDatos, null, e()));
+    await rechaza("con el CUIT del negocio inválido", "dígito verificador", () => emitirFacturaEnTx(tx, negocioId, sinDatos, null, e()));
     comprobar("nada guardado de esos intentos", String(await tx.comprobante.count({ where: { ventaId: { in: [sinDatos, riSinCuit, anulada] } } })), "0");
 
     // Una venta cuyas lineas no cierran (alguien la toco a mano) no se factura.
     await configurarFiscal(tx);
     const tocada = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
     await tx.venta.update({ where: { id: tocada }, data: { totalNeto: d("1000.01"), totalIVA: d("209.99") } });
-    await rechaza("venta con totales que no cierran", "no coincide con la suma de sus líneas", () => emitirFacturaEnTx(tx, tocada, null, e()));
+    await rechaza("venta con totales que no cierran", "no coincide con la suma de sus líneas", () => emitirFacturaEnTx(tx, negocioId, tocada, null, e()));
   });
 
   await escenario("Rechazo, corte y número reservado", async (tx) => {
     const t = await preparar(tx);
     const v = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    const rechazo = await emitirFacturaEnTx(tx, v, null, { emisor: simulado(tx, { rechazar: () => ["[999] Rechazo de prueba"] }) });
+    const rechazo = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: simulado(tx, { rechazar: () => ["[999] Rechazo de prueba"] }) });
     comprobar("rechazo: queda RECHAZADO", `${rechazo.estado} ${rechazo.numero}`, "RECHAZADO 1");
     const cr = await tx.comprobante.findUniqueOrThrow({ where: { id: rechazo.id } });
     comprobar("rechazo: con el motivo y sin CAE", `${cr.observaciones} ${cr.cae} ${cr.caeVencimiento}`, "[999] Rechazo de prueba null null");
@@ -380,23 +396,23 @@ async function main() {
 
     // El numero no se pierde: el rechazado queda registrado con el 1 y el
     // proximo intento (que ARCA espera con ese mismo numero) lo usa.
-    const reintento = await emitirFacturaEnTx(tx, v, null, { emisor: simulado(tx) });
+    const reintento = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
     comprobar("reintento de la misma venta: EMITIDO con el mismo número", `${reintento.estado} ${reintento.numero}`, "EMITIDO 1");
     const v2 = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    const siguiente = await emitirFacturaEnTx(tx, v2, null, { emisor: simulado(tx) });
+    const siguiente = await emitirFacturaEnTx(tx, negocioId, v2, null, { emisor: simulado(tx) });
     comprobar("la siguiente: 2 (sin huecos en lo autorizado)", String(siguiente.numero), "2");
     comprobar("del 1 quedan el intento rechazado y el emitido", (await tx.comprobante.findMany({ where: { ventaId: v }, orderBy: { creadoEn: "asc" } })).map((c) => `${c.numero}:${c.estado}`).join(" "), "1:RECHAZADO 1:EMITIDO");
 
     // Corte: el emisor no responde → queda PENDIENTE con el numero reservado.
     const v3 = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    const corte = await emitirFacturaEnTx(tx, v3, null, { emisor: simulado(tx, { cortar: () => true }) });
+    const corte = await emitirFacturaEnTx(tx, negocioId, v3, null, { emisor: simulado(tx, { cortar: () => true }) });
     comprobar("corte: queda PENDIENTE con su número", `${corte.estado} ${corte.numero}`, "PENDIENTE 3");
     comprobar("corte: el mensaje lo explica", String(corte.mensaje.includes("quedó pendiente")), "true");
-    await rechaza("la misma venta con un PENDIENTE", "esperando respuesta del emisor", () => emitirFacturaEnTx(tx, v3, null, { emisor: simulado(tx) }));
+    await rechaza("la misma venta con un PENDIENTE", "esperando respuesta del emisor", () => emitirFacturaEnTx(tx, negocioId, v3, null, { emisor: simulado(tx) }));
     const v4 = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    await rechaza("otra venta en la misma serie con un PENDIENTE", "esperando respuesta del emisor", () => emitirFacturaEnTx(tx, v4, null, { emisor: simulado(tx) }));
+    await rechaza("otra venta en la misma serie con un PENDIENTE", "esperando respuesta del emisor", () => emitirFacturaEnTx(tx, negocioId, v4, null, { emisor: simulado(tx) }));
     await violaLaBase(tx, "una venta con factura PENDIENTE no se anula (la base)", () => anularDirecto(tx, v3), "nota de credito");
-    await rechaza("una venta con factura PENDIENTE no se anula (mensaje claro)", "esperando respuesta del emisor", () => anularVentaEnTx(tx, v3));
+    await rechaza("una venta con factura PENDIENTE no se anula (mensaje claro)", "esperando respuesta del emisor", () => anularVentaEnTx(tx, negocioId, v3));
 
     // Llega la respuesta: se registra y la serie sigue.
     const llego = await registrarResultadoEnTx(tx, corte.id, { aprobado: true, cae: "71234567890123", vencimiento: f("2099-01-10"), observaciones: [] });
@@ -404,7 +420,7 @@ async function main() {
     await rechaza("un resultado dos veces", "ya estaba EMITIDO", () =>
       registrarResultadoEnTx(tx, corte.id, { aprobado: false, observaciones: ["tarde"] }),
     );
-    const despues = await emitirFacturaEnTx(tx, v4, null, { emisor: simulado(tx) });
+    const despues = await emitirFacturaEnTx(tx, negocioId, v4, null, { emisor: simulado(tx) });
     comprobar("la serie sigue: 4", `${despues.estado} ${despues.numero}`, "EMITIDO 4");
 
     // Inconsistencia grave: el emisor aprueba algo que la base tiene RECHAZADO.
@@ -425,12 +441,12 @@ async function main() {
     const permitido = obtenerEmisorFiscal({ NODE_ENV: "production", PERMITIR_EMISOR_SIMULADO: "1" }, accesoSimulado(tx));
     comprobar("producción con permiso: simulado", permitido.ok ? permitido.emisor.ambiente : permitido.error, "SIMULADO");
     if (permitido.ok) {
-      const r = await emitirFacturaEnTx(tx, v, null, { emisor: permitido.emisor });
+      const r = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: permitido.emisor });
       comprobar("y lo que emite es SIMULADO", (await tx.comprobante.findUniqueOrThrow({ where: { id: r.id } })).ambiente, "SIMULADO");
     }
     const falsoReal: EmisorFiscal = { ...simulado(tx), ambiente: "PRODUCCION" };
     try {
-      await emitirFacturaEnTx(tx, v, null, { emisor: falsoReal });
+      await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: falsoReal });
       comprobar("una sola transacción con un emisor real", "aceptado", "se niega");
     } catch (error) {
       comprobar("una sola transacción con un emisor real", String(error).includes("dos fases") ? "se niega" : String(error), "se niega");
@@ -441,7 +457,7 @@ async function main() {
     const t = await preparar(tx);
     const v = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
     const libre = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    const emitido = await emitirFacturaEnTx(tx, v, null, { emisor: simulado(tx) });
+    const emitido = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
     const id = emitido.id;
     const upd = (data: Record<string, unknown>) => () => tx.comprobante.update({ where: { id }, data: data as never });
 
@@ -503,7 +519,7 @@ async function main() {
     await violaLaBase(tx, "nota de crédito sin asociado", alta({ tipo: "NOTA_CREDITO_B", codigoArca: 8 }), "nota de credito");
     await violaLaBase(tx, "factura de una venta anulada", async () => {
       const anulada = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-      await anularVentaEnTx(tx, anulada);
+      await anularVentaEnTx(tx, negocioId, anulada);
       await tx.comprobante.create({ data: crudo(anulada, { numero: 960 }) });
     }, "venta anulada");
     await violaLaBase(tx, "DNI del cliente con puntos", () => tx.cliente.update({ where: { id: t.final.id }, data: { dni: "12.345.678" } }), "clientes_dni_check");
@@ -511,7 +527,7 @@ async function main() {
     await tx.comprobante.delete({ where: { id: pend.id } }); // libera la venta (es SIMULADO)
 
     console.log("  Índices únicos parciales");
-    const vigente = await emitirFacturaEnTx(tx, libre, null, { emisor: simulado(tx) });
+    const vigente = await emitirFacturaEnTx(tx, negocioId, libre, null, { emisor: simulado(tx) });
     comprobar("(la venta libre ahora tiene factura)", vigente.estado, "EMITIDO");
     await violaLaBase(tx, "segunda factura vigente de la misma venta", () => tx.comprobante.create({ data: crudo(libre, { numero: 970 }) }), "comprobantes_factura_vigente_por_venta_key");
     const otra = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
@@ -554,9 +570,9 @@ async function main() {
     await laBaseAcepta(tx, "con la NC EMITIDA, la venta se puede anular", async () => {
       const n1 = await tx.comprobante.create({ data: { ...nc(), items: { create: [linea] }, alicuotas: { create: [alicuota21] } } });
       await violaLaBase(tx, "  (mientras la NC está PENDIENTE, no: la base)", () => anularDirecto(tx, libre), "nota de credito");
-      await rechaza("  (mientras la NC está PENDIENTE, no: mensaje claro)", "esperando respuesta del emisor", () => anularVentaEnTx(tx, libre));
+      await rechaza("  (mientras la NC está PENDIENTE, no: mensaje claro)", "esperando respuesta del emisor", () => anularVentaEnTx(tx, negocioId, libre));
       await tx.comprobante.update({ where: { id: n1.id }, data: { estado: "EMITIDO", cae: "71234567890123", caeVencimiento: f("2099-01-01") } });
-      await anularVentaEnTx(tx, libre);
+      await anularVentaEnTx(tx, negocioId, libre);
     });
 
     console.log("  Borrado y controles diferidos");
@@ -600,7 +616,7 @@ async function main() {
     });
     await violaLaBase(tx, "FK: usuario inexistente", () => tx.comprobante.create({ data: crudo(otra, { numero: 1005, puntoVenta: PV + 4, usuarioId: "00000000-0000-4000-8000-0000000000dd" }) }));
     await violaLaBase(tx, "RESTRICT: no se borra un usuario con comprobantes", async () => {
-      const r = await emitirFacturaEnTx(tx, otra, t.usuario.id, { emisor: simulado(tx) });
+      const r = await emitirFacturaEnTx(tx, negocioId, otra, t.usuario.id, { emisor: simulado(tx) });
       comprobar("  (emitida con usuario)", r.estado, "EMITIDO");
       await tx.usuario.delete({ where: { id: t.usuario.id } });
     });
@@ -678,8 +694,8 @@ async function concurrencia() {
   try {
     await limpiarConcurrencia(); // restos de una corrida interrumpida
     await prisma.$transaction((tx) => configurarFiscal(tx, { puntoVenta: String(PV_CONCURRENCIA) }));
-    const articulo = await prisma.articulo.create({ data: { nombre: `${PREFIJO} X`, precioVenta: d(1210), ivaPct: d(21), esServicio: true } });
-    const cliente = await prisma.cliente.create({ data: { nombre: `${PREFIJO} cliente` } });
+    const articulo = await prisma.articulo.create({ data: { negocioId, nombre: `${PREFIJO} X`, precioVenta: d(1210), ivaPct: d(21), esServicio: true } });
+    const cliente = await prisma.cliente.create({ data: { negocioId, nombre: `${PREFIJO} cliente` } });
     const nuevaVenta = () => prisma.$transaction((tx) => venta(tx, cliente.id, [{ articuloId: articulo.id, cantidad: 1 }], ANIO_FICTICIO));
     const emisorGlobal = crearEmisorSimulado(accesoSimulado(prisma));
     const vigentes = (ventaId: string) =>
@@ -689,7 +705,7 @@ async function concurrencia() {
     for (const ronda of [1, 2, 3]) {
       const v = await nuevaVenta();
       const intento = (db: PrismaClient) =>
-        db.$transaction((tx) => emitirFacturaEnTx(tx, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx)) }), { timeout: 30_000 });
+        db.$transaction((tx) => emitirFacturaEnTx(tx, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx)) }), { timeout: 30_000 });
       const res = await Promise.allSettled([intento(prisma), intento(b), intento(prisma), intento(b)]);
       const ok = res.filter((r) => r.status === "fulfilled");
       const malos = res.filter((r): r is PromiseRejectedResult => r.status === "rejected");
@@ -706,8 +722,8 @@ async function concurrencia() {
     for (const ronda of [1, 2, 3]) {
       const v = await nuevaVenta();
       const res = await Promise.allSettled([
-        emitirFactura(prisma, v, null, { emisor: emisorGlobal }),
-        emitirFactura(b, v, null, { emisor: crearEmisorSimulado(accesoSimulado(b)) }),
+        emitirFactura(prisma, negocioId, v, null, { emisor: emisorGlobal }),
+        emitirFactura(b, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(b)) }),
       ]);
       const ok = res.filter((r): r is PromiseFulfilledResult<ComprobanteProcesado> => r.status === "fulfilled");
       const malos = res.filter((r): r is PromiseRejectedResult => r.status === "rejected");
@@ -728,7 +744,7 @@ async function concurrencia() {
     const ventas = await Promise.all([1, 2, 3, 4, 5].map(() => nuevaVenta()));
     const emitidas = await Promise.all(
       ventas.map((v, k) =>
-        (k % 2 ? b : prisma).$transaction((tx) => emitirFacturaEnTx(tx, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx)) }), { timeout: 30_000 }),
+        (k % 2 ? b : prisma).$transaction((tx) => emitirFacturaEnTx(tx, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx)) }), { timeout: 30_000 }),
       ),
     );
     const numeros = (await prisma.comprobante.findMany({ where: { puntoVenta: PV_CONCURRENCIA, ambiente: "SIMULADO", tipo: "FACTURA_B", estado: "EMITIDO" }, select: { numero: true } }))
@@ -739,29 +755,29 @@ async function concurrencia() {
 
     // 4. Corte en dos fases: el PENDIENTE sobrevive (esta confirmado) y se resuelve despues.
     const vCorte = await nuevaVenta();
-    const cortado = await emitirFactura(prisma, vCorte, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { cortar: () => true }) });
+    const cortado = await emitirFactura(prisma, negocioId, vCorte, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { cortar: () => true }) });
     comprobar("corte: queda PENDIENTE", cortado.estado, "PENDIENTE");
     const guardado = await prisma.comprobante.findUniqueOrThrow({ where: { id: cortado.id } });
     comprobar("corte: el PENDIENTE quedó confirmado en la base con su número", `${guardado.estado} ${guardado.numero}`, `PENDIENTE ${numeros.length + 1}`);
     const vOtra = await nuevaVenta();
-    await rechaza("con el PENDIENTE, otra venta de la serie espera", "esperando respuesta del emisor", () => emitirFactura(prisma, vOtra, null, { emisor: emisorGlobal }));
+    await rechaza("con el PENDIENTE, otra venta de la serie espera", "esperando respuesta del emisor", () => emitirFactura(prisma, negocioId, vOtra, null, { emisor: emisorGlobal }));
     await rechaza("resolver un PENDIENTE recién creado: todavía no", "probá en unos minutos", () => resolverPendiente(prisma, cortado.id, emisorGlobal));
     const despues = new Date(guardado.creadoEn.getTime() + ANTIGUEDAD_MINIMA_PENDIENTE_MS + 1000);
     const resuelto = await resolverPendiente(prisma, cortado.id, emisorGlobal, despues);
     comprobar("resolver: el simulador no lo autorizó → RECHAZADO", `${resuelto.estado} ${resuelto.numero}`, `RECHAZADO ${numeros.length + 1}`);
-    const otraVez = await emitirFactura(prisma, vCorte, null, { emisor: emisorGlobal });
+    const otraVez = await emitirFactura(prisma, negocioId, vCorte, null, { emisor: emisorGlobal });
     comprobar("reintento: EMITIDO con el mismo número", `${otraVez.estado} ${otraVez.numero}`, `EMITIDO ${numeros.length + 1}`);
-    const siguiente = await emitirFactura(prisma, vOtra, null, { emisor: emisorGlobal });
+    const siguiente = await emitirFactura(prisma, negocioId, vOtra, null, { emisor: emisorGlobal });
     comprobar("y la serie sigue", `${siguiente.estado} ${siguiente.numero}`, `EMITIDO ${numeros.length + 2}`);
 
     // 5. Rechazo en dos fases: confirmado como RECHAZADO.
     const vRech = await nuevaVenta();
-    const rech = await emitirFactura(prisma, vRech, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { rechazar: () => ["[10016] prueba"] }) });
+    const rech = await emitirFactura(prisma, negocioId, vRech, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { rechazar: () => ["[10016] prueba"] }) });
     comprobar("rechazo en dos fases: RECHAZADO confirmado", (await prisma.comprobante.findUniqueOrThrow({ where: { id: rech.id } })).estado, "RECHAZADO");
 
     // 6. Venta facturada de verdad (confirmada): no se anula.
     try {
-      await prisma.$transaction((tx) => anularVentaEnTx(tx, vCorte));
+      await prisma.$transaction((tx) => anularVentaEnTx(tx, negocioId, vCorte));
       comprobar("anular una venta facturada (confirmada)", "anulada", "rechazada por la base");
     } catch (error) {
       comprobar("anular una venta facturada (confirmada)", /nota de cr[eé]dito/.test(String(error)) ? "rechazada por la base" : String(error), "rechazada por la base");

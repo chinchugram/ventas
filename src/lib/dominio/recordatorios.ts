@@ -24,7 +24,7 @@ const iso = (f: Date) => f.toISOString().slice(0, 10);
  * El cliente tiene que existir; no hace falta que este activo ni que tenga
  * saldo (se puede dejar constancia de un llamado a alguien que ya pago).
  */
-export async function registrarContactoEnTx(tx: Tx, contacto: ContactoNuevo): Promise<{ id: string }> {
+export async function registrarContactoEnTx(tx: Tx, negocioId: string, contacto: ContactoNuevo): Promise<{ id: string }> {
   const nota = contacto.nota.trim();
   if (!nota) throw new ErrorDeNegocio("Escribí una nota del contacto.");
   if (nota.length > MAX_NOTA) throw new ErrorDeNegocio(`La nota admite hasta ${MAX_NOTA} caracteres.`);
@@ -39,6 +39,7 @@ export async function registrarContactoEnTx(tx: Tx, contacto: ContactoNuevo): Pr
 
   return tx.contactoCobranza.create({
     data: {
+      negocioId,
       clienteId: contacto.clienteId,
       fecha: contacto.fecha,
       nota,

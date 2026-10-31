@@ -40,6 +40,19 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 async function escenario(titulo: string, fn: (tx: Tx) => Promise<void>) {
@@ -93,20 +106,21 @@ async function preparar(tx: Tx) {
     create: { clave: "costoHoraManoObra", valor: "1000" },
   });
   const material = await tx.material.create({
-    data: { nombre: "Prueba A", unidad: "M2", stockActual: d(10), costoUnitario: d(100) },
+    data: { negocioId, nombre: "Prueba A", unidad: "M2", stockActual: d(10), costoUnitario: d(100) },
   });
   const materialBaja = await tx.material.create({
-    data: { nombre: "Material de baja", unidad: "U", costoUnitario: d(1), activo: false },
+    data: { negocioId, nombre: "Material de baja", unidad: "U", costoUnitario: d(1), activo: false },
   });
-  const maquina = await tx.maquina.create({ data: { nombre: "Máquina de prueba", costoHora: d(2000) } });
-  const maquinaBaja = await tx.maquina.create({ data: { nombre: "Máquina de baja", costoHora: d(1), activo: false } });
-  const cliente = await tx.cliente.create({ data: { nombre: "Cliente de prueba" } });
+  const maquina = await tx.maquina.create({ data: { negocioId, nombre: "Máquina de prueba", costoHora: d(2000) } });
+  const maquinaBaja = await tx.maquina.create({ data: { negocioId, nombre: "Máquina de baja", costoHora: d(1), activo: false } });
+  const cliente = await tx.cliente.create({ data: { negocioId, nombre: "Cliente de prueba" } });
   return { material, materialBaja, maquina, maquinaBaja, cliente };
 }
 
 const NOMBRE = "Artículo de prueba único 7f3a";
 
 async function main() {
+  await resolverNegocio();
   await escenario("Alta con receta de los tres tipos y override", async (tx) => {
     const { material, maquina } = await preparar(tx);
     const lineas = [
@@ -116,6 +130,7 @@ async function main() {
     ];
     const { id } = await guardarArticuloEnTx(
       tx,
+      negocioId,
       validado({ nombre: NOMBRE, descripcion: "", precioVenta: "2420", ivaPct: "21", esServicio: false, lineas }),
     );
     const articulo = await tx.articulo.findUniqueOrThrow({ where: { id }, include: { receta: { include: { componentes: true } } } });
@@ -146,6 +161,7 @@ async function main() {
       ];
       await guardarArticuloEnTx(
         tx,
+        negocioId,
         validado({ id, nombre: NOMBRE, descripcion: "", precioVenta: "1", ivaPct: "21", esServicio: false, lineas: desordenadas }),
       );
     }
@@ -170,10 +186,11 @@ async function main() {
         linea({ tipo: "MAQUINA", maquinaId: maquina.id, cantidad: "1" }),
       ],
     };
-    const { id } = await guardarArticuloEnTx(tx, validado(base));
+    const { id } = await guardarArticuloEnTx(tx, negocioId, validado(base));
 
     await guardarArticuloEnTx(
       tx,
+      negocioId,
       validado({
         ...base,
         id,
@@ -193,13 +210,14 @@ async function main() {
     const recetas = await tx.receta.count({ where: { articuloId: id } });
     comprobar("una sola receta", String(recetas), "1");
 
-    await guardarArticuloEnTx(tx, validado({ ...base, id, lineas: [] }));
+    await guardarArticuloEnTx(tx, negocioId, validado({ ...base, id, lineas: [] }));
     const sinReceta = await costoDesdeBase(tx, id);
     comprobar("sin líneas: costo 0", sinReceta.costoTotal.toString(), "0");
     comprobar("sin líneas: no confiable", String(sinReceta.confiable), "false");
 
     const { id: sinNada } = await guardarArticuloEnTx(
       tx,
+      negocioId,
       validado({ ...base, nombre: `${NOMBRE} sin receta`, lineas: [] }),
     );
     comprobar("alta sin líneas no crea receta", String(await tx.receta.count({ where: { articuloId: sinNada } })), "0");
@@ -210,26 +228,28 @@ async function main() {
     const base: DatosArticulo = { nombre: NOMBRE, descripcion: "", precioVenta: "1000", ivaPct: "21", esServicio: false, lineas: [] };
 
     await rechaza("material de baja", "dado de baja", () =>
-      guardarArticuloEnTx(tx, validado({ ...base, lineas: [linea({ tipo: "MATERIAL", materialId: materialBaja.id, cantidad: "1" })] })),
+      guardarArticuloEnTx(tx, negocioId, validado({ ...base, lineas: [linea({ tipo: "MATERIAL", materialId: materialBaja.id, cantidad: "1" })] })),
     );
     await rechaza("máquina de baja", "dada de baja", () =>
-      guardarArticuloEnTx(tx, validado({ ...base, lineas: [linea({ tipo: "MAQUINA", maquinaId: maquinaBaja.id, cantidad: "1" })] })),
+      guardarArticuloEnTx(tx, negocioId, validado({ ...base, lineas: [linea({ tipo: "MAQUINA", maquinaId: maquinaBaja.id, cantidad: "1" })] })),
     );
     await rechaza("material inexistente", "no existe", () =>
       guardarArticuloEnTx(
         tx,
+        negocioId,
         validado({ ...base, lineas: [linea({ tipo: "MATERIAL", materialId: "00000000-0000-4000-8000-000000000000", cantidad: "1" })] }),
       ),
     );
     await rechaza("id que no es uuid", "no existe", () =>
-      guardarArticuloEnTx(tx, validado({ ...base, lineas: [linea({ tipo: "MAQUINA", maquinaId: "maq-1", cantidad: "1" })] })),
+      guardarArticuloEnTx(tx, negocioId, validado({ ...base, lineas: [linea({ tipo: "MAQUINA", maquinaId: "maq-1", cantidad: "1" })] })),
     );
     await rechaza("artículo inexistente", "no existe", () =>
-      guardarArticuloEnTx(tx, validado({ ...base, id: "00000000-0000-4000-8000-000000000000" })),
+      guardarArticuloEnTx(tx, negocioId, validado({ ...base, id: "00000000-0000-4000-8000-000000000000" })),
     );
 
     const { id } = await guardarArticuloEnTx(
       tx,
+      negocioId,
       validado({
         ...base,
         lineas: [
@@ -239,9 +259,9 @@ async function main() {
       }),
     );
     await rechaza("nombre repetido (sin importar mayúsculas)", "Ya hay un artículo activo", () =>
-      guardarArticuloEnTx(tx, validado({ ...base, nombre: NOMBRE.toUpperCase() })),
+      guardarArticuloEnTx(tx, negocioId, validado({ ...base, nombre: NOMBRE.toUpperCase() })),
     );
-    await guardarArticuloEnTx(tx, validado({ ...base, id, precioVenta: "999" }));
+    await guardarArticuloEnTx(tx, negocioId, validado({ ...base, id, precioVenta: "999" }));
     comprobar("editar con su propio nombre", (await tx.articulo.findUniqueOrThrow({ where: { id } })).precioVenta.toString(), "999");
 
     // Si el material se da de baja despues, la receta vieja no se puede guardar tal cual.
@@ -249,6 +269,7 @@ async function main() {
     await rechaza("receta con material dado de baja después", "dado de baja", () =>
       guardarArticuloEnTx(
         tx,
+        negocioId,
         validado({ ...base, id, lineas: [linea({ tipo: "MATERIAL", materialId: material.id, cantidad: "1" })] }),
       ),
     );
@@ -267,10 +288,10 @@ async function main() {
         linea({ tipo: "MANO_OBRA", cantidad: "0.5" }), // 500
       ],
     };
-    const { id } = await guardarArticuloEnTx(tx, validado(base));
+    const { id } = await guardarArticuloEnTx(tx, negocioId, validado(base));
     const hoy = new Date(`${hoyArgentinaISO()}T00:00:00Z`);
     const vender = () =>
-      registrarVentaEnTx(tx, {
+      registrarVentaEnTx(tx, negocioId, {
         clienteId: cliente.id,
         fecha: hoy,
         observaciones: null,
@@ -284,7 +305,7 @@ async function main() {
     comprobar("venta congela el costo de la receta", item.costoUnitarioSnapshot.toString(), "700");
 
     // Cambia la receta: la venta vieja no se entera.
-    await guardarArticuloEnTx(tx, validado({ ...base, id, lineas: [linea({ tipo: "MANO_OBRA", cantidad: "3" })] }));
+    await guardarArticuloEnTx(tx, negocioId, validado({ ...base, id, lineas: [linea({ tipo: "MANO_OBRA", cantidad: "3" })] }));
     const despues = await tx.ventaItem.findFirstOrThrow({ where: { ventaId: venta.id } });
     comprobar("costo congelado tras editar la receta", despues.costoUnitarioSnapshot.toString(), "700");
 
@@ -293,7 +314,7 @@ async function main() {
     await rechaza("no se vende de baja", "dado de baja", vender);
 
     // Otro articulo toma el nombre mientras este esta de baja: reactivar choca.
-    const { id: otro } = await guardarArticuloEnTx(tx, validado({ ...base, lineas: [] }));
+    const { id: otro } = await guardarArticuloEnTx(tx, negocioId, validado({ ...base, lineas: [] }));
     await rechaza("reactivar con nombre tomado", "Ya hay un artículo activo", () => cambiarActivoArticuloEnTx(tx, id, true));
     await cambiarActivoArticuloEnTx(tx, otro, false);
     await cambiarActivoArticuloEnTx(tx, id, true);
