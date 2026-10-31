@@ -2,11 +2,18 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import * as net from "net";
 
+// ─── Rol de la app (multi-tenant F2.1) ─────────────────────────────────────────
+// Este cliente conecta con DATABASE_URL, que DEBE usar el rol `ventas_app`: sin
+// SUPERUSER ni BYPASSRLS, para que las politicas RLS de cada tabla rijan siempre.
+// Las tablas de datos solo se tocan dentro de `conNegocio(negocioId, fn)`
+// (src/lib/negocio.ts); sin contexto de negocio la base no devuelve filas.
+// Las migraciones (`prisma migrate`) y los backfills usan otra URL, la del rol
+// `ventas_migrador` (DATABASE_URL_MIGRACIONES, ver .env.example): nunca la de la app.
 function crearCliente(): PrismaClient {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error(
-      "Falta DATABASE_URL. Copia .env.example a .env y define la conexion a Postgres.",
+      "Falta DATABASE_URL. Copia .env.example a .env y define la conexion a Postgres (rol ventas_app).",
     );
   }
   const adapter = new PrismaPg({ connectionString });
