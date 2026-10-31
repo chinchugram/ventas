@@ -1,5 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { conNegocio } from "@/lib/negocio";
+import { negocioUnico } from "@/lib/dominio/auth";
 import { demoVentas } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { aMoneda, d, fmtFecha, type Dinero, sumar } from "@/lib/money";
@@ -65,22 +67,24 @@ function sinCostos({ costoTotal: _costo, ganancia: _ganancia, ...venta }: VentaR
 }
 
 async function ventasSinCostosDesdeBase(limite: number): Promise<VentaListado[]> {
-  const ventas = await prisma.venta.findMany({
-    where: { estado: { not: "ANULADA" } },
-    orderBy: [{ fecha: "desc" }, { numero: "desc" }],
-    take: limite,
-    select: {
-      id: true,
-      numero: true,
-      anio: true,
-      fecha: true,
-      estado: true,
-      totalBruto: true,
-      cliente: { select: { id: true, nombre: true } },
-      pagos: { where: { anuladoEn: null }, select: { monto: true } },
-      _count: { select: { items: true } },
-    },
-  });
+  const ventas = await conNegocio(await negocioUnico(prisma), (tx) =>
+    tx.venta.findMany({
+      where: { estado: { not: "ANULADA" } },
+      orderBy: [{ fecha: "desc" }, { numero: "desc" }],
+      take: limite,
+      select: {
+        id: true,
+        numero: true,
+        anio: true,
+        fecha: true,
+        estado: true,
+        totalBruto: true,
+        cliente: { select: { id: true, nombre: true } },
+        pagos: { where: { anuladoEn: null }, select: { monto: true } },
+        _count: { select: { items: true } },
+      },
+    }),
+  );
 
   return ventas.map((v) => {
     const pagado = sumar(...v.pagos.map((p) => p.monto));
@@ -102,17 +106,19 @@ async function ventasSinCostosDesdeBase(limite: number): Promise<VentaListado[]>
 }
 
 async function ventasDesdeBase(limite: number): Promise<VentaRow[]> {
-  const ventas = await prisma.venta.findMany({
-    where: { estado: { not: "ANULADA" } },
-    orderBy: [{ fecha: "desc" }, { numero: "desc" }],
-    take: limite,
-    include: {
-      cliente: { select: { id: true, nombre: true } },
-      // Los pagos anulados no cuentan en el saldo.
-      pagos: { where: { anuladoEn: null }, select: { monto: true } },
-      _count: { select: { items: true } },
-    },
-  });
+  const ventas = await conNegocio(await negocioUnico(prisma), (tx) =>
+    tx.venta.findMany({
+      where: { estado: { not: "ANULADA" } },
+      orderBy: [{ fecha: "desc" }, { numero: "desc" }],
+      take: limite,
+      include: {
+        cliente: { select: { id: true, nombre: true } },
+        // Los pagos anulados no cuentan en el saldo.
+        pagos: { where: { anuladoEn: null }, select: { monto: true } },
+        _count: { select: { items: true } },
+      },
+    }),
+  );
 
   return ventas.map((v) => {
     const pagado = sumar(...v.pagos.map((p) => p.monto));
@@ -205,22 +211,24 @@ export const getVenta = cache(
   (id: string): Promise<VentaDetalle | null> =>
     conRespaldo(
       async () => {
-        const v = await prisma.venta.findUnique({
-          where: { id },
-          omit: { costoTotal: true },
-          include: {
-            cliente: { select: { id: true, nombre: true } },
-            usuario: { select: { nombre: true } },
-            items: {
-              orderBy: { id: "asc" },
-              select: { id: true, descripcion: true, cantidad: true, precioUnitario: true, subtotalBruto: true },
+        const v = await conNegocio(await negocioUnico(prisma), (tx) =>
+          tx.venta.findUnique({
+            where: { id },
+            omit: { costoTotal: true },
+            include: {
+              cliente: { select: { id: true, nombre: true } },
+              usuario: { select: { nombre: true } },
+              items: {
+                orderBy: { id: "asc" },
+                select: { id: true, descripcion: true, cantidad: true, precioUnitario: true, subtotalBruto: true },
+              },
+              pagos: {
+                orderBy: [{ fecha: "asc" }, { creadoEn: "asc" }],
+                include: { usuario: { select: { nombre: true } } },
+              },
             },
-            pagos: {
-              orderBy: [{ fecha: "asc" }, { creadoEn: "asc" }],
-              include: { usuario: { select: { nombre: true } } },
-            },
-          },
-        });
+          }),
+        );
         if (!v) return null;
         const pagado = sumar(...v.pagos.filter((p) => p.anuladoEn === null).map((p) => p.monto));
         return {

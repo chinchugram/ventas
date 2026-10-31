@@ -25,6 +25,7 @@ import { accesoSimulado } from "@/lib/dominio/comprobantes";
 import { emitirNotaCredito as emitirNotaCreditoDeVenta } from "@/lib/dominio/notas-credito";
 import { entornoDelProceso, obtenerEmisorFiscal } from "@/lib/fiscal";
 import { negocioUnico } from "@/lib/dominio/auth";
+import { conNegocio } from "@/lib/negocio";
 
 /** Todo lo que muestra el saldo o el estado de una venta. */
 function revalidarCobranza(ventaId: string) {
@@ -49,7 +50,8 @@ export async function anularVenta(datos: z.input<typeof esquema>): Promise<Resul
   const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
-    await prisma.$transaction(async (tx) => anularVentaEnTx(tx, await negocioUnico(tx), ventaId, usuarioId));
+    const negocioId = await negocioUnico(prisma);
+    await conNegocio(negocioId, (tx) => anularVentaEnTx(tx, negocioId, ventaId, usuarioId));
   } catch (error) {
     console.error("[anularVenta]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo anular la venta.") };
@@ -89,8 +91,9 @@ export async function registrarPago(datos: DatosPago): Promise<Resultado> {
   const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
-    await prisma.$transaction(async (tx) =>
-      registrarPagoEnTx(tx, await negocioUnico(tx), { ventaId, monto: d(monto), metodo, fecha: fechaDesdeISO(fecha), notas, usuarioId }),
+    const negocioId = await negocioUnico(prisma);
+    await conNegocio(negocioId, (tx) =>
+      registrarPagoEnTx(tx, negocioId, { ventaId, monto: d(monto), metodo, fecha: fechaDesdeISO(fecha), notas, usuarioId }),
     );
   } catch (error) {
     console.error("[registrarPago]", error);
@@ -117,7 +120,7 @@ export async function anularPago(datos: z.input<typeof esquemaAnularPago>): Prom
 
   let ventaId: string;
   try {
-    ({ ventaId } = await prisma.$transaction((tx) => anularPagoEnTx(tx, pagoId, motivo)));
+    ({ ventaId } = await conNegocio(await negocioUnico(prisma), (tx) => anularPagoEnTx(tx, pagoId, motivo)));
   } catch (error) {
     console.error("[anularPago]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo anular el pago.") };
@@ -137,7 +140,7 @@ export async function marcarEntregada(datos: z.input<typeof esquema>): Promise<R
   const { ventaId } = parsed.data;
 
   try {
-    await prisma.$transaction((tx) => marcarEntregadaEnTx(tx, ventaId));
+    await conNegocio(await negocioUnico(prisma), (tx) => marcarEntregadaEnTx(tx, ventaId));
   } catch (error) {
     console.error("[marcarEntregada]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo marcar la venta como entregada.") };

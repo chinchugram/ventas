@@ -1,5 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { conNegocio } from "@/lib/negocio";
+import { negocioUnico } from "@/lib/dominio/auth";
 import { demoVentas } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { hoyArgentina } from "@/lib/acciones";
@@ -17,20 +19,22 @@ export const getVentasConSaldo = cache(
 
 async function ventasConSaldoDesdeBase(): Promise<VentaConSaldo[]> {
   const hoy = hoyArgentina();
-  const ventas = await prisma.venta.findMany({
-    where: { estado: { not: "ANULADA" } },
-    orderBy: [{ fecha: "asc" }, { numero: "asc" }],
-    select: {
-      id: true,
-      numero: true,
-      anio: true,
-      fecha: true,
-      estado: true,
-      totalBruto: true,
-      cliente: { select: { id: true, nombre: true, telefono: true } },
-      pagos: { select: { monto: true, anuladoEn: true } },
-    },
-  });
+  const ventas = await conNegocio(await negocioUnico(prisma), (tx) =>
+    tx.venta.findMany({
+      where: { estado: { not: "ANULADA" } },
+      orderBy: [{ fecha: "asc" }, { numero: "asc" }],
+      select: {
+        id: true,
+        numero: true,
+        anio: true,
+        fecha: true,
+        estado: true,
+        totalBruto: true,
+        cliente: { select: { id: true, nombre: true, telefono: true } },
+        pagos: { select: { monto: true, anuladoEn: true } },
+      },
+    }),
+  );
 
   const resultado: VentaConSaldo[] = [];
   for (const v of ventas) {
@@ -99,14 +103,16 @@ export const getPagosRecientes = cache(
   (limite = 20): Promise<PagoReciente[]> =>
     conRespaldo(
       async () => {
-        const pagos = await prisma.pago.findMany({
-          orderBy: [{ fecha: "desc" }, { creadoEn: "desc" }],
-          take: limite,
-          include: {
-            venta: { select: { numero: true, anio: true, estado: true } },
-            cliente: { select: { id: true, nombre: true } },
-          },
-        });
+        const pagos = await conNegocio(await negocioUnico(prisma), (tx) =>
+          tx.pago.findMany({
+            orderBy: [{ fecha: "desc" }, { creadoEn: "desc" }],
+            take: limite,
+            include: {
+              venta: { select: { numero: true, anio: true, estado: true } },
+              cliente: { select: { id: true, nombre: true } },
+            },
+          }),
+        );
         return pagos.map((p) => ({
           id: p.id,
           fecha: p.fecha,
@@ -134,10 +140,12 @@ export const getCobradoDelMes = cache(
       async () => {
         const hoy = hoyArgentina();
         const { desde, hasta } = rangoMes(hoy.getUTCFullYear(), hoy.getUTCMonth() + 1);
-        const r = await prisma.pago.aggregate({
-          where: { fecha: { gte: desde, lt: hasta }, anuladoEn: null, venta: { estado: { not: "ANULADA" } } },
-          _sum: { monto: true },
-        });
+        const r = await conNegocio(await negocioUnico(prisma), (tx) =>
+          tx.pago.aggregate({
+            where: { fecha: { gte: desde, lt: hasta }, anuladoEn: null, venta: { estado: { not: "ANULADA" } } },
+            _sum: { monto: true },
+          }),
+        );
         return aMoneda(d(r._sum.monto));
       },
       () => {
