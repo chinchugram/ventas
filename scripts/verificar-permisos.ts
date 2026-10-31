@@ -74,6 +74,9 @@ const MATRIZ: Fila[] = [
   { accion: "verComprobantes", DUENO: true, EMPLEADO: true },
   { accion: "emitirComprobante", DUENO: true, EMPLEADO: true },
   { accion: "emitirNotaCredito", DUENO: true, EMPLEADO: false },
+  // Ola 6: cargar produccion (minutos y materiales, sin costos) es del taller; el margen real es costo: solo dueno.
+  { accion: "cargarProduccion", DUENO: true, EMPLEADO: true },
+  { accion: "verMargenReal", DUENO: true, EMPLEADO: false },
 ];
 
 // ─── 2. Que exige cada pagina y cada accion (a mano) ───────────────────────────

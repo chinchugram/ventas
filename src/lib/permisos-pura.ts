@@ -27,6 +27,8 @@ export type AccionDelDueno =
   | "configuracion"
   | "gestionarUsuarios"
   | "gestionarListasPrecios" // listas de precios y asignarlas a un cliente
+  // Ola 6: el margen real (costo real contra costo de receta) son costos y margenes: solo el dueno.
+  | "verMargenReal"
   // Ola 5: una nota de credito deshace una factura emitida (impacto fiscal): decision del dueno.
   | "emitirNotaCredito";
 
@@ -54,7 +56,9 @@ export type AccionDelMostrador =
   | "registrarContactoCobranza" // deja constancia de un llamado o mensaje
   // Ola 5: facturacion electronica (los comprobantes no llevan costos ni margenes).
   | "verComprobantes" // listado, detalle e impresion de comprobantes
-  | "emitirComprobante"; // emite la factura de una venta
+  | "emitirComprobante" // emite la factura de una venta
+  // Ola 6: produccion. Cargar lo realmente usado (minutos y materiales, sin costos) lo hace quien esta en el taller.
+  | "cargarProduccion"; // cargar, ver y anular trabajos de produccion y estimar tiempos
 
 export type Accion = AccionDelDueno | AccionDelMostrador;
 
@@ -77,6 +81,7 @@ export const PERMISOS: Readonly<Record<Accion, readonly Rol[]>> = {
   gestionarUsuarios: SOLO_DUENO,
   gestionarListasPrecios: SOLO_DUENO,
   emitirNotaCredito: SOLO_DUENO,
+  verMargenReal: SOLO_DUENO,
 
   verVentas: TODOS,
   cargarVenta: TODOS,
@@ -95,6 +100,7 @@ export const PERMISOS: Readonly<Record<Accion, readonly Rol[]>> = {
   registrarContactoCobranza: TODOS,
   verComprobantes: TODOS,
   emitirComprobante: TODOS,
+  cargarProduccion: TODOS,
 };
 
 export const ACCIONES = Object.keys(PERMISOS) as Accion[];

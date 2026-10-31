@@ -40,6 +40,8 @@ const QUE: Record<Accion, string> = {
   registrarContactoCobranza: "registrar contactos de cobranza",
   verComprobantes: "ver los comprobantes",
   emitirComprobante: "emitir comprobantes",
+  verMargenReal: "ver el margen real",
+  cargarProduccion: "cargar la producción",
 };
 
 export function mensajeSinPermiso(accion: Accion): string {

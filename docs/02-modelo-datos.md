@@ -45,6 +45,7 @@ Un solo modelo para todo el sistema, tal como queda con las olas 0 a 5 y 7 integ
 | Compras y stock | `compras`, `compra_items`, `movimientos_stock` |
 | Comercial | `listas_precios`, `lista_precio_items`, `presupuestos`, `presupuesto_items` |
 | Cobranza | `contactos_cobranza` |
+| Producción (ola 6) | `trabajos_produccion`, `trabajo_tiempos`, `trabajo_consumos` |
 
 ---
 
@@ -478,6 +479,7 @@ nullable (lo histórico queda en `NULL` y se muestra "—"), FK `RESTRICT` a `us
 | `contactos_cobranza` | Quien registró el contacto |
 | `listas_precios` | Quien la creó |
 | `comprobantes` | Quien emitió la factura o la nota de crédito. Histórico (NULL) = "—" |
+| `trabajos_produccion` | Quien cargó el trabajo |
 
 Se muestra como "Registrado por" en el detalle de venta y de cada cobro, en el libro de movimientos de un
 material, en el listado de compras, en el detalle de presupuesto y en cada contacto de `/cobranzas/hoy`. En las listas de precios,
@@ -505,6 +507,39 @@ material, en el listado de compras, en el detalle de presupuesto y en cada conta
 - **Saldo y antigüedad de los recordatorios: derivados.** Salen de ventas y pagos no anulados, igual que
   `/cobranzas`: la antigüedad es desde la venta impaga más vieja del cliente. `ContactoCobranza` no guarda
   saldo ni antigüedad, solo el contacto.
+
+## Decisiones de la ola 6 (producción y margen real)
+
+Objetivo: pasar de **margen estimado** (costo de receta, congelado en `venta_items.costoTotalSnapshot`) a
+**margen real**: registrar lo que de verdad se usó en cada trabajo y compararlo con la receta.
+
+### Tablas
+
+- `trabajos_produccion`: un trabajo = lo producido para **una línea de venta** (`ventaItemId`, FK `RESTRICT`).
+  Guarda `fecha`, `minutosManoObra`, `costoHoraManoObraSnapshot`, `notas`, `usuarioId` (quién lo cargó) y la baja
+  lógica (`anuladoEn` + `motivoAnulacion`, siempre juntos). Vigente hay **uno solo por línea** (índice único
+  parcial `WHERE anuladoEn IS NULL`); para corregirlo se anula y se vuelve a cargar. Nunca se borra.
+- `trabajo_tiempos`: minutos de una máquina en un trabajo (`maquinaId`, `minutos`, `costoHoraSnapshot`). Una fila
+  por máquina y trabajo. Los minutos de mano de obra van en el trabajo, aparte.
+- `trabajo_consumos`: material realmente usado (`materialId`, `cantidad` en la unidad del material,
+  `costoUnitarioSnapshot`). Una fila por material y trabajo.
+- `CHECK`: minutos, cantidades y costos `>= 0`. Todas las FK son `RESTRICT` (nada se borra en cascada).
+
+### Decisiones (asumidas con el dueño)
+
+1. **El consumo real no mueve stock.** El stock sigue bajando por receta al vender. Al cargar un consumo real se
+   ofrece un ajuste por la diferencia contra la receta (movimiento `AJUSTE` explícito, con confirmación); nunca
+   se descuenta dos veces.
+2. **Producción por línea de venta** (`VentaItem`), porque el desvío se mide por artículo.
+3. **Quién carga:** `cargarProduccion` (dueño y empleado: sin costos). **Quién ve el margen real:**
+   `verMargenReal`, solo el dueño.
+4. **Costos congelados al cargar** (`*Snapshot`): igual que el costo de la venta, un cambio posterior de precio
+   del material, de la máquina o de la mano de obra no reescribe el margen real de lo ya producido. Los pone el
+   servidor; el cliente nunca los manda.
+
+Costo real de un trabajo = `Σ cantidad × costoUnitarioSnapshot` (materiales) + `Σ minutos / 60 × costoHoraSnapshot`
+(máquinas) + `minutosManoObra / 60 × costoHoraManoObraSnapshot`. Desvío = costo real − costo de receta de la línea.
+No se persiste: se calcula.
 
 ## Decisiones de la ola 5 (facturación)
 
@@ -553,6 +588,9 @@ Están en `prisma/migrations/`. Cada una tiene su encabezado con el porqué.
 11. `20260301000000_comprobantes`: enums `CondicionIva`, `TipoComprobante`, `AmbienteFiscal` y `EstadoComprobante`;
     tablas `comprobantes`, `comprobante_items` y `comprobante_iva`; `clientes.condicionIva` y `clientes.dni`. Con sus
     `CHECK`, índices parciales y triggers (ver "Facturación").
+12. `20260401000000_produccion`: `trabajos_produccion`, `trabajo_tiempos` y `trabajo_consumos`, con sus `CHECK`,
+    índice único parcial del trabajo vigente por línea y FK `RESTRICT`. Va antes de las de la ola 7: solo depende
+    de tablas anteriores.
 
 ---
 
