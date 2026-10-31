@@ -46,9 +46,13 @@ function exigirPermiso(actor: UsuarioSesion | null | undefined): asserts actor i
   if (!puede(actor, "gestionarUsuarios")) throw new ErrorDeNegocio(SIN_PERMISO_USUARIOS);
 }
 
-/** Toda baja o cambio de rol pasa por aca: una a la vez, asi el conteo de duenos activos no se pisa. */
+/**
+ * Toda baja o cambio de rol pasa por aca: una a la vez, asi el conteo de duenos activos no se pisa.
+ * La clave lleva el negocio de la transaccion (`app.negocio_id`, fijado por `conNegocio`): los
+ * duenos de un negocio no frenan la administracion de otro.
+ */
 async function bloquearAdministracion(tx: Tx): Promise<void> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('ventas:usuarios'))`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('usuarios:' || coalesce(nullif(current_setting('app.negocio_id', true), ''), '-'), 0))`;
 }
 
 /** Vuelve a leer al actor de la base: la sesion que llego puede ser de un usuario al que recien dieron de baja. */
