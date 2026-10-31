@@ -108,6 +108,9 @@ const PAGINAS_ESPERADAS: Record<string, Accion[]> = {
   "/materiales/[id]": ["verStock"],
   "/materiales/nuevo": ["editarMateriales"],
   "/materiales/[id]/editar": ["editarMateriales", "verCostos", "verMargenes"],
+  "/produccion": ["cargarProduccion"],
+  "/produccion/cargar/[ventaItemId]": ["cargarProduccion"],
+  "/produccion/trabajo/[id]": ["cargarProduccion"],
   "/presupuestos": ["verPresupuestos"],
   "/presupuestos/nuevo": ["cargarPresupuesto"],
   "/presupuestos/[id]": ["verPresupuestos"],
@@ -152,6 +155,10 @@ const ACCIONES_ESPERADAS: Record<string, Accion> = {
   "presupuestos/actions.ts#anularPresupuesto": "cargarPresupuesto",
   "presupuestos/actions.ts#duplicarPresupuesto": "cargarPresupuesto",
   "presupuestos/actions.ts#convertirPresupuesto": "convertirPresupuesto",
+  // Ola 6 (6.1): cargar y anular produccion es del taller (empleado incluido); ajustar el stock por la diferencia es del dueno.
+  "produccion/actions.ts#cargarTrabajo": "cargarProduccion",
+  "produccion/actions.ts#anularTrabajo": "cargarProduccion",
+  "produccion/actions.ts#ajustarStockDeTrabajo": "ajustarStock",
   "reposicion/actions.ts#guardarFactorReposicion": "configuracion",
   "ventas/actions.ts#registrarVenta": "cargarVenta",
   "ventas/[id]/actions.ts#anularVenta": "anularVenta",
@@ -265,6 +272,14 @@ function main() {
   comprobar("el enlace a Configuracion solo se pinta con configuracion", String(/puedeConfigurar = puede\(usuario, "configuracion"\)/.test(panel) && /a\.codigo === "DATOS_FISCALES" && puedeConfigurar/.test(panel)), "true");
   const consultasComprobantes = leerSrc("lib", "queries", "comprobantes.ts");
   comprobar("las consultas de comprobantes no leen costos ni margenes", String(/costo|margen/i.test(consultasComprobantes.replace(/^.*\/\/.*$/gm, ""))), "false");
+
+  console.log("--- Produccion desde la venta (ola 6, 6.1) ---");
+  const bloqueProduccion = leerSrc("app", "produccion", "_componentes", "bloque-produccion.tsx");
+  comprobar(
+    "BloqueProduccion verifica cargarProduccion ANTES de consultar la produccion de la venta",
+    String(bloqueProduccion.includes('"cargarProduccion"') && bloqueProduccion.indexOf('"cargarProduccion"') < bloqueProduccion.indexOf("await getProduccionDeVenta(")),
+    "true",
+  );
 
   console.log("--- Navbar: cada entrada pide lo mismo que su pagina ---");
   const navbar = leerSrc("components", "navbar.tsx");
