@@ -31,7 +31,7 @@ export async function registrarCompraEnTx(tx: Tx, negocioId: string, compra: Com
   if (items.length === 0) throw new ErrorDeNegocio("Agregá al menos un material");
 
   const ids = [...new Set(items.map((l) => l.materialId))];
-  const activos = await tx.material.count({ where: { id: { in: ids }, activo: true } });
+  const activos = await tx.material.count({ where: { negocioId, id: { in: ids }, activo: true } });
   if (activos !== ids.length) throw new ErrorDeNegocio("Algún material ya no existe o está dado de baja.");
 
   const lineas = items.map((l) => ({ ...l, costoUnitario: aCosto(l.costoUnitario) }));
@@ -58,7 +58,7 @@ export async function registrarCompraEnTx(tx: Tx, negocioId: string, compra: Com
 
   for (const l of lineas) {
     const material = await tx.material.update({
-      where: { id: l.materialId },
+      where: { id: l.materialId, negocioId },
       data: {
         stockActual: { increment: l.cantidad },
         ...(actualizarCosto ? { costoUnitario: l.costoUnitario } : {}),

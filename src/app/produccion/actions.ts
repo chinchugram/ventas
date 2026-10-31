@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { idParaGuardar } from "@/lib/auth";
-import { dbDisponible, prisma } from "@/lib/prisma";
+import { dbDisponible } from "@/lib/prisma";
+import { conNegocio } from "@/lib/negocio";
+import { negocioActual } from "@/lib/queries/stock";
 import { mensajeSinPermiso, puede, verificarPermiso } from "@/lib/permisos";
 import {
   decimalNoNegativo,
@@ -16,7 +18,6 @@ import {
   textoOpcional,
 } from "@/lib/acciones";
 import { d } from "@/lib/money";
-import { negocioUnico } from "@/lib/dominio/auth";
 import { anularTrabajoEnTx, ajustarStockDeTrabajoEnTx, cargarTrabajoYAjustarEnTx } from "@/lib/dominio/produccion";
 
 // Escrituras de produccion. El cliente solo informa lo medido (minutos y cantidades);
@@ -65,11 +66,13 @@ export async function cargarTrabajo(datos: DatosCarga): Promise<{ ok: true; id: 
   const usuarioId = idParaGuardar(permiso.usuario);
 
   try {
-    const { id } = await prisma.$transaction(
+    const negocioId = await negocioActual();
+    const { id } = await conNegocio(
+      negocioId,
       async (tx) =>
         cargarTrabajoYAjustarEnTx(
           tx,
-          await negocioUnico(tx),
+          negocioId,
           {
             ventaItemId: carga.ventaItemId,
             fecha: fechaDesdeISO(carga.fecha),
@@ -109,7 +112,8 @@ export async function anularTrabajo(datos: z.input<typeof esquemaAnulacion>): Pr
   const usuarioId = idParaGuardar(permiso.usuario);
 
   try {
-    await prisma.$transaction(async (tx) => anularTrabajoEnTx(tx, await negocioUnico(tx), { ...parsed.data, usuarioId }));
+    const negocioId = await negocioActual();
+    await conNegocio(negocioId, (tx) => anularTrabajoEnTx(tx, negocioId, { ...parsed.data, usuarioId }));
   } catch (error) {
     console.error("[anularTrabajo]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo anular el trabajo.") };
@@ -138,7 +142,8 @@ export async function ajustarStockDeTrabajo(datos: z.input<typeof esquemaAjuste>
   const usuarioId = idParaGuardar(permiso.usuario);
 
   try {
-    await prisma.$transaction(async (tx) => ajustarStockDeTrabajoEnTx(tx, await negocioUnico(tx), { trabajoId: parsed.data.trabajoId, usuarioId }), { timeout: 20_000 });
+    const negocioId = await negocioActual();
+    await conNegocio(negocioId, (tx) => ajustarStockDeTrabajoEnTx(tx, negocioId, { trabajoId: parsed.data.trabajoId, usuarioId }), { timeout: 20_000 });
   } catch (error) {
     console.error("[ajustarStockDeTrabajo]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo ajustar el stock.") };

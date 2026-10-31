@@ -18,7 +18,7 @@ export async function ajustarStockEnTx(
   // FOR UPDATE: si entra una compra mientras se ajusta, una espera a la otra.
   const filas = await tx.$queryRaw<{ stockActual: string }[]>`
     SELECT "stockActual"::text AS "stockActual" FROM "materiales"
-    WHERE id = ${materialId}::uuid AND activo = true FOR UPDATE`;
+    WHERE id = ${materialId}::uuid AND "negocioId" = ${negocioId}::uuid AND activo = true FOR UPDATE`;
   if (filas.length === 0) throw new ErrorDeNegocio("El material no existe.");
 
   const diferencia = diferenciaDeConteo(d(filas[0]!.stockActual), stockContado);
@@ -26,7 +26,7 @@ export async function ajustarStockEnTx(
     throw new ErrorDeNegocio("El stock contado coincide con el del sistema: no hay nada que ajustar.");
   }
 
-  await tx.material.update({ where: { id: materialId }, data: { stockActual: stockContado } });
+  await tx.material.update({ where: { id: materialId, negocioId }, data: { stockActual: stockContado } });
   await tx.movimientoStock.create({
     data: {
       negocioId,
