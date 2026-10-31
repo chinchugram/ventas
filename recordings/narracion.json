@@ -1,0 +1,92 @@
+{
+  "voz": "es-AR-ElenaNeural",
+  "idioma": "es-AR",
+  "segmentos": [
+    {
+      "id": "resumen",
+      "texto": "Esto es Ventas, una app para llevar el costo, el margen y la cobranza de un comercio chico. Arrancamos por el resumen del mes: lo facturado, lo cobrado, el costo y la ganancia, con el margen frente a la meta.",
+      "pasos": [
+        { "action": "wait", "ms": 2500 },
+        { "action": "scroll", "y": 380 },
+        { "action": "wait", "ms": 2000 },
+        { "action": "scroll", "y": -380 },
+        { "action": "wait", "fill": true }
+      ]
+    },
+    {
+      "id": "ventas",
+      "texto": "En Ventas vemos cada operación con su total, la ganancia y el saldo pendiente. Se distinguen las pagadas, las parciales y las que todavía no se cobraron.",
+      "pasos": [
+        { "action": "click", "selector": "a[href=\"/ventas\"]:visible" },
+        { "action": "wait", "ms": 2500 },
+        { "action": "scroll", "y": 420 },
+        { "action": "wait", "fill": true }
+      ]
+    },
+    {
+      "id": "articulos",
+      "texto": "En Artículos, cada producto muestra su costo según la receta, el precio de venta y el margen real. Si un artículo no tiene receta, la app avisa que ese margen es optimista y que no conviene decidir con ese número.",
+      "pasos": [
+        { "action": "click", "selector": "a[href=\"/catalogo\"]:visible" },
+        { "action": "wait", "ms": 3000 },
+        { "action": "scroll", "y": 450 },
+        { "action": "wait", "fill": true }
+      ]
+    },
+    {
+      "id": "clientes",
+      "texto": "En Clientes, lo que debe cada uno, cuánto se le facturó y cuándo fue la última venta.",
+      "pasos": [
+        { "action": "click", "selector": "a[href=\"/clientes\"]:visible" },
+        { "action": "wait", "fill": true }
+      ]
+    },
+    {
+      "id": "materiales",
+      "texto": "En Materiales, el stock, el mínimo y el costo de cada insumo, y el valor total que hay guardado a costo de compra.",
+      "pasos": [
+        { "action": "click", "selector": "a[href=\"/materiales\"]:visible" },
+        { "action": "wait", "fill": true }
+      ]
+    },
+    {
+      "id": "reportes",
+      "texto": "Los reportes muestran la ganancia por producto y cuáles son los más rentables, ordenados por ganancia y no por cantidad de unidades vendidas.",
+      "pasos": [
+        { "action": "click", "selector": "a[href=\"/reportes\"]:visible" },
+        { "action": "wait", "ms": 3000 },
+        { "action": "scroll", "y": 450 },
+        { "action": "wait", "ms": 2500 },
+        { "action": "scroll", "y": 450 },
+        { "action": "wait", "fill": true }
+      ]
+    },
+    {
+      "id": "nueva-venta",
+      "texto": "Para cargar una venta, elegimos el cliente y sumamos artículos. El costo, el IVA y el margen se calculan en vivo.",
+      "pasos": [
+        { "action": "click", "selector": "a[href=\"/ventas/nueva\"]:visible >> nth=0" },
+        { "action": "wait", "fill": true }
+      ]
+    },
+    {
+      "id": "nueva-venta-carga",
+      "texto": "Elegimos a Estudio Weber, sumamos un cartel y un rótulo luminoso, y el total y la ganancia se actualizan al instante. Es una simulación: no guarda nada en la base.",
+      "pasos": [
+        { "action": "select", "selector": "select", "value": "Estudio Weber" },
+        { "action": "click", "selector": "button:has-text(\"Cartel en MDF\")" },
+        { "action": "click", "selector": "button:has-text(\"Rótulo luminoso\")" },
+        { "action": "scroll", "y": 500 },
+        { "action": "wait", "fill": true }
+      ]
+    },
+    {
+      "id": "cierre",
+      "texto": "Eso es todo. Los datos son de ejemplo, y los costos y márgenes salen del mismo motor de costeo que usa la versión con base de datos.",
+      "pasos": [
+        { "action": "click", "selector": "a:visible:text-is(\"Mes\")" },
+        { "action": "wait", "fill": true }
+      ]
+    }
+  ]
+}
