@@ -18,11 +18,12 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { d, type Dinero } from "../src/lib/money";
+import { claveLockVentas } from "../src/lib/dominio/ventas";
 import { ErrorDeNegocio, hoyArgentina } from "../src/lib/acciones";
 import type { Tx } from "../src/lib/dominio/tx";
 import {
   anularPresupuestoEnTx,
-  CLAVE_LOCK_PRESUPUESTOS,
+  claveLockPresupuestos,
   convertirPresupuestoEnTx,
   crearPresupuestoEnTx,
   duplicarPresupuestoEnTx,
@@ -606,13 +607,13 @@ async function main() {
 async function lockDistinto() {
   console.log("--- Numerar presupuestos no espera al lock de las ventas ---");
   const anio = HOY.getUTCFullYear();
-  comprobar("la clave de lock no es la del año", String(CLAVE_LOCK_PRESUPUESTOS + anio !== anio), "true");
+  comprobar("la clave de lock no es la de las ventas", String(claveLockPresupuestos(negocioId, anio) !== claveLockVentas(negocioId, anio)), "true");
   const otro = nuevoCliente();
   let liberar: () => void = () => {};
   const tomado = new Promise<void>((resolver) => {
     const sostenida = otro.$transaction(
       async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${anio})`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${claveLockVentas(negocioId, anio)}, 0))`;
         resolver();
         await new Promise<void>((fin) => (liberar = fin));
       },

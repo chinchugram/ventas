@@ -21,11 +21,13 @@ import { registrarVentaEnTx } from "./ventas";
 // `registrarVentaEnTx` con los precios congelados.
 
 /**
- * Clave del advisory lock que numera los presupuestos de un anio. Distinta de la
- * de las ventas (que usa el anio a secas): un presupuesto nuevo no espera a una
- * venta ni al reves. Se suma el anio a este offset.
+ * Clave textual del advisory lock que numera los presupuestos de un (negocio, anio).
+ * Distinta de la de las ventas (`claveLockVentas`): un presupuesto nuevo no espera a una
+ * venta ni al reves, y dos negocios no se esperan entre si.
  */
-export const CLAVE_LOCK_PRESUPUESTOS = 7_200_000_000;
+export function claveLockPresupuestos(negocioId: string, anio: number): string {
+  return `presupuestos:${negocioId}:${anio}`;
+}
 
 export type DatosPresupuesto = {
   clienteId: string;
@@ -148,8 +150,8 @@ async function crearConLineas(
   hoy: Date,
 ): Promise<{ id: string; numero: number; anio: number }> {
   const anio = hoy.getUTCFullYear();
-  // Un solo escritor numera por anio a la vez (lock distinto al de las ventas).
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_PRESUPUESTOS}::bigint + ${anio}::bigint)`;
+  // Un solo escritor numera por (negocio, anio) a la vez (lock distinto al de las ventas).
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${claveLockPresupuestos(negocioId, anio)}, 0))`;
   const ultimo = await tx.presupuesto.aggregate({ where: { negocioId, anio }, _max: { numero: true } });
   const numero = (ultimo._max.numero ?? 0) + 1;
 
