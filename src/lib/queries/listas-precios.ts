@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { conRespaldo } from "@/lib/respaldo";
 import type { Dinero } from "@/lib/money";
 import { listaDePrecios, preciosBajoCosto, type PrecioBajoCosto } from "@/lib/precios";
@@ -26,10 +26,12 @@ export const getListasPrecios = cache(
   (): Promise<ListaListado[]> =>
     conRespaldo(
       async () => {
-        const listas = await prisma.listaPrecio.findMany({
-          orderBy: { nombre: "asc" },
-          include: { _count: { select: { items: true, clientes: true } } },
-        });
+        const listas = await conNegocio(await negocioActual(), (tx) =>
+          tx.listaPrecio.findMany({
+            orderBy: { nombre: "asc" },
+            include: { _count: { select: { items: true, clientes: true } } },
+          }),
+        );
         return listas.map((l) => ({
           id: l.id,
           nombre: l.nombre,
@@ -70,15 +72,17 @@ export const getListaPrecio = cache(
       async () => {
         // Un id que no es uuid haria fallar la consulta: es un 404.
         if (!UUID.test(id)) return null;
-        const l = await prisma.listaPrecio.findUnique({
-          where: { id },
-          include: {
-            _count: { select: { clientes: true } },
-            // Solo el nombre para mostrar: nunca el hash ni datos de sesion.
-            usuario: { select: { nombre: true } },
-            items: { include: { articulo: { select: { nombre: true, precioVenta: true, activo: true } } } },
-          },
-        });
+        const l = await conNegocio(await negocioActual(), (tx) =>
+          tx.listaPrecio.findUnique({
+            where: { id },
+            include: {
+              _count: { select: { clientes: true } },
+              // Solo el nombre para mostrar: nunca el hash ni datos de sesion.
+              usuario: { select: { nombre: true } },
+              items: { include: { articulo: { select: { nombre: true, precioVenta: true, activo: true } } } },
+            },
+          }),
+        );
         if (!l) return null;
         return {
           id: l.id,
@@ -108,11 +112,13 @@ export const getArticulosParaLista = cache(
   (): Promise<ArticuloParaLista[]> =>
     conRespaldo(
       async () => {
-        const articulos = await prisma.articulo.findMany({
-          where: { activo: true },
-          orderBy: { nombre: "asc" },
-          select: { id: true, nombre: true, precioVenta: true },
-        });
+        const articulos = await conNegocio(await negocioActual(), (tx) =>
+          tx.articulo.findMany({
+            where: { activo: true },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true, precioVenta: true },
+          }),
+        );
         return articulos.map((a) => ({ id: a.id, nombre: a.nombre, precioCatalogo: a.precioVenta }));
       },
       () => [],
@@ -130,12 +136,14 @@ export type ListaOpcion = { id: string; nombre: string; descuentoPct: Dinero; ac
 export const getListasParaElegir = cache(
   (incluirId: string | null): Promise<ListaOpcion[]> =>
     conRespaldo(
-      () =>
-        prisma.listaPrecio.findMany({
-          where: { OR: [{ activo: true }, ...(incluirId ? [{ id: incluirId }] : [])] },
-          orderBy: { nombre: "asc" },
-          select: { id: true, nombre: true, descuentoPct: true, activo: true },
-        }),
+      async () =>
+        conNegocio(await negocioActual(), (tx) =>
+          tx.listaPrecio.findMany({
+            where: { OR: [{ activo: true }, ...(incluirId ? [{ id: incluirId }] : [])] },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true, descuentoPct: true, activo: true },
+          }),
+        ),
       () => [],
     ),
 );
@@ -146,10 +154,12 @@ export const getListaDeCliente = cache(
     conRespaldo(
       async () => {
         if (!UUID.test(clienteId)) return null;
-        const c = await prisma.cliente.findUnique({
-          where: { id: clienteId },
-          select: { listaPrecio: { select: { id: true, nombre: true, descuentoPct: true, activo: true } } },
-        });
+        const c = await conNegocio(await negocioActual(), (tx) =>
+          tx.cliente.findUnique({
+            where: { id: clienteId },
+            select: { listaPrecio: { select: { id: true, nombre: true, descuentoPct: true, activo: true } } },
+          }),
+        );
         return c?.listaPrecio ?? null;
       },
       () => null,
@@ -167,10 +177,12 @@ export async function getPreciosBajoCosto(listaId: string): Promise<PrecioBajoCo
   return conRespaldo(
     async () => {
       if (!UUID.test(listaId)) return [];
-      const l = await prisma.listaPrecio.findUnique({
-        where: { id: listaId },
-        select: { activo: true, descuentoPct: true, items: { select: { articuloId: true, precio: true } } },
-      });
+      const l = await conNegocio(await negocioActual(), (tx) =>
+        tx.listaPrecio.findUnique({
+          where: { id: listaId },
+          select: { activo: true, descuentoPct: true, items: { select: { articuloId: true, precio: true } } },
+        }),
+      );
       if (!l) return [];
       const articulos = await getArticulosConMargen();
       return preciosBajoCosto(

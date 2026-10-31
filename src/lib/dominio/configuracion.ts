@@ -8,13 +8,19 @@ import type { Tx } from "@/lib/dominio/tx";
 // (`esquemaConfiguracion`, `esquemaMaquina`) y un `tx`, asi las llaman tanto las
 // server actions como `scripts/test-configuracion.ts`.
 
-// TRANSITORIO (F1.2): `configuracion` tiene clave (negocioId, clave). Hasta que F3.1
-// traiga el negocio de la sesion, estas funciones usan el negocio unico y no cambian
-// de firma.
+// `configuracion` tiene clave (negocioId, clave): se lee y se escribe por negocio. Las
+// server actions pasan el `negocioId` del contexto con el que abrieron `conNegocio`.
+// `negocioId` es opcional solo para los scripts de prueba que corren sin RLS (rol con
+// BYPASSRLS) y sin sesion: si falta, se usa el negocio unico y, con mas de uno, falla.
+
+/** Negocio donde se escribe: el pasado, o (solo sin contexto de negocio) el unico que haya. */
+async function negocioDeEscritura(tx: Tx, negocioId?: string): Promise<string> {
+  return negocioId ?? (await negocioUnico(tx));
+}
 
 /** Guarda las cuatro claves con upsert: las que no existian se crean. */
-export async function guardarConfiguracionEnTx(tx: Tx, datos: ConfiguracionValidada): Promise<void> {
-  const negocioId = await negocioUnico(tx);
+export async function guardarConfiguracionEnTx(tx: Tx, datos: ConfiguracionValidada, negocioId?: string): Promise<void> {
+  negocioId = await negocioDeEscritura(tx, negocioId);
   for (const clave of Object.values(CLAVES)) {
     const valor = datos[clave];
     await tx.configuracion.upsert({
@@ -75,8 +81,8 @@ export async function cambiarActivoMaquinaEnTx(tx: Tx, id: string, activo: boole
  * queda para las opcionales vacias (ingresos brutos). Las que no van en el
  * formulario (el umbral de identificacion) no se tocan: quien llama decide.
  */
-export async function guardarDatosFiscalesEnTx(tx: Tx, valores: Record<string, string>): Promise<void> {
-  const negocioId = await negocioUnico(tx);
+export async function guardarDatosFiscalesEnTx(tx: Tx, valores: Record<string, string>, negocioId?: string): Promise<void> {
+  negocioId = await negocioDeEscritura(tx, negocioId);
   for (const [clave, valor] of Object.entries(valores)) {
     if (valor === "") {
       await tx.configuracion.deleteMany({ where: { negocioId, clave } });

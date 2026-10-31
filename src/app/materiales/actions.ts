@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { dbDisponible, prisma } from "@/lib/prisma";
+import { dbDisponible } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import {
@@ -16,7 +17,6 @@ import {
 import { UNIDADES } from "@/lib/materiales";
 import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { cambiarEstadoMaterialEnTx, crearMaterialEnTx, editarMaterialEnTx } from "@/lib/dominio/materiales";
-import { negocioUnico } from "@/lib/dominio/auth";
 
 // Alta, edicion y baja logica de materiales. El stock no se edita aca: solo
 // cambia por compras, ventas y ajustes (el alta deja su "Stock inicial").
@@ -94,8 +94,9 @@ export async function crearMaterial(
   const usuarioId = idParaGuardar(sesion.usuario);
   let id: string;
   try {
-    ({ id } = await prisma.$transaction(async (tx) =>
-      crearMaterialEnTx(tx, await negocioUnico(tx), {
+    const negocioId = await negocioActual();
+    ({ id } = await conNegocio(negocioId, (tx) =>
+      crearMaterialEnTx(tx, negocioId, {
         nombre: m.nombre,
         unidad: m.unidad,
         stockInicial: d(m.stockInicial),
@@ -124,7 +125,7 @@ export async function editarMaterial(datos: DatosMaterialEditado): Promise<Resul
 
   const m = parsed.data;
   try {
-    await prisma.$transaction((tx) =>
+    await conNegocio(await negocioActual(), (tx) =>
       editarMaterialEnTx(tx, {
         id: m.id,
         nombre: m.nombre,
@@ -155,7 +156,7 @@ export async function cambiarEstadoMaterial(datos: z.input<typeof esquemaEstado>
 
   const { id, activo } = parsed.data;
   try {
-    await prisma.$transaction((tx) => cambiarEstadoMaterialEnTx(tx, id, activo));
+    await conNegocio(await negocioActual(), (tx) => cambiarEstadoMaterialEnTx(tx, id, activo));
   } catch (error) {
     console.error("[cambiarEstadoMaterial]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo cambiar el estado del material.") };

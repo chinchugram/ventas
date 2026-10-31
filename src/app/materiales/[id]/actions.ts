@@ -2,13 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { dbDisponible, prisma } from "@/lib/prisma";
+import { dbDisponible } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import { decimalNoNegativo, mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { ajustarStockEnTx } from "@/lib/dominio/stock";
-import { negocioUnico } from "@/lib/dominio/auth";
 
 const esquema = z.object({
   materialId: z.uuid("Material inválido"),
@@ -29,8 +29,9 @@ export async function ajustarStock(datos: z.input<typeof esquema>): Promise<Resu
   if (!sesion.ok) return sesion;
   const usuarioId = idParaGuardar(sesion.usuario);
   try {
-    await prisma.$transaction(async (tx) =>
-      ajustarStockEnTx(tx, await negocioUnico(tx), { materialId, motivo, usuarioId, stockContado: d(parsed.data.stockContado) }),
+    const negocioId = await negocioActual();
+    await conNegocio(negocioId, (tx) =>
+      ajustarStockEnTx(tx, negocioId, { materialId, motivo, usuarioId, stockContado: d(parsed.data.stockContado) }),
     );
   } catch (error) {
     console.error("[ajustarStock]", error);

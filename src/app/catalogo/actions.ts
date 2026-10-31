@@ -2,12 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { dbDisponible, prisma } from "@/lib/prisma";
+import { dbDisponible } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { verificarPermiso } from "@/lib/permisos";
 import { mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { validarArticulo, type DatosArticulo } from "@/lib/recetas";
 import { cambiarActivoArticuloEnTx, guardarArticuloEnTx } from "@/lib/dominio/articulos";
-import { negocioUnico } from "@/lib/dominio/auth";
 
 /** Pantallas que muestran costo, precio o margen de los articulos. */
 function revalidarCatalogo(id: string) {
@@ -30,7 +30,8 @@ export async function guardarArticulo(
   if (!validado.ok) return validado;
 
   try {
-    const { id } = await prisma.$transaction(async (tx) => guardarArticuloEnTx(tx, await negocioUnico(tx), validado.valor));
+    const negocioId = await negocioActual();
+    const { id } = await conNegocio(negocioId, (tx) => guardarArticuloEnTx(tx, negocioId, validado.valor));
     revalidarCatalogo(id);
     return { ok: true, id };
   } catch (error) {
@@ -51,7 +52,7 @@ export async function cambiarActivoArticulo(datos: z.input<typeof esquemaActivo>
 
   const { id, activo } = parsed.data;
   try {
-    await prisma.$transaction((tx) => cambiarActivoArticuloEnTx(tx, id, activo));
+    await conNegocio(await negocioActual(), (tx) => cambiarActivoArticuloEnTx(tx, id, activo));
   } catch (error) {
     console.error("[cambiarActivoArticulo]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo cambiar el estado del artículo.") };

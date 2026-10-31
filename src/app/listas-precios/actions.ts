@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
-import { dbDisponible, prisma } from "@/lib/prisma";
+import { dbDisponible } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { verificarPermiso } from "@/lib/permisos";
 import { idParaGuardar } from "@/lib/auth";
 import { d } from "@/lib/money";
@@ -15,7 +16,6 @@ import {
   guardarPrecioListaEnTx,
   quitarPrecioListaEnTx,
 } from "@/lib/dominio/listas-precios";
-import { negocioUnico } from "@/lib/dominio/auth";
 
 export type { Resultado } from "@/lib/acciones";
 
@@ -67,8 +67,9 @@ export async function crearLista(datos: DatosLista): Promise<{ ok: true; id: str
 
   let id: string;
   try {
-    ({ id } = await prisma.$transaction(async (tx) =>
-      crearListaEnTx(tx, await negocioUnico(tx), { nombre: parsed.data.nombre, descuentoPct: d(parsed.data.descuentoPct) }, usuarioId),
+    const negocioId = await negocioActual();
+    ({ id } = await conNegocio(negocioId, (tx) =>
+      crearListaEnTx(tx, negocioId, { nombre: parsed.data.nombre, descuentoPct: d(parsed.data.descuentoPct) }, usuarioId),
     ));
   } catch (error) {
     if (esNombreDuplicado(error)) return { ok: false, error: "Ya hay una lista con ese nombre." };
@@ -90,7 +91,7 @@ export async function editarLista(datos: DatosLista & { id: string }): Promise<R
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) =>
+    await conNegocio(await negocioActual(), (tx) =>
       editarListaEnTx(tx, id.data, { nombre: parsed.data.nombre, descuentoPct: d(parsed.data.descuentoPct) }),
     );
   } catch (error) {
@@ -112,7 +113,7 @@ export async function cambiarActivoLista(datos: { id: string; activo: boolean })
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => cambiarActivoListaEnTx(tx, parsed.data.id, parsed.data.activo));
+    await conNegocio(await negocioActual(), (tx) => cambiarActivoListaEnTx(tx, parsed.data.id, parsed.data.activo));
   } catch (error) {
     console.error("[cambiarActivoLista]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo actualizar la lista.") };
@@ -132,7 +133,8 @@ export async function guardarPrecioLista(datos: DatosPrecioLista): Promise<Resul
 
   const { listaId, articuloId, precio } = parsed.data;
   try {
-    await prisma.$transaction(async (tx) => guardarPrecioListaEnTx(tx, await negocioUnico(tx), listaId, articuloId, d(precio)));
+    const negocioId = await negocioActual();
+    await conNegocio(negocioId, (tx) => guardarPrecioListaEnTx(tx, negocioId, listaId, articuloId, d(precio)));
   } catch (error) {
     console.error("[guardarPrecioLista]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar el precio.") };
@@ -151,7 +153,7 @@ export async function quitarPrecioLista(datos: { listaId: string; articuloId: st
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => quitarPrecioListaEnTx(tx, parsed.data.listaId, parsed.data.articuloId));
+    await conNegocio(await negocioActual(), (tx) => quitarPrecioListaEnTx(tx, parsed.data.listaId, parsed.data.articuloId));
   } catch (error) {
     console.error("[quitarPrecioLista]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo quitar el precio.") };
