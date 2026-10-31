@@ -8,6 +8,7 @@
  * AUTH_ESTRICTO=1 eso cuenta como falla: para cuando 4.3 termine de cubrirlas.
  */
 import {
+  armarValorDeCookie,
   CLAVE_MAX,
   CLAVE_MIN,
   debeRenovar,
@@ -20,8 +21,10 @@ import {
   hashearClave,
   inicioDeRol,
   leerHash,
+  leerValorDeCookie,
   necesitaRehash,
   nombreCookie,
+  normalizarSlug,
   normalizarUsuario,
   opcionesCookie,
   PAUSA_MAX_MS,
@@ -30,10 +33,12 @@ import {
   problemaDeUsuario,
   registrarFallo,
   SCRYPT_ACTUAL,
+  slugValido,
+  SLUGS_RESERVADOS,
   verificarClave,
   type EstadoFallos,
 } from "../src/lib/auth-pura";
-import { ACCIONES, puede, rutaDeInicio, type Accion } from "../src/lib/permisos-pura";
+import { ACCIONES, esRutaDeAdmin, puede, rutaDeInicio, rutaPermitidaParaRol, type Accion } from "../src/lib/permisos-pura";
 import {
   auditarAcciones,
   paginas,
@@ -219,6 +224,48 @@ async function main() {
   comprobar("accion desconocida, nada (tampoco el dueno)", String(puede({ rol: "DUENO" }, "toString" as Accion)), "false");
   comprobar("inicio del empleado", rutaDeInicio("EMPLEADO"), inicioDeRol("EMPLEADO"));
   comprobar("inicio del dueno", rutaDeInicio("DUENO"), inicioDeRol("DUENO"));
+
+  console.log("--- Negocio: slug, cookie y SUPERADMIN ---");
+  for (const [slug, esperado] of [
+    ["hl-laser", true], ["  HL-Laser ", true], ["abc", true], ["a1-b2-c3", true], ["a".repeat(30), true],
+    ["ab", false], ["a".repeat(31), false], ["con espacio", false], ["con_guion_bajo", false], ["ñandu", false],
+    ["", false], ["hl.laser", false], ["admin", false], ["API", false], ["login", false], ["www", false], ["app", false],
+  ] as [string, boolean][]) {
+    comprobar(`slug ${JSON.stringify(slug)}`, String(slugValido(slug)), String(esperado));
+  }
+  comprobar("slugs reservados (F0)", [...SLUGS_RESERVADOS].sort().join(","), "admin,api,app,login,www");
+  comprobar("normalizarSlug", normalizarSlug("  HL-Laser "), "hl-laser");
+
+  const NEGOCIO = "3f2b8c1e-9d4a-4b7e-8a15-6c0d2e9f1a77";
+  const tokenNuevo = generarToken();
+  comprobar("valor de cookie: ida y vuelta", JSON.stringify(leerValorDeCookie(armarValorDeCookie(NEGOCIO, tokenNuevo))), JSON.stringify({ negocioId: NEGOCIO, token: tokenNuevo }));
+  for (const [etiqueta, valor] of [
+    ["el token solo (cookie vieja)", tokenNuevo],
+    ["vacia", ""],
+    ["undefined", undefined],
+    ["negocio que no es UUID", `no-es-un-uuid-pero-de-36-caracteres.${tokenNuevo}`],
+    ["token corto", `${NEGOCIO}.abc`],
+    ["token con caracteres raros", `${NEGOCIO}.${"!".repeat(43)}`],
+    ["sin separador", `${NEGOCIO}${tokenNuevo}`],
+    ["dos separadores", `${NEGOCIO}.${tokenNuevo}.${tokenNuevo}`],
+    ["negocio en mayusculas", `${NEGOCIO.toUpperCase()}.${tokenNuevo}`],
+    ["enorme", `${NEGOCIO}.${"a".repeat(5000)}`],
+  ] as [string, string | undefined][]) {
+    comprobar(`valor de cookie invalido: ${etiqueta}`, String(leerValorDeCookie(valor)), "null");
+  }
+
+  comprobar("SUPERADMIN no puede ninguna accion", String(ACCIONES.some((a) => puede({ rol: "SUPERADMIN" }, a))), "false");
+  comprobar("inicio del SUPERADMIN", rutaDeInicio("SUPERADMIN"), "/admin/negocios");
+  comprobar("inicioDeRol(SUPERADMIN) = rutaDeInicio", inicioDeRol("SUPERADMIN"), rutaDeInicio("SUPERADMIN"));
+  for (const [ruta, esperado] of [["/admin", true], ["/admin/negocios", true], ["/administrar", false], ["/", false], ["/ventas", false], ["/adminx/y", false]] as [string, boolean][]) {
+    comprobar(`esRutaDeAdmin(${ruta})`, String(esRutaDeAdmin(ruta)), String(esperado));
+  }
+  for (const rol of ["DUENO", "EMPLEADO"] as const) {
+    comprobar(`${rol}: no entra a /admin/**`, String(rutaPermitidaParaRol(rol, "/admin") || rutaPermitidaParaRol(rol, "/admin/negocios")), "false");
+    comprobar(`${rol}: entra a su zona`, String(rutaPermitidaParaRol(rol, "/") && rutaPermitidaParaRol(rol, "/ventas/nueva") && rutaPermitidaParaRol(rol, "/usuarios")), "true");
+  }
+  comprobar("SUPERADMIN: entra a /admin/**", String(rutaPermitidaParaRol("SUPERADMIN", "/admin/negocios")), "true");
+  comprobar("SUPERADMIN: no entra a ninguna pantalla de un negocio", String(["/", "/ventas", "/usuarios", "/reportes", "/clientes"].some((r) => rutaPermitidaParaRol("SUPERADMIN", r))), "false");
 
   auditarRutas();
 

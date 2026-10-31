@@ -19,6 +19,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { usarNegocioDePrueba } from "../src/lib/negocio";
 import { d } from "../src/lib/money";
 import { fechaDesdeISO } from "../src/lib/acciones";
 import { rangoEntre } from "../src/lib/rango-fechas";
@@ -64,6 +65,7 @@ let original: Original | null = null;
 async function main() {
   await limpiar();
   const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
+  usarNegocioDePrueba(negocioId); // las consultas leen el negocio de la sesion: aca no hay pedido
 
   const cliente = await prisma.cliente.findFirstOrThrow();
   const [artX, artY] = await prisma.articulo.findMany({ orderBy: { nombre: "asc" }, take: 2 });

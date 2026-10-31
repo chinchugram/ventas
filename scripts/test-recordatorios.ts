@@ -13,6 +13,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { usarNegocioDePrueba } from "../src/lib/negocio";
 import { d } from "../src/lib/money";
 import { ErrorDeNegocio, fechaDesdeISO, hoyArgentinaISO } from "../src/lib/acciones";
 import type { Tx } from "../src/lib/dominio/tx";
@@ -109,6 +110,7 @@ async function clienteDePrueba(tx: Tx, nombre = "Cliente de recordatorios", tele
 
 async function main() {
   await resolverNegocio();
+  usarNegocioDePrueba(negocioId); // las consultas leen el negocio de la sesion: aca no hay pedido
   await escenario("Registrar un contacto", async (tx) => {
     const c = await clienteDePrueba(tx);
     const { id } = await registrarContactoEnTx(tx, negocioId, {

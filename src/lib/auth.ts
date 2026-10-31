@@ -22,7 +22,7 @@ export function opcionesCookieSesion(expiraEn: Date) {
 const ID_DEMO = "00000000-0000-0000-0000-000000000000";
 
 /** Usuario simulado del modo demo: solo en desarrollo y solo si no hay base. */
-const DEMO: UsuarioSesion = { id: ID_DEMO, usuario: "demo", nombre: "Demo", rol: "DUENO" };
+const DEMO: UsuarioSesion = { id: ID_DEMO, negocioId: ID_DEMO, usuario: "demo", nombre: "Demo", rol: "DUENO" };
 
 /**
  * El id para guardar en `usuarioId` (ventas, pagos, compras, movimientos): el del
@@ -39,20 +39,22 @@ async function demoSiNoHayBase(): Promise<UsuarioSesion | null> {
 
 /**
  * El usuario de este pedido, o `null`. Lee la cookie y consulta la base cada vez
- * (la cookie sola no prueba nada): la sesion tiene que existir, no estar vencida
- * y su usuario tiene que estar activo. Cacheado por pedido con `cache` de React.
+ * (la cookie sola no prueba nada): la sesion tiene que existir, no estar vencida,
+ * su negocio tiene que estar activo y su usuario tiene que estar activo. Cacheado por
+ * pedido con `cache` de React.
  *
  * Sin base: en desarrollo devuelve un DUENO simulado ("Demo"); en produccion
  * devuelve `null` (y el proxy ya respondio 503).
  *
- * Devuelve solo `{ id, usuario, nombre, rol }`: nunca el hash ni datos de la sesion.
+ * Devuelve solo `{ id, negocioId, usuario, nombre, rol }`: nunca el hash ni datos de la
+ * sesion. `negocioId` es el de la fila de la sesion (ver `getNegocioId` en `negocio.ts`).
  */
 export const usuarioActual = cache(async (): Promise<UsuarioSesion | null> => {
-  const token = (await cookies()).get(COOKIE_SESION)?.value;
-  if (!token) return demoSiNoHayBase();
+  const valorCookie = (await cookies()).get(COOKIE_SESION)?.value;
+  if (!valorCookie) return demoSiNoHayBase();
   try {
     // Sin renovar: un Server Component no puede reenviar la cookie. Renueva el proxy.
-    return (await resolverSesion(prisma, token))?.usuario ?? null;
+    return (await resolverSesion(prisma, valorCookie))?.usuario ?? null;
   } catch (error) {
     const demo = await demoSiNoHayBase();
     if (!demo) console.error("[auth] No se pudo verificar la sesion:", error);
