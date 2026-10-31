@@ -140,7 +140,7 @@ export async function anularTrabajoEnTx(
     ? (await tx.usuario.findFirst({ where: { id: anulacion.usuarioId, OR: [{ negocioId }, { negocioId: null }] }, select: { nombre: true } }))?.nombre
     : null;
   await tx.trabajoProduccion.update({
-    where: { id: anulacion.trabajoId },
+    where: { id: anulacion.trabajoId, negocioId },
     data: { anuladoEn: new Date(), motivoAnulacion: quien ? `${motivo} (anulado por ${quien})` : motivo },
   });
   return { ventaItemId: trabajo.ventaItemId };

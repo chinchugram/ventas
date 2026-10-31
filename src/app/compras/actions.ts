@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { dbDisponible, prisma } from "@/lib/prisma";
+import { dbDisponible } from "@/lib/prisma";
+import { conNegocio } from "@/lib/negocio";
+import { negocioActual } from "@/lib/queries/stock";
 import { verificarPermiso } from "@/lib/permisos";
 import { d } from "@/lib/money";
 import {
@@ -18,7 +20,6 @@ import {
 } from "@/lib/acciones";
 import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { registrarCompraEnTx } from "@/lib/dominio/compras";
-import { negocioUnico } from "@/lib/dominio/auth";
 
 export type { Resultado } from "@/lib/acciones";
 
@@ -54,8 +55,9 @@ export async function registrarCompra(datos: DatosCompra): Promise<Resultado> {
   if (!sesion.ok) return sesion;
   const usuarioId = idParaGuardar(sesion.usuario);
   try {
-    await prisma.$transaction(async (tx) =>
-      registrarCompraEnTx(tx, await negocioUnico(tx), {
+    const negocioId = await negocioActual();
+    await conNegocio(negocioId, (tx) =>
+      registrarCompraEnTx(tx, negocioId, {
         ...resto,
         fecha: fechaDesdeISO(fecha),
         usuarioId,

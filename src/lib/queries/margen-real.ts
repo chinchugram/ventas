@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { conNegocioActual } from "./stock";
+import type { TxNegocio } from "@/lib/negocio";
 import { conRespaldo } from "@/lib/respaldo";
 import { d } from "@/lib/money";
 import type { RangoFechas } from "@/lib/rango-fechas";
@@ -26,13 +27,13 @@ export type MargenRealPeriodo = ReporteMargenReal & {
 export function getMargenReal(rango: Pick<RangoFechas, "desde" | "hasta">): Promise<MargenRealPeriodo> {
   const { desde, hasta } = rango;
   return conRespaldo(
-    async () => ({ ...armarReporteMargenReal(await trabajosVigentes(desde, hasta)), desde, hasta }),
+    async () => ({ ...armarReporteMargenReal(await conNegocioActual((tx) => trabajosVigentes(tx, desde, hasta))), desde, hasta }),
     () => ({ ...armarReporteMargenReal([]), desde, hasta }),
   );
 }
 
-async function trabajosVigentes(desde: Date, hasta: Date): Promise<TrabajoParaMargen[]> {
-  const trabajos = await prisma.trabajoProduccion.findMany({
+async function trabajosVigentes(tx: TxNegocio, desde: Date, hasta: Date): Promise<TrabajoParaMargen[]> {
+  const trabajos = await tx.trabajoProduccion.findMany({
     where: {
       fecha: { gte: desde, lt: hasta },
       anuladoEn: null,

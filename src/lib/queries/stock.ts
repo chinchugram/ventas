@@ -1,14 +1,12 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { prisma } from "@/lib/prisma";
+import { conNegocio, type OpcionesConNegocio, type TxNegocio } from "@/lib/negocio";
+import { negocioUnico } from "@/lib/dominio/auth";
 import { demoMateriales } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { CERO, d, type Dinero } from "@/lib/money";
 import { ETIQUETA_UNIDAD } from "@/lib/unidades";
-import {
-  compararConsumo,
-  consumoTeoricoPorMaterial,
-  type MaterialParaConsumo,
-  type ReporteConsumo,
-} from "@/lib/consumo-teorico";
+import { compararConsumo, consumoTeoricoPorMaterial, type MaterialParaConsumo, type ReporteConsumo } from "@/lib/consumo-teorico";
 import {
   calcularRotacion,
   diasDelPeriodo,
@@ -55,6 +53,28 @@ export type ConsumoRealVsTeorico = ReporteConsumo<MaterialConsumo> & {
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
+// ─── Negocio de la peticion ───────────────────────────────────────────────────
+// TRANSITORIO (hasta F3.1): todas las lecturas y escrituras de stock/produccion pasan por
+// `conNegocio`. Mientras la sesion no traiga el negocio del usuario, `negocioActual()` es el
+// negocio unico (falla si hay mas de uno), o el que fije `enNegocio` (pruebas con dos negocios).
+// Cuando F3.1 traiga el helper de sesion, basta con cambiar el cuerpo de `negocioActual`.
+const negocioFijado = new AsyncLocalStorage<string>();
+
+/** Negocio con el que opera esta peticion. */
+export async function negocioActual(): Promise<string> {
+  return negocioFijado.getStore() ?? (await negocioUnico(prisma));
+}
+
+/** Corre `fn` como si la sesion fuera del negocio `negocioId` (pruebas y scripts). */
+export function enNegocio<T>(negocioId: string, fn: () => Promise<T>): Promise<T> {
+  return negocioFijado.run(negocioId, fn);
+}
+
+/** `conNegocio` sobre el negocio de la peticion: lo usan las consultas y acciones de estas areas. */
+export async function conNegocioActual<T>(fn: (tx: TxNegocio) => Promise<T>, opciones?: OpcionesConNegocio): Promise<T> {
+  return conNegocio(await negocioActual(), fn, opciones);
+}
+
 const SELECT_MATERIAL = {
   id: true,
   nombre: true,
@@ -68,11 +88,11 @@ const SELECT_MATERIAL = {
 
 /** Valor del stock actual (cantidad × costo) por material y total. */
 export function getValorizacionStock(): Promise<ValorizacionStock> {
-  return conRespaldo(valorizacionDesdeBase, valorizacionDemo);
+  return conRespaldo(() => conNegocioActual(valorizacionDesdeBase), valorizacionDemo);
 }
 
-async function valorizacionDesdeBase(): Promise<ValorizacionStock> {
-  const materiales = await prisma.material.findMany({ where: { activo: true }, select: SELECT_MATERIAL });
+async function valorizacionDesdeBase(tx: TxNegocio): Promise<ValorizacionStock> {
+  const materiales = await tx.material.findMany({ where: { activo: true }, select: SELECT_MATERIAL });
   return valorizarStock(
     materiales.map((m) => ({
       id: m.id,
@@ -105,14 +125,14 @@ function valorizacionDemo(): ValorizacionStock {
 export function getRotacionStock(desde: Date, hasta: Date): Promise<RotacionStock> {
   const dias = diasDelPeriodo(desde, hasta);
   return conRespaldo(
-    async () => ({ ...(await rotacionDesdeBase(desde, hasta, dias)), desde, hasta }),
+    async () => ({ ...(await conNegocioActual((tx) => rotacionDesdeBase(tx, desde, hasta, dias))), desde, hasta }),
     () => ({ ...rotacionDemo(dias), desde, hasta }),
   );
 }
 
 /** Suma de `cantidad` de los movimientos de todo tipo con `creadoEn >= instante`, por material. */
-async function movimientosDesde(instante: Date): Promise<Map<string, Dinero>> {
-  const filas = await prisma.movimientoStock.groupBy({
+async function movimientosDesde(tx: TxNegocio, instante: Date): Promise<Map<string, Dinero>> {
+  const filas = await tx.movimientoStock.groupBy({
     by: ["materialId"],
     where: { creadoEn: { gte: instante } },
     _sum: { cantidad: true },
@@ -126,8 +146,8 @@ async function movimientosDesde(instante: Date): Promise<Map<string, Dinero>> {
  * negativo si se anulo en el periodo una venta de uno anterior; cada reporte
  * decide que hacer con eso. Lo usan la rotacion y el consumo real vs teorico.
  */
-async function consumoRealPorMaterial(desde: Date, hasta: Date): Promise<Map<string, Dinero>> {
-  const ventas = await prisma.movimientoStock.groupBy({
+async function consumoRealPorMaterial(tx: TxNegocio, desde: Date, hasta: Date): Promise<Map<string, Dinero>> {
+  const ventas = await tx.movimientoStock.groupBy({
     by: ["materialId"],
     where: { tipo: "VENTA", creadoEn: { gte: desde, lt: hasta } },
     _sum: { cantidad: true },
@@ -136,13 +156,12 @@ async function consumoRealPorMaterial(desde: Date, hasta: Date): Promise<Map<str
   return new Map(ventas.map((v) => [v.materialId, d(v._sum.cantidad).neg()]));
 }
 
-async function rotacionDesdeBase(desde: Date, hasta: Date, dias: Dinero): Promise<ReporteRotacion<MaterialRotacion>> {
-  const [materiales, desdeDesde, desdeHasta, consumo] = await Promise.all([
-    prisma.material.findMany({ where: { activo: true }, select: SELECT_MATERIAL }),
-    movimientosDesde(desde),
-    movimientosDesde(hasta),
-    consumoRealPorMaterial(desde, hasta),
-  ]);
+async function rotacionDesdeBase(tx: TxNegocio, desde: Date, hasta: Date, dias: Dinero): Promise<ReporteRotacion<MaterialRotacion>> {
+  // En secuencia: una transaccion usa una sola conexion, no admite consultas en paralelo.
+  const materiales = await tx.material.findMany({ where: { activo: true }, select: SELECT_MATERIAL });
+  const desdeDesde = await movimientosDesde(tx, desde);
+  const desdeHasta = await movimientosDesde(tx, hasta);
+  const consumo = await consumoRealPorMaterial(tx, desde, hasta);
 
   return calcularRotacion(
     materiales.map((m): MaterialRotacion => {
@@ -169,7 +188,10 @@ const CONSUMO_DEMO_30D: Record<string, string> = { m1: "12", m2: "10", m3: "0", 
 function rotacionDemo(dias: Dinero): ReporteRotacion<MaterialRotacion> {
   return calcularRotacion(
     demoMateriales().map((m): MaterialRotacion => {
-      const consumo = d(CONSUMO_DEMO_30D[m.id] ?? "0").times(dias).div(30).toDecimalPlaces(3);
+      const consumo = d(CONSUMO_DEMO_30D[m.id] ?? "0")
+        .times(dias)
+        .div(30)
+        .toDecimalPlaces(3);
       return {
         id: m.id,
         nombre: m.nombre,
@@ -195,28 +217,28 @@ function rotacionDemo(dias: Dinero): ReporteRotacion<MaterialRotacion> {
 export function getStockSinMovimiento(dias: number, ahora: Date = new Date()): Promise<StockSinMovimiento> {
   if (!Number.isInteger(dias) || dias < 0) throw new Error("Los dias tienen que ser un entero mayor o igual a 0.");
   return conRespaldo(
-    async () => ({ ...(await sinMovimientoDesdeBase(dias, ahora)), ahora }),
+    async () => ({ ...(await conNegocioActual((tx) => sinMovimientoDesdeBase(tx, dias, ahora))), ahora }),
     () => ({ ...sinMovimientoDemo(dias, ahora), ahora }),
   );
 }
 
-async function sinMovimientoDesdeBase(dias: number, ahora: Date): Promise<SinMovimiento<MaterialInmovilizado>> {
-  const [materiales, ultimos] = await Promise.all([
-    prisma.material.findMany({ where: { activo: true }, select: SELECT_MATERIAL }),
-    prisma.movimientoStock.groupBy({ by: ["materialId"], _max: { creadoEn: true } }),
-  ]);
+async function sinMovimientoDesdeBase(tx: TxNegocio, dias: number, ahora: Date): Promise<SinMovimiento<MaterialInmovilizado>> {
+  const materiales = await tx.material.findMany({ where: { activo: true }, select: SELECT_MATERIAL });
+  const ultimos = await tx.movimientoStock.groupBy({ by: ["materialId"], _max: { creadoEn: true } });
   const ultimo = new Map(ultimos.map((u) => [u.materialId, u._max.creadoEn]));
 
   return sinMovimiento(
-    materiales.map((m): MaterialInmovilizado => ({
-      id: m.id,
-      nombre: m.nombre,
-      unidad: ETIQUETA_UNIDAD[m.unidad] ?? m.unidad,
-      stockActual: d(m.stockActual),
-      costoUnitario: d(m.costoUnitario),
-      ultimoMovimiento: ultimo.get(m.id) ?? null,
-      creadoEn: m.creadoEn,
-    })),
+    materiales.map(
+      (m): MaterialInmovilizado => ({
+        id: m.id,
+        nombre: m.nombre,
+        unidad: ETIQUETA_UNIDAD[m.unidad] ?? m.unidad,
+        stockActual: d(m.stockActual),
+        costoUnitario: d(m.costoUnitario),
+        ultimoMovimiento: ultimo.get(m.id) ?? null,
+        creadoEn: m.creadoEn,
+      }),
+    ),
     dias,
     ahora,
   );
@@ -227,15 +249,17 @@ const DIAS_SIN_MOVER_DEMO: Record<string, number> = { m1: 3, m2: 12, m3: 75, m4:
 
 function sinMovimientoDemo(dias: number, ahora: Date): SinMovimiento<MaterialInmovilizado> {
   return sinMovimiento(
-    demoMateriales().map((m): MaterialInmovilizado => ({
-      id: m.id,
-      nombre: m.nombre,
-      unidad: m.unidad,
-      stockActual: m.stockActual,
-      costoUnitario: m.costoUnitario,
-      ultimoMovimiento: new Date(ahora.getTime() - (DIAS_SIN_MOVER_DEMO[m.id] ?? 0) * MS_POR_DIA),
-      creadoEn: new Date(ahora.getTime() - 365 * MS_POR_DIA),
-    })),
+    demoMateriales().map(
+      (m): MaterialInmovilizado => ({
+        id: m.id,
+        nombre: m.nombre,
+        unidad: m.unidad,
+        stockActual: m.stockActual,
+        costoUnitario: m.costoUnitario,
+        ultimoMovimiento: new Date(ahora.getTime() - (DIAS_SIN_MOVER_DEMO[m.id] ?? 0) * MS_POR_DIA),
+        creadoEn: new Date(ahora.getTime() - 365 * MS_POR_DIA),
+      }),
+    ),
     dias,
     ahora,
   );
@@ -252,30 +276,28 @@ function sinMovimientoDemo(dias: number, ahora: Date): SinMovimiento<MaterialInm
 export function getConsumoRealVsTeorico(desde: Date, hasta: Date): Promise<ConsumoRealVsTeorico> {
   const dias = diasDelPeriodo(desde, hasta); // valida el periodo
   return conRespaldo(
-    async () => ({ ...(await consumoDesdeBase(desde, hasta)), desde, hasta }),
+    async () => ({ ...(await conNegocioActual((tx) => consumoDesdeBase(tx, desde, hasta))), desde, hasta }),
     () => ({ ...consumoDemo(dias), desde, hasta }),
   );
 }
 
-async function consumoDesdeBase(desde: Date, hasta: Date): Promise<ReporteConsumo<MaterialConsumo>> {
+async function consumoDesdeBase(tx: TxNegocio, desde: Date, hasta: Date): Promise<ReporteConsumo<MaterialConsumo>> {
   // El teorico se ubica por Venta.fecha (dia calendario); el real, por la hora del movimiento.
-  const items = await prisma.ventaItem.findMany({
+  const items = await tx.ventaItem.findMany({
     where: { venta: { estado: { not: "ANULADA" }, fecha: { gte: desde, lt: hasta } } },
     select: { ventaId: true, articuloId: true, cantidad: true },
   });
   const idsArticulo = [...new Set(items.map((i) => i.articuloId))];
 
-  const [articulos, real] = await Promise.all([
-    prisma.articulo.findMany({
-      where: { id: { in: idsArticulo } },
-      select: {
-        id: true,
-        esServicio: true,
-        receta: { select: { componentes: { select: { tipo: true, materialId: true, cantidad: true } } } },
-      },
-    }),
-    consumoRealPorMaterial(desde, hasta),
-  ]);
+  const articulos = await tx.articulo.findMany({
+    where: { id: { in: idsArticulo } },
+    select: {
+      id: true,
+      esServicio: true,
+      receta: { select: { componentes: { select: { tipo: true, materialId: true, cantidad: true } } } },
+    },
+  });
+  const real = await consumoRealPorMaterial(tx, desde, hasta);
 
   const teorico = consumoTeoricoPorMaterial(
     items.map((i) => ({ ventaId: i.ventaId, articuloId: i.articuloId, cantidad: d(i.cantidad) })),
@@ -292,17 +314,19 @@ async function consumoDesdeBase(desde: Date, hasta: Date): Promise<ReporteConsum
 
   // Sin filtrar por activo: una receta o un movimiento pueden apuntar a un material dado de baja.
   const ids = [...new Set([...teorico.keys(), ...real.keys()])];
-  const materiales = await prisma.material.findMany({
+  const materiales = await tx.material.findMany({
     where: { id: { in: ids } },
     select: { id: true, nombre: true, unidad: true, costoUnitario: true },
   });
   return compararConsumo(
-    materiales.map((m): MaterialConsumo => ({
-      id: m.id,
-      nombre: m.nombre,
-      unidad: ETIQUETA_UNIDAD[m.unidad] ?? m.unidad,
-      costoUnitario: d(m.costoUnitario),
-    })),
+    materiales.map(
+      (m): MaterialConsumo => ({
+        id: m.id,
+        nombre: m.nombre,
+        unidad: ETIQUETA_UNIDAD[m.unidad] ?? m.unidad,
+        costoUnitario: d(m.costoUnitario),
+      }),
+    ),
     teorico,
     real,
   );
@@ -311,15 +335,23 @@ async function consumoDesdeBase(desde: Date, hasta: Date): Promise<ReporteConsum
 /** La demo no tiene libro ni ventas con recetas: real = teorico (sin desvio) con el consumo de ejemplo. */
 function consumoDemo(dias: Dinero): ReporteConsumo<MaterialConsumo> {
   const consumo = new Map(
-    demoMateriales().map((m) => [m.id, d(CONSUMO_DEMO_30D[m.id] ?? "0").times(dias).div(30).toDecimalPlaces(3)]),
+    demoMateriales().map((m) => [
+      m.id,
+      d(CONSUMO_DEMO_30D[m.id] ?? "0")
+        .times(dias)
+        .div(30)
+        .toDecimalPlaces(3),
+    ]),
   );
   return compararConsumo(
-    demoMateriales().map((m): MaterialConsumo => ({
-      id: m.id,
-      nombre: m.nombre,
-      unidad: m.unidad,
-      costoUnitario: m.costoUnitario,
-    })),
+    demoMateriales().map(
+      (m): MaterialConsumo => ({
+        id: m.id,
+        nombre: m.nombre,
+        unidad: m.unidad,
+        costoUnitario: m.costoUnitario,
+      }),
+    ),
     consumo,
     consumo,
   );

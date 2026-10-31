@@ -1,5 +1,6 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocioActual } from "./stock";
+import type { TxNegocio } from "@/lib/negocio";
 import { conRespaldo } from "@/lib/respaldo";
 import type { Dinero } from "@/lib/money";
 import {
@@ -53,12 +54,12 @@ const LINEA_DE_VENTA_VIGENTE = { venta: { estado: { not: "ANULADA" as const } } 
 export const getListadoProduccion = cache(
   (filtro: FiltroProduccion, busqueda: string): Promise<ListadoProduccion> =>
     conRespaldo(
-      () => listadoDesdeBase(filtro, busqueda),
+      () => conNegocioActual((tx) => listadoDesdeBase(tx, filtro, busqueda)),
       () => VACIO,
     ),
 );
 
-async function listadoDesdeBase(filtro: FiltroProduccion, busqueda: string): Promise<ListadoProduccion> {
+async function listadoDesdeBase(tx: TxNegocio, filtro: FiltroProduccion, busqueda: string): Promise<ListadoProduccion> {
   const numero = numeroDeVentaEnBusqueda(busqueda);
   const texto = busqueda
     ? {
@@ -72,23 +73,25 @@ async function listadoDesdeBase(filtro: FiltroProduccion, busqueda: string): Pro
   const sinTrabajo = { trabajos: { none: { anuladoEn: null } } };
   const conTrabajo = { trabajos: { some: { anuladoEn: null } } };
 
-  const [filas, pendientes, cargadas] = await Promise.all([
-    prisma.ventaItem.findMany({
-      where: { ...LINEA_DE_VENTA_VIGENTE, ...(filtro === "pendientes" ? sinTrabajo : filtro === "cargadas" ? conTrabajo : {}), ...texto },
-      // Lo sin cargar, lo mas viejo primero (es lo que hay que hacer); el resto, lo mas nuevo primero.
-      orderBy: [{ venta: { fecha: filtro === "pendientes" ? "asc" : "desc" } }, { venta: { numero: filtro === "pendientes" ? "asc" : "desc" } }, { id: "asc" }],
-      take: LIMITE_LISTADO + 1,
-      select: {
-        id: true,
-        descripcion: true,
-        cantidad: true,
-        venta: { select: { id: true, numero: true, anio: true, fecha: true, cliente: { select: { nombre: true } } } },
-        trabajos: { where: { anuladoEn: null }, select: { id: true, fecha: true, usuario: { select: { nombre: true } } } },
-      },
-    }),
-    prisma.ventaItem.count({ where: { ...LINEA_DE_VENTA_VIGENTE, ...sinTrabajo } }),
-    prisma.ventaItem.count({ where: { ...LINEA_DE_VENTA_VIGENTE, ...conTrabajo } }),
-  ]);
+  const filas = await tx.ventaItem.findMany({
+    where: { ...LINEA_DE_VENTA_VIGENTE, ...(filtro === "pendientes" ? sinTrabajo : filtro === "cargadas" ? conTrabajo : {}), ...texto },
+    // Lo sin cargar, lo mas viejo primero (es lo que hay que hacer); el resto, lo mas nuevo primero.
+    orderBy: [
+      { venta: { fecha: filtro === "pendientes" ? "asc" : "desc" } },
+      { venta: { numero: filtro === "pendientes" ? "asc" : "desc" } },
+      { id: "asc" },
+    ],
+    take: LIMITE_LISTADO + 1,
+    select: {
+      id: true,
+      descripcion: true,
+      cantidad: true,
+      venta: { select: { id: true, numero: true, anio: true, fecha: true, cliente: { select: { nombre: true } } } },
+      trabajos: { where: { anuladoEn: null }, select: { id: true, fecha: true, usuario: { select: { nombre: true } } } },
+    },
+  });
+  const pendientes = await tx.ventaItem.count({ where: { ...LINEA_DE_VENTA_VIGENTE, ...sinTrabajo } });
+  const cargadas = await tx.ventaItem.count({ where: { ...LINEA_DE_VENTA_VIGENTE, ...conTrabajo } });
 
   return {
     hayMas: filas.length > LIMITE_LISTADO,
@@ -123,25 +126,26 @@ export type ProduccionDeLinea = {
 export const getProduccionDeVenta = cache(
   (ventaId: string): Promise<ProduccionDeLinea[] | null> =>
     conRespaldo(
-      async () => {
-        const venta = await prisma.venta.findUnique({
-          where: { id: ventaId },
-          select: {
-            estado: true,
-            items: {
-              orderBy: { id: "asc" },
-              select: { id: true, descripcion: true, cantidad: true, trabajos: { where: { anuladoEn: null }, select: { id: true } } },
+      () =>
+        conNegocioActual(async (tx) => {
+          const venta = await tx.venta.findUnique({
+            where: { id: ventaId },
+            select: {
+              estado: true,
+              items: {
+                orderBy: { id: "asc" },
+                select: { id: true, descripcion: true, cantidad: true, trabajos: { where: { anuladoEn: null }, select: { id: true } } },
+              },
             },
-          },
-        });
-        if (!venta || venta.estado === "ANULADA") return null;
-        return venta.items.map((i) => ({
-          ventaItemId: i.id,
-          descripcion: i.descripcion,
-          cantidad: i.cantidad,
-          trabajoId: i.trabajos[0]?.id ?? null,
-        }));
-      },
+          });
+          if (!venta || venta.estado === "ANULADA") return null;
+          return venta.items.map((i) => ({
+            ventaItemId: i.id,
+            descripcion: i.descripcion,
+            cantidad: i.cantidad,
+            trabajoId: i.trabajos[0]?.id ?? null,
+          }));
+        }),
       () => null,
     ),
 );
@@ -184,64 +188,75 @@ const aTexto = (v: Dinero) => v.toString();
 export const getLineaParaCarga = cache(
   (ventaItemId: string): Promise<LineaParaCarga | null> =>
     conRespaldo(
-      async () => {
-        const l = await prisma.ventaItem.findUnique({
-          where: { id: ventaItemId },
-          select: {
-            id: true,
-            descripcion: true,
-            cantidad: true,
-            venta: { select: { id: true, numero: true, anio: true, estado: true, cliente: { select: { nombre: true } } } },
-            trabajos: { where: { anuladoEn: null }, select: { id: true } },
-            articulo: {
-              select: {
-                esServicio: true,
-                receta: { select: { componentes: { select: { tipo: true, materialId: true, maquinaId: true, cantidad: true }, orderBy: { id: "asc" } } } },
+      () =>
+        conNegocioActual(async (tx) => {
+          const l = await tx.ventaItem.findUnique({
+            where: { id: ventaItemId },
+            select: {
+              id: true,
+              descripcion: true,
+              cantidad: true,
+              venta: { select: { id: true, numero: true, anio: true, estado: true, cliente: { select: { nombre: true } } } },
+              trabajos: { where: { anuladoEn: null }, select: { id: true } },
+              articulo: {
+                select: {
+                  esServicio: true,
+                  receta: {
+                    select: {
+                      componentes: { select: { tipo: true, materialId: true, maquinaId: true, cantidad: true }, orderBy: { id: "asc" } },
+                    },
+                  },
+                },
               },
             },
-          },
-        });
-        if (!l) return null;
+          });
+          if (!l) return null;
 
-        const componentes: ComponenteReceta[] = (l.articulo.receta?.componentes ?? []).map((c) => ({
-          tipo: c.tipo,
-          materialId: c.materialId,
-          maquinaId: c.maquinaId,
-          cantidad: c.cantidad,
-        }));
-        const sugerencia = sugerirDesdeReceta(componentes, l.cantidad);
-        const recetaEnStock = consumoDeRecetaEnStock(componentes, l.cantidad, l.articulo.esServicio);
+          const componentes: ComponenteReceta[] = (l.articulo.receta?.componentes ?? []).map((c) => ({
+            tipo: c.tipo,
+            materialId: c.materialId,
+            maquinaId: c.maquinaId,
+            cantidad: c.cantidad,
+          }));
+          const sugerencia = sugerirDesdeReceta(componentes, l.cantidad);
+          const recetaEnStock = consumoDeRecetaEnStock(componentes, l.cantidad, l.articulo.esServicio);
 
-        const [maquinas, materiales, ajustes] = await Promise.all([
-          prisma.maquina.findMany({ where: { activo: true }, orderBy: { nombre: "asc" }, select: { id: true, nombre: true } }),
-          prisma.material.findMany({ where: { activo: true }, orderBy: { nombre: "asc" }, select: { id: true, nombre: true, unidad: true } }),
-          prisma.movimientoStock.findMany({
+          const maquinas = await tx.maquina.findMany({
+            where: { activo: true },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true },
+          });
+          const materiales = await tx.material.findMany({
+            where: { activo: true },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true, unidad: true },
+          });
+          const ajustes = await tx.movimientoStock.findMany({
             where: { tipo: "AJUSTE", motivo: { contains: marcaDeLinea(l.id) } },
             select: { materialId: true, cantidad: true },
-          }),
-        ]);
+          });
 
-        return {
-          ventaItemId: l.id,
-          ventaId: l.venta.id,
-          numero: l.venta.numero,
-          anio: l.venta.anio,
-          cliente: l.venta.cliente.nombre,
-          descripcion: l.descripcion,
-          cantidad: aTexto(l.cantidad),
-          ventaAnulada: l.venta.estado === "ANULADA",
-          trabajoVigenteId: l.trabajos[0]?.id ?? null,
-          maquinas,
-          materiales,
-          sugerencia: {
-            maquinas: sugerencia.maquinas.map((m) => ({ maquinaId: m.maquinaId, minutos: aTexto(m.minutos) })),
-            minutosManoObra: aTexto(sugerencia.minutosManoObra),
-            materiales: sugerencia.materiales.map((m) => ({ materialId: m.materialId, cantidad: aTexto(m.cantidad) })),
-          },
-          recetaEnStock: recetaEnStock.map((m) => ({ materialId: m.materialId, cantidad: aTexto(m.cantidad) })),
-          yaAjustado: ajustes.map((a) => ({ materialId: a.materialId, cantidad: aTexto(a.cantidad) })),
-        };
-      },
+          return {
+            ventaItemId: l.id,
+            ventaId: l.venta.id,
+            numero: l.venta.numero,
+            anio: l.venta.anio,
+            cliente: l.venta.cliente.nombre,
+            descripcion: l.descripcion,
+            cantidad: aTexto(l.cantidad),
+            ventaAnulada: l.venta.estado === "ANULADA",
+            trabajoVigenteId: l.trabajos[0]?.id ?? null,
+            maquinas,
+            materiales,
+            sugerencia: {
+              maquinas: sugerencia.maquinas.map((m) => ({ maquinaId: m.maquinaId, minutos: aTexto(m.minutos) })),
+              minutosManoObra: aTexto(sugerencia.minutosManoObra),
+              materiales: sugerencia.materiales.map((m) => ({ materialId: m.materialId, cantidad: aTexto(m.cantidad) })),
+            },
+            recetaEnStock: recetaEnStock.map((m) => ({ materialId: m.materialId, cantidad: aTexto(m.cantidad) })),
+            yaAjustado: ajustes.map((a) => ({ materialId: a.materialId, cantidad: aTexto(a.cantidad) })),
+          };
+        }),
       () => null,
     ),
 );
@@ -280,91 +295,99 @@ export type TrabajoDetalle = {
 export const getTrabajoDetalle = cache(
   (id: string): Promise<TrabajoDetalle | null> =>
     conRespaldo(
-      async () => {
-        const t = await prisma.trabajoProduccion.findUnique({
-          where: { id },
-          select: {
-            id: true,
-            ventaItemId: true,
-            fecha: true,
-            minutosManoObra: true,
-            notas: true,
-            creadoEn: true,
-            anuladoEn: true,
-            motivoAnulacion: true,
-            usuario: { select: { nombre: true } },
-            tiempos: { select: { minutos: true, maquina: { select: { nombre: true } } }, orderBy: { maquina: { nombre: "asc" } } },
-            consumos: { select: { materialId: true, cantidad: true, material: { select: { nombre: true, unidad: true } } }, orderBy: { material: { nombre: "asc" } } },
-            ventaItem: {
-              select: {
-                descripcion: true,
-                cantidad: true,
-                venta: { select: { id: true, numero: true, anio: true, estado: true, cliente: { select: { nombre: true } } } },
-                articulo: {
-                  select: {
-                    esServicio: true,
-                    receta: { select: { componentes: { select: { tipo: true, materialId: true, maquinaId: true, cantidad: true } } } },
+      () =>
+        conNegocioActual(async (tx) => {
+          const t = await tx.trabajoProduccion.findUnique({
+            where: { id },
+            select: {
+              id: true,
+              ventaItemId: true,
+              fecha: true,
+              minutosManoObra: true,
+              notas: true,
+              creadoEn: true,
+              anuladoEn: true,
+              motivoAnulacion: true,
+              usuario: { select: { nombre: true } },
+              tiempos: { select: { minutos: true, maquina: { select: { nombre: true } } }, orderBy: { maquina: { nombre: "asc" } } },
+              consumos: {
+                select: { materialId: true, cantidad: true, material: { select: { nombre: true, unidad: true } } },
+                orderBy: { material: { nombre: "asc" } },
+              },
+              ventaItem: {
+                select: {
+                  descripcion: true,
+                  cantidad: true,
+                  venta: { select: { id: true, numero: true, anio: true, estado: true, cliente: { select: { nombre: true } } } },
+                  articulo: {
+                    select: {
+                      esServicio: true,
+                      receta: { select: { componentes: { select: { tipo: true, materialId: true, maquinaId: true, cantidad: true } } } },
+                    },
                   },
+                  trabajos: { select: { id: true, fecha: true, anuladoEn: true, motivoAnulacion: true }, orderBy: { creadoEn: "desc" } },
                 },
-                trabajos: { select: { id: true, fecha: true, anuladoEn: true, motivoAnulacion: true }, orderBy: { creadoEn: "desc" } },
               },
             },
-          },
-        });
-        if (!t) return null;
+          });
+          if (!t) return null;
 
-        const linea = t.ventaItem;
-        const componentes: ComponenteReceta[] = (linea.articulo.receta?.componentes ?? []).map((c) => ({
-          tipo: c.tipo,
-          materialId: c.materialId,
-          maquinaId: c.maquinaId,
-          cantidad: c.cantidad,
-        }));
-        const receta = consumoDeRecetaEnStock(componentes, linea.cantidad, linea.articulo.esServicio);
-        const ajustes = await prisma.movimientoStock.findMany({
-          where: { tipo: "AJUSTE", motivo: { contains: marcaDeLinea(t.ventaItemId) } },
-          select: { materialId: true, cantidad: true },
-        });
-        const filas = calcularAjusteDeStock({
-          receta,
-          real: t.consumos.map((c) => ({ materialId: c.materialId, cantidad: c.cantidad })),
-          yaAjustado: ajustes.map((a) => ({ materialId: a.materialId, cantidad: a.cantidad })),
-        });
-        const dato = new Map(t.consumos.map((c) => [c.materialId, c.material]));
-        const recetaPorMaterial = new Map(receta.map((r) => [r.materialId, r.cantidad]));
-
-        return {
-          id: t.id,
-          ventaItemId: t.ventaItemId,
-          ventaId: linea.venta.id,
-          numero: linea.venta.numero,
-          anio: linea.venta.anio,
-          ventaAnulada: linea.venta.estado === "ANULADA",
-          cliente: linea.venta.cliente.nombre,
-          descripcion: linea.descripcion,
-          cantidad: linea.cantidad,
-          fecha: t.fecha,
-          minutosManoObra: t.minutosManoObra,
-          notas: t.notas,
-          cargadoPor: t.usuario?.nombre ?? null,
-          creadoEn: t.creadoEn,
-          anuladoEn: t.anuladoEn,
-          motivoAnulacion: t.motivoAnulacion,
-          tiempos: t.tiempos.map((x) => ({ maquina: x.maquina.nombre, minutos: x.minutos })),
-          consumos: t.consumos.map((c) => ({
+          const linea = t.ventaItem;
+          const componentes: ComponenteReceta[] = (linea.articulo.receta?.componentes ?? []).map((c) => ({
+            tipo: c.tipo,
             materialId: c.materialId,
-            material: c.material.nombre,
-            unidad: c.material.unidad,
-            real: c.cantidad,
-            receta: recetaPorMaterial.get(c.materialId) ?? null,
-          })),
-          ajuste: filas.map((f) => ({ ...f, material: dato.get(f.materialId)?.nombre ?? "—", unidad: dato.get(f.materialId)?.unidad ?? "" })),
-          lineaTieneVigente: linea.trabajos.some((x) => x.anuladoEn === null),
-          anulados: linea.trabajos
-            .filter((x) => x.anuladoEn !== null && x.id !== t.id)
-            .map((x) => ({ id: x.id, fecha: x.fecha, anuladoEn: x.anuladoEn!, motivoAnulacion: x.motivoAnulacion })),
-        };
-      },
+            maquinaId: c.maquinaId,
+            cantidad: c.cantidad,
+          }));
+          const receta = consumoDeRecetaEnStock(componentes, linea.cantidad, linea.articulo.esServicio);
+          const ajustes = await tx.movimientoStock.findMany({
+            where: { tipo: "AJUSTE", motivo: { contains: marcaDeLinea(t.ventaItemId) } },
+            select: { materialId: true, cantidad: true },
+          });
+          const filas = calcularAjusteDeStock({
+            receta,
+            real: t.consumos.map((c) => ({ materialId: c.materialId, cantidad: c.cantidad })),
+            yaAjustado: ajustes.map((a) => ({ materialId: a.materialId, cantidad: a.cantidad })),
+          });
+          const dato = new Map(t.consumos.map((c) => [c.materialId, c.material]));
+          const recetaPorMaterial = new Map(receta.map((r) => [r.materialId, r.cantidad]));
+
+          return {
+            id: t.id,
+            ventaItemId: t.ventaItemId,
+            ventaId: linea.venta.id,
+            numero: linea.venta.numero,
+            anio: linea.venta.anio,
+            ventaAnulada: linea.venta.estado === "ANULADA",
+            cliente: linea.venta.cliente.nombre,
+            descripcion: linea.descripcion,
+            cantidad: linea.cantidad,
+            fecha: t.fecha,
+            minutosManoObra: t.minutosManoObra,
+            notas: t.notas,
+            cargadoPor: t.usuario?.nombre ?? null,
+            creadoEn: t.creadoEn,
+            anuladoEn: t.anuladoEn,
+            motivoAnulacion: t.motivoAnulacion,
+            tiempos: t.tiempos.map((x) => ({ maquina: x.maquina.nombre, minutos: x.minutos })),
+            consumos: t.consumos.map((c) => ({
+              materialId: c.materialId,
+              material: c.material.nombre,
+              unidad: c.material.unidad,
+              real: c.cantidad,
+              receta: recetaPorMaterial.get(c.materialId) ?? null,
+            })),
+            ajuste: filas.map((f) => ({
+              ...f,
+              material: dato.get(f.materialId)?.nombre ?? "—",
+              unidad: dato.get(f.materialId)?.unidad ?? "",
+            })),
+            lineaTieneVigente: linea.trabajos.some((x) => x.anuladoEn === null),
+            anulados: linea.trabajos
+              .filter((x) => x.anuladoEn !== null && x.id !== t.id)
+              .map((x) => ({ id: x.id, fecha: x.fecha, anuladoEn: x.anuladoEn!, motivoAnulacion: x.motivoAnulacion })),
+          };
+        }),
       () => null,
     ),
 );
