@@ -125,8 +125,9 @@ export async function registrarVentaEnTx(tx: Tx, negocioId: string, venta: Venta
   }
 
   // Un solo escritor numera por anio a la vez: el correlativo no se repite ni deja huecos.
+  // El correlativo es por negocio (el filtro de lectura va aca; el candado lo reescribe F3.6).
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(${anio})`;
-  const ultimo = await tx.venta.aggregate({ where: { anio }, _max: { numero: true } });
+  const ultimo = await tx.venta.aggregate({ where: { negocioId, anio }, _max: { numero: true } });
   const numero = (ultimo._max.numero ?? 0) + 1;
 
   const creada = await tx.venta.create({

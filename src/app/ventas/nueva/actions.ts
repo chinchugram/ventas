@@ -5,6 +5,8 @@ import { dbDisponible, prisma } from "@/lib/prisma";
 import { primerError, SIN_BASE } from "@/lib/acciones";
 import { verificarPermiso } from "@/lib/permisos";
 import { preciosDeClienteEnTx } from "@/lib/dominio/listas-precios";
+import { negocioUnico } from "@/lib/dominio/auth";
+import { conNegocio } from "@/lib/negocio";
 import type { OrigenPrecio } from "@/lib/precios";
 
 export type PreciosCliente =
@@ -39,7 +41,9 @@ async function preciosDe(datos: z.input<typeof esquema>): Promise<PreciosCliente
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    const r = await preciosDeClienteEnTx(prisma, parsed.data.clienteId, [...new Set(parsed.data.articuloIds)]);
+    const r = await conNegocio(await negocioUnico(prisma), (tx) =>
+      preciosDeClienteEnTx(tx, parsed.data.clienteId, [...new Set(parsed.data.articuloIds)]),
+    );
     return {
       ok: true,
       lista: r.lista ? { nombre: r.lista.nombre, descuentoPct: r.lista.descuentoPct.toString() } : null,

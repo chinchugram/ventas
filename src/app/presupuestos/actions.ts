@@ -26,6 +26,7 @@ import {
 import { problemaDeCantidad, VALIDEZ_MAXIMA } from "@/lib/presupuestos";
 import { revalidarVentas } from "@/lib/revalidar";
 import { negocioUnico } from "@/lib/dominio/auth";
+import { conNegocio } from "@/lib/negocio";
 
 // Del formulario solo llega QUE articulo, CUANTO, a QUIEN y la validez: el
 // precio, la descripcion y el IVA los pone el servidor (`resolverPrecio`).
@@ -90,8 +91,9 @@ export async function crearPresupuesto(datos: DatosPresupuesto): Promise<Resulta
   const usuarioId = idParaGuardar(permiso.usuario);
 
   try {
-    const r = await prisma.$transaction(async (tx) =>
-      crearPresupuestoEnTx(tx, await negocioUnico(tx), datosDeDominio(parsed.data), hoyArgentina(), usuarioId),
+    const negocioId = await negocioUnico(prisma);
+    const r = await conNegocio(negocioId, (tx) =>
+      crearPresupuestoEnTx(tx, negocioId, datosDeDominio(parsed.data), hoyArgentina(), usuarioId),
     );
     revalidarPresupuestos();
     return { ok: true, ...r };
@@ -112,7 +114,8 @@ export async function editarPresupuesto(datos: z.input<typeof esquemaEdicion>): 
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction(async (tx) => editarPresupuestoEnTx(tx, await negocioUnico(tx), parsed.data.id, datosDeDominio(parsed.data), hoyArgentina()));
+    const negocioId = await negocioUnico(prisma);
+    await conNegocio(negocioId, (tx) => editarPresupuestoEnTx(tx, negocioId, parsed.data.id, datosDeDominio(parsed.data), hoyArgentina()));
   } catch (error) {
     console.error("[editarPresupuesto]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar el presupuesto.") };
@@ -129,7 +132,7 @@ export async function anularPresupuesto(datos: z.input<typeof esquemaId>): Promi
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => anularPresupuestoEnTx(tx, parsed.data.id));
+    await conNegocio(await negocioUnico(prisma), (tx) => anularPresupuestoEnTx(tx, parsed.data.id));
   } catch (error) {
     console.error("[anularPresupuesto]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo anular el presupuesto.") };
@@ -148,7 +151,8 @@ export async function duplicarPresupuesto(datos: z.input<typeof esquemaId>): Pro
   const usuarioId = idParaGuardar(permiso.usuario);
 
   try {
-    const r = await prisma.$transaction(async (tx) => duplicarPresupuestoEnTx(tx, await negocioUnico(tx), parsed.data.id, hoyArgentina(), usuarioId));
+    const negocioId = await negocioUnico(prisma);
+    const r = await conNegocio(negocioId, (tx) => duplicarPresupuestoEnTx(tx, negocioId, parsed.data.id, hoyArgentina(), usuarioId));
     revalidarPresupuestos();
     return { ok: true, ...r };
   } catch (error) {
@@ -175,7 +179,8 @@ export async function convertirPresupuesto(datos: z.input<typeof esquemaId>): Pr
   const usuarioId = idParaGuardar(permiso.usuario);
 
   try {
-    const r = await prisma.$transaction(async (tx) => convertirPresupuestoEnTx(tx, await negocioUnico(tx), parsed.data.id, hoyArgentina(), usuarioId), {
+    const negocioId = await negocioUnico(prisma);
+    const r = await conNegocio(negocioId, (tx) => convertirPresupuestoEnTx(tx, negocioId, parsed.data.id, hoyArgentina(), usuarioId), {
       timeout: 15_000,
     });
     revalidarPresupuestos(parsed.data.id);

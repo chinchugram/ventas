@@ -1,5 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { conNegocio } from "@/lib/negocio";
+import { negocioUnico } from "@/lib/dominio/auth";
 import { conRespaldo } from "@/lib/respaldo";
 import { hoyArgentina } from "@/lib/acciones";
 import { d, type Dinero } from "@/lib/money";
@@ -55,14 +57,16 @@ export const getPresupuestos = cache(
     conRespaldo(
       async () => {
         const hoy = hoyArgentina();
-        const filas = await prisma.presupuesto.findMany({
-          orderBy: [{ fecha: "desc" }, { numero: "desc" }],
-          take: 300,
-          include: {
-            cliente: { select: { nombre: true } },
-            items: { select: { cantidad: true, precioUnitario: true, ivaPct: true } },
-          },
-        });
+        const filas = await conNegocio(await negocioUnico(prisma), (tx) =>
+          tx.presupuesto.findMany({
+            orderBy: [{ fecha: "desc" }, { numero: "desc" }],
+            take: 300,
+            include: {
+              cliente: { select: { nombre: true } },
+              items: { select: { cantidad: true, precioUnitario: true, ivaPct: true } },
+            },
+          }),
+        );
         const todos = filas.map<PresupuestoListado>((p) => ({
           id: p.id,
           numero: p.numero,
@@ -119,17 +123,19 @@ export const getPresupuesto = cache(
     conRespaldo(
       async () => {
         if (!UUID.test(id)) return null;
-        const p = await prisma.presupuesto.findUnique({
-          where: { id },
-          include: {
-            cliente: { select: { id: true, nombre: true, telefono: true, activo: true } },
-            items: { orderBy: { id: "asc" } },
-            venta: { select: { id: true, numero: true, anio: true, estado: true } },
-            duplicadoDe: { select: { id: true, numero: true, anio: true } },
-            // Solo el nombre para mostrar: nunca el hash ni datos de sesion.
-            usuario: { select: { nombre: true } },
-          },
-        });
+        const p = await conNegocio(await negocioUnico(prisma), (tx) =>
+          tx.presupuesto.findUnique({
+            where: { id },
+            include: {
+              cliente: { select: { id: true, nombre: true, telefono: true, activo: true } },
+              items: { orderBy: { id: "asc" } },
+              venta: { select: { id: true, numero: true, anio: true, estado: true } },
+              duplicadoDe: { select: { id: true, numero: true, anio: true } },
+              // Solo el nombre para mostrar: nunca el hash ni datos de sesion.
+              usuario: { select: { nombre: true } },
+            },
+          }),
+        );
         if (!p) return null;
         const hoy = hoyArgentina();
         const items = p.items.map((i) => {
@@ -169,12 +175,14 @@ export type ArticuloParaPresupuesto = { id: string; nombre: string; precioVenta:
 export const getClientesParaPresupuesto = cache(
   (): Promise<ClienteParaPresupuesto[]> =>
     conRespaldo(
-      () =>
-        prisma.cliente.findMany({
-          where: { activo: true },
-          orderBy: { nombre: "asc" },
-          select: { id: true, nombre: true, cuit: true },
-        }),
+      async () =>
+        conNegocio(await negocioUnico(prisma), (tx) =>
+          tx.cliente.findMany({
+            where: { activo: true },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true, cuit: true },
+          }),
+        ),
       () => [],
     ),
 );
@@ -182,12 +190,14 @@ export const getClientesParaPresupuesto = cache(
 export const getArticulosParaPresupuesto = cache(
   (): Promise<ArticuloParaPresupuesto[]> =>
     conRespaldo(
-      () =>
-        prisma.articulo.findMany({
-          where: { activo: true },
-          orderBy: { nombre: "asc" },
-          select: { id: true, nombre: true, precioVenta: true, ivaPct: true },
-        }),
+      async () =>
+        conNegocio(await negocioUnico(prisma), (tx) =>
+          tx.articulo.findMany({
+            where: { activo: true },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true, precioVenta: true, ivaPct: true },
+          }),
+        ),
       () => [],
     ),
 );
