@@ -508,6 +508,7 @@ async function sembrarDistintivos(prisma: Prisma) {
 async function sembrarProduccion(prisma: Prisma, usuarioId: string) {
   const hoy = new Date();
   const fecha = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()));
+  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
   const material = (nombre: string) => prisma.material.findFirstOrThrow({ where: { nombre } });
   const maquina = (nombre: string) => prisma.maquina.findFirstOrThrow({ where: { nombre } });
   const vinil = await material("Vinil adhesivo brillante");
@@ -520,23 +521,23 @@ async function sembrarProduccion(prisma: Prisma, usuarioId: string) {
   // 1: consumo + maquinas + mano de obra.
   await prisma.trabajoProduccion.create({
     data: {
-      ventaItemId: i1.id, fecha, usuarioId, minutosManoObra: "22", costoHoraManoObraSnapshot: COSTO_HORA_MANO_OBRA,
-      consumos: { create: [{ materialId: vinil.id, cantidad: "2.75", costoUnitarioSnapshot: vinil.costoUnitario.toString() }, { materialId: transportador.id, cantidad: "1.4", costoUnitarioSnapshot: transportador.costoUnitario.toString() }] },
-      tiempos: { create: [{ maquinaId: plotter.id, minutos: "37", costoHoraSnapshot: plotter.costoHora.toString() }, { maquinaId: laser.id, minutos: "14.5", costoHoraSnapshot: laser.costoHora.toString() }] },
+      negocioId, ventaItemId: i1.id, fecha, usuarioId, minutosManoObra: "22", costoHoraManoObraSnapshot: COSTO_HORA_MANO_OBRA,
+      consumos: { create: [{ negocioId, materialId: vinil.id, cantidad: "2.75", costoUnitarioSnapshot: vinil.costoUnitario.toString() }, { negocioId, materialId: transportador.id, cantidad: "1.4", costoUnitarioSnapshot: transportador.costoUnitario.toString() }] },
+      tiempos: { create: [{ negocioId, maquinaId: plotter.id, minutos: "37", costoHoraSnapshot: plotter.costoHora.toString() }, { negocioId, maquinaId: laser.id, minutos: "14.5", costoHoraSnapshot: laser.costoHora.toString() }] },
     },
   });
   // 2: solo materiales.
   await prisma.trabajoProduccion.create({
     data: {
-      ventaItemId: i2.id, fecha, usuarioId,
-      consumos: { create: [{ materialId: vinil.id, cantidad: "4.2", costoUnitarioSnapshot: vinil.costoUnitario.toString() }] },
+      negocioId, ventaItemId: i2.id, fecha, usuarioId,
+      consumos: { create: [{ negocioId, materialId: vinil.id, cantidad: "4.2", costoUnitarioSnapshot: vinil.costoUnitario.toString() }] },
     },
   });
   // 3: anulado, con un costo que no tiene que aparecer en ningun lado (3.333 x 7531,27 = 25.103,2...).
   await prisma.trabajoProduccion.create({
     data: {
-      ventaItemId: i3.id, fecha, usuarioId, anuladoEn: new Date(), motivoAnulacion: "Prueba de acceso: cargado mal",
-      consumos: { create: [{ materialId: vinil.id, cantidad: "3.333", costoUnitarioSnapshot: vinil.costoUnitario.toString() }] },
+      negocioId, ventaItemId: i3.id, fecha, usuarioId, anuladoEn: new Date(), motivoAnulacion: "Prueba de acceso: cargado mal",
+      consumos: { create: [{ negocioId, materialId: vinil.id, cantidad: "3.333", costoUnitarioSnapshot: vinil.costoUnitario.toString() }] },
     },
   });
 }

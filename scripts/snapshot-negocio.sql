@@ -1,4 +1,4 @@
--- Foto de lo que la migracion 20260601000000_negocio NO debe cambiar: filas por
+-- Foto de lo que la migracion 20260601000000_negocio (y 20260601020000_negocio_produccion) NO debe cambiar: filas por
 -- tabla, suma de ventas.totalBruto, saldo de cada cliente y stockActual de cada
 -- material. Se corre antes y despues de migrar y las dos salidas tienen que ser
 -- identicas (scripts/test-negocio-migracion.sh). No nombra negocioId a proposito.
@@ -16,6 +16,11 @@ ORDER BY t.table_name;
 SELECT 'suma_ventas_totalBruto', coalesce(sum("totalBruto"), 0) FROM ventas;
 SELECT 'suma_comprobantes_importeTotal', coalesce(sum("importeTotal"), 0) FROM comprobantes;
 SELECT 'suma_pagos_monto', coalesce(sum(monto), 0) FROM pagos;
+
+-- Produccion (ola 6): lo medido y los costos congelados no cambian al asignar el dueno.
+SELECT 'suma_trabajo_minutos', coalesce(sum("minutosManoObra"), 0), coalesce(sum("costoHoraManoObraSnapshot"), 0) FROM trabajos_produccion;
+SELECT 'suma_trabajo_tiempos', coalesce(sum(minutos), 0), coalesce(sum("costoHoraSnapshot"), 0) FROM trabajo_tiempos;
+SELECT 'suma_trabajo_consumos', coalesce(sum(cantidad), 0), coalesce(sum("costoUnitarioSnapshot"), 0) FROM trabajo_consumos;
 
 -- Saldo = ventas no anuladas - pagos no anulados, por cliente.
 SELECT 'saldo_cliente', c.id,

@@ -1,7 +1,9 @@
 -- Datos de prueba para scripts/test-negocio-migracion.sh: una fila en cada tabla
 -- de datos, escrita contra el esquema ANTERIOR a 20260601000000_negocio (sin
 -- negocioId). Incluye un comprobante EMITIDO con lineas (sus triggers vuelven
--- inmutable lo fiscal: el backfill tiene que poder atravesarlos).
+-- inmutable lo fiscal: el backfill tiene que poder atravesarlos) y los trabajos de
+-- produccion de la ola 6 (`trabajos_produccion`, `trabajo_tiempos`, `trabajo_consumos`,
+-- que reciben `negocioId` en 20260601020000_negocio_produccion).
 BEGIN;
 
 INSERT INTO usuarios (id, usuario, nombre, rol, "hashClave", "actualizadoEn") VALUES
@@ -52,6 +54,18 @@ INSERT INTO presupuestos (id, numero, anio, "clienteId", fecha, "actualizadoEn")
   ('00000000-0000-4000-8000-000000000061', 1, 2026, '00000000-0000-4000-8000-000000000012', '2026-05-05', now());
 INSERT INTO presupuesto_items (id, "presupuestoId", "articuloId", descripcion, cantidad, "precioUnitario", "ivaPct") VALUES
   ('00000000-0000-4000-8000-000000000062', '00000000-0000-4000-8000-000000000061', '00000000-0000-4000-8000-000000000030', 'Sticker', 2, 1210, 21);
+
+-- Ola 6: un trabajo de produccion vigente (con tiempo y consumo) y otro anulado.
+INSERT INTO trabajos_produccion (id, "ventaItemId", fecha, "minutosManoObra", "costoHoraManoObraSnapshot", notas, "usuarioId", "actualizadoEn") VALUES
+  ('00000000-0000-4000-8000-000000000090', '00000000-0000-4000-8000-000000000043', '2026-05-02', 30, 4000, 'Trabajo de prueba', '00000000-0000-4000-8000-000000000001', now());
+INSERT INTO trabajos_produccion (id, "ventaItemId", fecha, "minutosManoObra", "costoHoraManoObraSnapshot", "anuladoEn", "motivoAnulacion", "usuarioId", "actualizadoEn") VALUES
+  ('00000000-0000-4000-8000-000000000091', '00000000-0000-4000-8000-000000000043', '2026-05-01', 10, 3500, now(), 'Cargado mal', NULL, now());
+INSERT INTO trabajo_tiempos (id, "trabajoId", "maquinaId", minutos, "costoHoraSnapshot") VALUES
+  ('00000000-0000-4000-8000-000000000092', '00000000-0000-4000-8000-000000000090', '00000000-0000-4000-8000-000000000021', 45.50, 2500),
+  ('00000000-0000-4000-8000-000000000093', '00000000-0000-4000-8000-000000000091', '00000000-0000-4000-8000-000000000021', 5, 2400);
+INSERT INTO trabajo_consumos (id, "trabajoId", "materialId", cantidad, "costoUnitarioSnapshot") VALUES
+  ('00000000-0000-4000-8000-000000000094', '00000000-0000-4000-8000-000000000090', '00000000-0000-4000-8000-000000000020', 2.750, 1200),
+  ('00000000-0000-4000-8000-000000000095', '00000000-0000-4000-8000-000000000091', '00000000-0000-4000-8000-000000000020', 9.000, 1100);
 
 -- Factura C emitida (lineas y total cierran; sin alicuotas) y otra A con alicuota.
 INSERT INTO comprobantes (id, ambiente, tipo, "codigoArca", "puntoVenta", numero, fecha, estado,
