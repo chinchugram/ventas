@@ -1,5 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { conNegocio, type TxNegocio } from "@/lib/negocio";
+import { negocioUnico } from "@/lib/dominio/auth";
 import { conRespaldo } from "@/lib/respaldo";
 import { d, type Dinero } from "@/lib/money";
 import type { CondicionIva, TipoComprobante } from "@/lib/comprobantes";
@@ -113,8 +115,19 @@ export const getComprobante = cache(
 
 async function comprobanteDesdeBase(id: string): Promise<ComprobanteCompleto | null> {
   if (!ES_UUID.test(id)) return null;
-  const c = await prisma.comprobante.findUnique({
-    where: { id },
+  // Multi-tenant: solo un comprobante del negocio (RLS + filtro). El negocio sale de
+  // `negocioUnico` hasta que la sesion lo traiga (transitorio, VTA-22/VTA-8).
+  const negocioId = await negocioUnico(prisma);
+  const c = await conNegocio(negocioId, (tx) => leerComprobante(tx, negocioId, id));
+  if (!c) return null;
+  return aCompleto(c);
+}
+
+type FilaComprobante = NonNullable<Awaited<ReturnType<typeof leerComprobante>>>;
+
+function leerComprobante(tx: TxNegocio, negocioId: string, id: string) {
+  return tx.comprobante.findFirst({
+    where: { id, negocioId },
     select: {
       id: true,
       ambiente: true,
@@ -165,8 +178,9 @@ async function comprobanteDesdeBase(id: string): Promise<ComprobanteCompleto | n
       usuario: { select: { nombre: true } },
     },
   });
-  if (!c) return null;
+}
 
+function aCompleto(c: FilaComprobante): ComprobanteCompleto {
   return {
     id: c.id,
     ambiente: c.ambiente,

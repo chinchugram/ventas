@@ -393,7 +393,7 @@ async function main() {
   // ── Reintento tras un rechazo ───────────────────────────────────────────────
   console.log("--- Reintento tras un rechazo ---");
   const vRech = await nuevaVenta();
-  const rechazo = await emitirDeDominio(prisma, negocioId, vRech.id, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { rechazar: () => ["[10016] prueba de rechazo"] }) });
+  const rechazo = await emitirDeDominio(prisma, negocioId, vRech.id, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma, negocioId), { rechazar: () => ["[10016] prueba de rechazo"] }) });
   comprobar("preparación: la factura quedó RECHAZADA", rechazo.estado, "RECHAZADO");
   const panelRech = texto(await conSesion(tEmp, () => FacturarPanel({ ventaId: vRech.id })));
   comprobar("panel: muestra las observaciones del rechazo y ofrece reintentar", `${panelRech.includes("prueba de rechazo")} ${panelRech.includes('"reintento":true')} ${panelRech.includes('"visible":true')}`, "true true true");
@@ -406,7 +406,7 @@ async function main() {
   // ── Resolver un PENDIENTE ───────────────────────────────────────────────────
   console.log("--- Resolver un PENDIENTE ---");
   const vPend = await nuevaVenta();
-  const cortado = await emitirDeDominio(prisma, negocioId, vPend.id, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { cortar: () => true }) });
+  const cortado = await emitirDeDominio(prisma, negocioId, vPend.id, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma, negocioId), { cortar: () => true }) });
   comprobar("preparación: la factura quedó PENDIENTE", cortado.estado, "PENDIENTE");
   const vOtra = await nuevaVenta();
   const rBloq = await invocar(tEmp, comprobantesA.emitirFactura, { ventaId: vOtra.id });

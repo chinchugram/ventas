@@ -569,7 +569,7 @@ async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Id
   const venta = ventas.sort((a, b) => b._count.items - a._count.items)[0]!;
   // Una factura EMITIDA (simulada) de esa venta: la usan /comprobantes/[id] y su vista imprimible.
   // El seed deja los datos fiscales de ejemplo fuera de produccion; si faltaran, la emision falla fuerte.
-  const emisor = crearEmisorSimulado(accesoSimulado(prisma));
+  const emisor = crearEmisorSimulado(accesoSimulado(prisma, negocioId));
   const emitida = await emitirFactura(prisma, negocioId, venta.id, usuarioId, { emisor });
   if (emitida.estado !== "EMITIDO") throw new Error(`No se pudo sembrar la factura de prueba: ${emitida.mensaje}`);
   // Ola 6: un renglon cualquiera (para la pantalla de carga) y un trabajo vigente (para su detalle), sembrados antes.

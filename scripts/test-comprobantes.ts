@@ -198,7 +198,7 @@ async function venta(tx: Tx, clienteId: string, items: { articuloId: string; can
   return v.id;
 }
 
-const simulado = (tx: Tx, opciones?: OpcionesSimulador) => crearEmisorSimulado(accesoSimulado(tx), opciones);
+const simulado = (tx: Tx, opciones?: OpcionesSimulador) => crearEmisorSimulado(accesoSimulado(tx, negocioId), opciones);
 
 /** Datos minimos de un comprobante para probar los CHECK directo contra la base. */
 function crudo(ventaId: string, extra: Record<string, unknown> = {}) {
@@ -435,10 +435,10 @@ async function main() {
   await escenario("Guarda de producción y emisor no simulado", async (tx) => {
     const t = await preparar(tx);
     const v = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    const enProduccion = obtenerEmisorFiscal({ NODE_ENV: "production" }, accesoSimulado(tx));
+    const enProduccion = obtenerEmisorFiscal({ NODE_ENV: "production" }, accesoSimulado(tx, negocioId));
     comprobar("producción sin permiso: no hay emisor", enProduccion.ok ? "hay emisor" : enProduccion.error, MENSAJE_SIMULADO_EN_PRODUCCION);
     comprobar("y no se guardó nada", String(await tx.comprobante.count({ where: { ventaId: v } })), "0");
-    const permitido = obtenerEmisorFiscal({ NODE_ENV: "production", PERMITIR_EMISOR_SIMULADO: "1" }, accesoSimulado(tx));
+    const permitido = obtenerEmisorFiscal({ NODE_ENV: "production", PERMITIR_EMISOR_SIMULADO: "1" }, accesoSimulado(tx, negocioId));
     comprobar("producción con permiso: simulado", permitido.ok ? permitido.emisor.ambiente : permitido.error, "SIMULADO");
     if (permitido.ok) {
       const r = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: permitido.emisor });
@@ -697,7 +697,7 @@ async function concurrencia() {
     const articulo = await prisma.articulo.create({ data: { negocioId, nombre: `${PREFIJO} X`, precioVenta: d(1210), ivaPct: d(21), esServicio: true } });
     const cliente = await prisma.cliente.create({ data: { negocioId, nombre: `${PREFIJO} cliente` } });
     const nuevaVenta = () => prisma.$transaction((tx) => venta(tx, cliente.id, [{ articuloId: articulo.id, cantidad: 1 }], ANIO_FICTICIO));
-    const emisorGlobal = crearEmisorSimulado(accesoSimulado(prisma));
+    const emisorGlobal = crearEmisorSimulado(accesoSimulado(prisma, negocioId));
     const vigentes = (ventaId: string) =>
       prisma.comprobante.count({ where: { ventaId, tipo: "FACTURA_B", estado: { in: ["PENDIENTE", "EMITIDO"] } } });
 
@@ -705,7 +705,7 @@ async function concurrencia() {
     for (const ronda of [1, 2, 3]) {
       const v = await nuevaVenta();
       const intento = (db: PrismaClient) =>
-        db.$transaction((tx) => emitirFacturaEnTx(tx, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx)) }), { timeout: 30_000 });
+        db.$transaction((tx) => emitirFacturaEnTx(tx, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx, negocioId)) }), { timeout: 30_000 });
       const res = await Promise.allSettled([intento(prisma), intento(b), intento(prisma), intento(b)]);
       const ok = res.filter((r) => r.status === "fulfilled");
       const malos = res.filter((r): r is PromiseRejectedResult => r.status === "rejected");
@@ -723,7 +723,7 @@ async function concurrencia() {
       const v = await nuevaVenta();
       const res = await Promise.allSettled([
         emitirFactura(prisma, negocioId, v, null, { emisor: emisorGlobal }),
-        emitirFactura(b, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(b)) }),
+        emitirFactura(b, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(b, negocioId)) }),
       ]);
       const ok = res.filter((r): r is PromiseFulfilledResult<ComprobanteProcesado> => r.status === "fulfilled");
       const malos = res.filter((r): r is PromiseRejectedResult => r.status === "rejected");
@@ -744,7 +744,7 @@ async function concurrencia() {
     const ventas = await Promise.all([1, 2, 3, 4, 5].map(() => nuevaVenta()));
     const emitidas = await Promise.all(
       ventas.map((v, k) =>
-        (k % 2 ? b : prisma).$transaction((tx) => emitirFacturaEnTx(tx, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx)) }), { timeout: 30_000 }),
+        (k % 2 ? b : prisma).$transaction((tx) => emitirFacturaEnTx(tx, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx, negocioId)) }), { timeout: 30_000 }),
       ),
     );
     const numeros = (await prisma.comprobante.findMany({ where: { puntoVenta: PV_CONCURRENCIA, ambiente: "SIMULADO", tipo: "FACTURA_B", estado: "EMITIDO" }, select: { numero: true } }))
@@ -755,7 +755,7 @@ async function concurrencia() {
 
     // 4. Corte en dos fases: el PENDIENTE sobrevive (esta confirmado) y se resuelve despues.
     const vCorte = await nuevaVenta();
-    const cortado = await emitirFactura(prisma, negocioId, vCorte, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { cortar: () => true }) });
+    const cortado = await emitirFactura(prisma, negocioId, vCorte, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma, negocioId), { cortar: () => true }) });
     comprobar("corte: queda PENDIENTE", cortado.estado, "PENDIENTE");
     const guardado = await prisma.comprobante.findUniqueOrThrow({ where: { id: cortado.id } });
     comprobar("corte: el PENDIENTE quedó confirmado en la base con su número", `${guardado.estado} ${guardado.numero}`, `PENDIENTE ${numeros.length + 1}`);
@@ -772,7 +772,7 @@ async function concurrencia() {
 
     // 5. Rechazo en dos fases: confirmado como RECHAZADO.
     const vRech = await nuevaVenta();
-    const rech = await emitirFactura(prisma, negocioId, vRech, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { rechazar: () => ["[10016] prueba"] }) });
+    const rech = await emitirFactura(prisma, negocioId, vRech, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma, negocioId), { rechazar: () => ["[10016] prueba"] }) });
     comprobar("rechazo en dos fases: RECHAZADO confirmado", (await prisma.comprobante.findUniqueOrThrow({ where: { id: rech.id } })).estado, "RECHAZADO");
 
     // 6. Venta facturada de verdad (confirmada): no se anula.
