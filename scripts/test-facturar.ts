@@ -181,7 +181,7 @@ const texto = (valor: unknown) => {
   });
 };
 
-let configOriginal: { clave: string; valor: string }[] | null = null;
+let configOriginal: { negocioId: string; clave: string; valor: string }[] | null = null;
 
 async function limpiar() {
   const like = `${PREFIJO}%`;
@@ -215,7 +215,7 @@ async function configurarFiscal(valores: Partial<Record<keyof typeof CLAVES_FISC
   await prisma.configuracion.deleteMany({ where: { clave: { startsWith: "fiscal" } } });
   for (const [campo, valor] of Object.entries(todos)) {
     if (valor === "") continue;
-    await prisma.configuracion.create({ data: { clave: CLAVES_FISCALES[campo as keyof typeof CLAVES_FISCALES], valor } });
+    await prisma.configuracion.create({ data: { negocioId, clave: CLAVES_FISCALES[campo as keyof typeof CLAVES_FISCALES], valor } });
   }
 }
 

@@ -154,7 +154,7 @@ async function configurarFiscal(tx: Tx, valores: Partial<Record<keyof typeof CLA
   for (const [campo, valor] of Object.entries(todos) as [keyof typeof CLAVES_FISCALES, string][]) {
     const clave = CLAVES_FISCALES[campo];
     if (valor === "") await tx.configuracion.deleteMany({ where: { clave } });
-    else await tx.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+    else await tx.configuracion.upsert({ where: { negocioId_clave: { negocioId, clave } }, update: { valor }, create: { negocioId, clave, valor } });
   }
 }
 
@@ -666,7 +666,7 @@ async function contarTodo(cliente: PrismaClient): Promise<Cuentas> {
 const ANIO_FICTICIO = f("2099-06-15");
 const PREFIJO = "ZZ prueba comprobantes concurrencia";
 const PV_CONCURRENCIA = 4399;
-let configuracionOriginal: { clave: string; valor: string }[] | null = null;
+let configuracionOriginal: { negocioId: string; clave: string; valor: string }[] | null = null;
 
 /** Borra lo que crea la concurrencia y restaura la configuracion fiscal. */
 async function limpiarConcurrencia() {

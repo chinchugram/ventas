@@ -85,19 +85,19 @@ async function main() {
 
   console.log("Creando configuracion...");
   await prisma.configuracion.upsert({
-    where: { clave: "nombreNegocio" },
+    where: { negocioId_clave: { negocioId, clave: "nombreNegocio" } },
     update: { valor: "HL Laser" },
-    create: { clave: "nombreNegocio", valor: "HL Laser" },
+    create: { negocioId, clave: "nombreNegocio", valor: "HL Laser" },
   });
   await prisma.configuracion.upsert({
-    where: { clave: "costoHoraManoObra" },
+    where: { negocioId_clave: { negocioId, clave: "costoHoraManoObra" } },
     update: { valor: "3500" },
-    create: { clave: "costoHoraManoObra", valor: "3500" },
+    create: { negocioId, clave: "costoHoraManoObra", valor: "3500" },
   });
   await prisma.configuracion.upsert({
-    where: { clave: "margenObjetivo" },
+    where: { negocioId_clave: { negocioId, clave: "margenObjetivo" } },
     update: { valor: "45" },
-    create: { clave: "margenObjetivo", valor: "45" },
+    create: { negocioId, clave: "margenObjetivo", valor: "45" },
   });
   if (!PRODUCCION) {
     // Datos fiscales de EJEMPLO (ola 5), solo fuera de produccion, para poder
@@ -113,7 +113,7 @@ async function main() {
       fiscalPuntoVenta: "1",
     };
     for (const [clave, valor] of Object.entries(fiscales)) {
-      await prisma.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+      await prisma.configuracion.upsert({ where: { negocioId_clave: { negocioId, clave } }, update: { valor }, create: { negocioId, clave, valor } });
     }
   }
 

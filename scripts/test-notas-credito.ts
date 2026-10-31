@@ -173,7 +173,7 @@ async function configurarFiscal(db: Tx | PrismaClient, valores: Partial<Record<k
   for (const [campo, valor] of Object.entries(todos) as [keyof typeof CLAVES_FISCALES, string][]) {
     const clave = CLAVES_FISCALES[campo];
     if (valor === "") await db.configuracion.deleteMany({ where: { clave } });
-    else await db.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+    else await db.configuracion.upsert({ where: { negocioId_clave: { negocioId, clave } }, update: { valor }, create: { negocioId, clave, valor } });
   }
 }
 
@@ -524,7 +524,7 @@ async function contarTodo(cliente: PrismaClient): Promise<Cuentas> {
 
 const ANIO_FICTICIO = f("2099-06-15");
 const PREFIJO = "ZZ prueba notas de credito";
-let configuracionOriginal: { clave: string; valor: string }[] | null = null;
+let configuracionOriginal: { negocioId: string; clave: string; valor: string }[] | null = null;
 
 /** Borra lo que crea la parte real y restaura la configuracion fiscal. */
 async function limpiarReal() {

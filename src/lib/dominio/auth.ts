@@ -55,7 +55,8 @@ export async function verificarCredenciales(
   clave: string,
   ahora: Date = new Date(),
 ): Promise<ResultadoCredenciales> {
-  const fila = await db.usuario.findUnique({ where: { usuario: normalizarUsuario(usuarioTipeado) } });
+  // TRANSITORIO (F1.2): `usuario` ya no es unico solo; el login por negocio es de F3.1.
+  const fila = await db.usuario.findFirst({ where: { usuario: normalizarUsuario(usuarioTipeado) } });
 
   if (!fila || !fila.activo || estaEnPausa(fila, ahora)) {
     await verificarClave(clave, HASH_FALSO);
@@ -224,7 +225,7 @@ export async function crearUsuarioEnTx(tx: Tx, datos: DatosUsuarioNuevo): Promis
   if (problema) throw new ErrorDeNegocio(problema);
   if (nombre.length === 0 || nombre.length > 80) throw new ErrorDeNegocio("El nombre debe tener entre 1 y 80 caracteres.");
 
-  if (await tx.usuario.findUnique({ where: { usuario }, select: { id: true } })) {
+  if (await tx.usuario.findFirst({ where: { usuario }, select: { id: true } })) {
     throw new ErrorDeNegocio(`Ya existe un usuario "${usuario}".`);
   }
   const creado = await tx.usuario.create({

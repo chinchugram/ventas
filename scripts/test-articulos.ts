@@ -101,9 +101,9 @@ async function costoDesdeBase(tx: Tx, articuloId: string, costoHora = d(1000)) {
 /** Material A $100/m2, maquina $2.000/h, mano de obra $1.000/h, y piezas de baja. */
 async function preparar(tx: Tx) {
   await tx.configuracion.upsert({
-    where: { clave: "costoHoraManoObra" },
+    where: { negocioId_clave: { negocioId, clave: "costoHoraManoObra" } },
     update: { valor: "1000" },
-    create: { clave: "costoHoraManoObra", valor: "1000" },
+    create: { negocioId, clave: "costoHoraManoObra", valor: "1000" },
   });
   const material = await tx.material.create({
     data: { negocioId, nombre: "Prueba A", unidad: "M2", stockActual: d(10), costoUnitario: d(100) },

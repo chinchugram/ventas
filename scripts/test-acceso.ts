@@ -458,8 +458,9 @@ async function sembrarDistintivos(prisma: Prisma) {
   for (const [nombre, costoHora] of Object.entries(COSTO_HORA_MAQUINA)) {
     await prisma.maquina.updateMany({ where: { nombre }, data: { costoHora } });
   }
+  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
   for (const [clave, valor] of [["costoHoraManoObra", COSTO_HORA_MANO_OBRA], ["margenObjetivo", MARGEN_OBJETIVO]] as const) {
-    await prisma.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+    await prisma.configuracion.upsert({ where: { negocioId_clave: { negocioId, clave } }, update: { valor }, create: { negocioId, clave, valor } });
   }
   // Dos materiales bajo el minimo: asi la lista de reposicion tiene renglones con costo estimado para el dueno.
   await prisma.material.updateMany({ where: { nombre: "Acrílico opalino 3mm" }, data: { stockActual: "1.5" } });

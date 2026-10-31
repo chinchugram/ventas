@@ -544,7 +544,7 @@ async function main() {
   await ok("editarMaquina", configuracionA.editarMaquina, { id: maquina.id, nombre: `${MARCA} maquina editada`, costoHora: "4321" });
   await ok("cambiarActivoMaquina", configuracionA.cambiarActivoMaquina, { id: maquina.id, activo: false });
   await ok("guardarFactorReposicion", reposicionA.guardarFactorReposicion, { factor: "3" });
-  comprobar("  el factor quedo guardado", String((await prisma.configuracion.findUnique({ where: { clave: "factorReposicion" } }))?.valor), "3");
+  comprobar("  el factor quedo guardado", String((await prisma.configuracion.findUnique({ where: { negocioId_clave: { negocioId, clave: "factorReposicion" } } }))?.valor), "3");
   await ok("guardarConfiguracion", configuracionA.guardarConfiguracion, {
     nombreNegocio: confianza.nombreNegocio ?? "HL Laser",
     costoHoraManoObra: confianza.costoHoraManoObra ?? "3500",
