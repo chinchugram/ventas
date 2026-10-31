@@ -2,15 +2,17 @@ import Link from "next/link";
 import { fmtFecha, fmtMonedaCorta as fmtMoneda, fmtNumero, fmtPorcentaje, type Dinero } from "@/lib/money";
 import {
   getDeudas,
+  getFacturadoPorDia,
   getResumenMes,
   getUltimasVentas,
+  negocioDeLaSesion,
   type Alerta,
+  type FacturadoDia,
 } from "@/lib/queries/dashboard";
-import { getArticulosConMargen, getConfig, configNumero, type ArticuloConMargen } from "@/lib/queries/catalogo";
+import { getArticulosConMargen, type ArticuloConMargen } from "@/lib/queries/catalogo";
 import { getMateriales } from "@/lib/queries/materiales";
 import { Seccion, SemaforoMargen, Tarjeta, Vacio } from "@/components/ui";
 import { GananciaDelMes, VentasPorDia, type DiaVentas } from "@/components/tablero";
-import { getVentas, type VentaRow } from "@/lib/queries/ventas";
 import { requierePermisoPagina } from "@/lib/permisos";
 
 // El dashboard lee datos que cambian con cada venta: nunca se cachea ni se
@@ -31,22 +33,25 @@ const ETIQUETA_ESTADO_PAGO = {
 } as const;
 
 export default async function Dashboard() {
-  await requierePermisoPagina("verCostos", "verMargenes");
-  const [resumen, ultimas, deudas, articulos, config, materiales, ventas] = await Promise.all([
-    getResumenMes(),
-    getUltimasVentas(8),
-    getDeudas(),
+  const usuario = await requierePermisoPagina("verCostos", "verMargenes");
+  // El negocio sale de la sesion; todas las lecturas del dashboard corren dentro de ese negocio.
+  const negocioId = await negocioDeLaSesion(usuario);
+  const DIAS_GRAFICO = 14;
+  const [resumen, ultimas, deudas, facturadoPorDia, articulos, materiales] = await Promise.all([
+    getResumenMes(negocioId),
+    getUltimasVentas(negocioId, 8),
+    getDeudas(negocioId),
+    getFacturadoPorDia(negocioId, primerDiaDelGrafico(DIAS_GRAFICO)),
     getArticulosConMargen(),
-    getConfig(),
     getMateriales(),
-    getVentas(50),
   ]);
 
   const stockBajo = materiales.filter((m) => m.stockMinimo.cmp(0) > 0);
 
-  const metaMargenPct = configNumero(config, "margenObjetivo", "40");
+  // La meta de margen ya viene en el resumen (misma lectura, mismo negocio).
+  const metaMargenPct = resumen.metaMargenPct;
   const alertas = detectarAlertas(articulos, stockBajo, resumen.cantidadVentas, metaMargenPct);
-  const dias = ventasPorDia(ventas, 14);
+  const dias = ventasPorDia(facturadoPorDia, DIAS_GRAFICO);
 
   return (
     <>
@@ -211,17 +216,20 @@ export default async function Dashboard() {
   );
 }
 
+/** Primer día (UTC, como se guarda `ventas.fecha`) que dibuja el gráfico de `cantidad` días. */
+function primerDiaDelGrafico(cantidad: number): Date {
+  const hoy = new Date();
+  return new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - (cantidad - 1)));
+}
+
 /** Facturado por día en los últimos `cantidad` días, terminando hoy. */
-function ventasPorDia(ventas: VentaRow[], cantidad: number): DiaVentas[] {
+function ventasPorDia(facturado: FacturadoDia[], cantidad: number): DiaVentas[] {
   const clave = (f: Date) =>
     `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}-${String(f.getDate()).padStart(2, "0")}`;
 
-  // Las fechas de venta se guardan como dia calendario en UTC.
-  const porDia = new Map<string, number>();
-  for (const v of ventas) {
-    const k = v.fecha.toISOString().slice(0, 10);
-    porDia.set(k, (porDia.get(k) ?? 0) + v.totalBruto.toNumber());
-  }
+  // Las fechas de venta se guardan como dia calendario en UTC (`dia` = "AAAA-MM-DD").
+  // `total` es solo para dibujar la barra; la plata de verdad sigue siendo Decimal.
+  const porDia = new Map<string, number>(facturado.map((f) => [f.dia, f.total.toNumber()]));
 
   const hoy = new Date();
   return Array.from({ length: cantidad }, (_, i) => {
