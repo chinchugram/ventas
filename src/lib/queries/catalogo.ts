@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { DEMO_CONFIG, demoArticulos } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { configNumero, recetaResuelta } from "@/lib/receta";
@@ -16,7 +16,7 @@ export const getConfig = cache(
   (): Promise<Record<string, string>> =>
     conRespaldo(
       async () => {
-        const filas = await prisma.configuracion.findMany();
+        const filas = await conNegocio(await negocioActual(), (tx) => tx.configuracion.findMany());
         return Object.fromEntries(filas.map((f) => [f.clave, f.valor]));
       },
       () => DEMO_CONFIG,
@@ -40,20 +40,22 @@ async function articulosDesdeBase(): Promise<ArticuloConMargen[]> {
   const config = await getConfig();
   const costoHoraManoObra = configNumero(config, "costoHoraManoObra", "0");
 
-  const articulos = await prisma.articulo.findMany({
-    where: { activo: true },
-    orderBy: { nombre: "asc" },
-    include: {
-      receta: {
-        include: {
-          componentes: {
-            include: { material: true, maquina: true },
-            orderBy: { id: "asc" },
+  const articulos = await conNegocio(await negocioActual(), (tx) =>
+    tx.articulo.findMany({
+      where: { activo: true },
+      orderBy: { nombre: "asc" },
+      include: {
+        receta: {
+          include: {
+            componentes: {
+              include: { material: true, maquina: true },
+              orderBy: { id: "asc" },
+            },
           },
         },
       },
-    },
-  });
+    }),
+  );
 
   return articulos.map((a) => {
     const receta = recetaResuelta(a.receta?.componentes ?? [], costoHoraManoObra);
@@ -96,11 +98,13 @@ export const getArticulosParaVender = cache(
   (): Promise<ArticuloParaVender[]> =>
     conRespaldo(
       async () => {
-        const articulos = await prisma.articulo.findMany({
-          where: { activo: true },
-          orderBy: { nombre: "asc" },
-          select: { id: true, nombre: true, descripcion: true, precioVenta: true, ivaPct: true, esServicio: true },
-        });
+        const articulos = await conNegocio(await negocioActual(), (tx) =>
+          tx.articulo.findMany({
+            where: { activo: true },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true, descripcion: true, precioVenta: true, ivaPct: true, esServicio: true },
+          }),
+        );
         return articulos;
       },
       () =>

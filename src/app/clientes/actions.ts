@@ -3,13 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
-import { dbDisponible, prisma } from "@/lib/prisma";
+import { dbDisponible } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { puede, verificarPermiso } from "@/lib/permisos";
 import type { UsuarioSesion } from "@/lib/auth";
 import { mensajeDeError, primerError, SIN_BASE, textoOpcional, type Resultado } from "@/lib/acciones";
 import { CONDICIONES_IVA_CLIENTE, cambiarActivoClienteEnTx, crearClienteEnTx, editarClienteEnTx } from "@/lib/dominio/clientes";
 import { normalizarDni } from "@/lib/comprobantes";
-import { negocioUnico } from "@/lib/dominio/auth";
 
 export type { Resultado } from "@/lib/acciones";
 
@@ -64,7 +64,8 @@ export async function crearCliente(datos: DatosCliente): Promise<{ ok: true; id:
 
   let id: string;
   try {
-    ({ id } = await prisma.$transaction(async (tx) => crearClienteEnTx(tx, await negocioUnico(tx), parsed.data)));
+    const negocioId = await negocioActual();
+    ({ id } = await conNegocio(negocioId, (tx) => crearClienteEnTx(tx, negocioId, parsed.data)));
   } catch (error) {
     if (esCuitDuplicado(error)) return { ok: false, error: "Ya hay un cliente con ese CUIT." };
     console.error("[crearCliente]", error);
@@ -85,7 +86,7 @@ export async function editarCliente(datos: DatosCliente & { id: string }): Promi
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => editarClienteEnTx(tx, id.data, parsed.data));
+    await conNegocio(await negocioActual(), (tx) => editarClienteEnTx(tx, id.data, parsed.data));
   } catch (error) {
     if (esCuitDuplicado(error)) return { ok: false, error: "Ya hay un cliente con ese CUIT." };
     console.error("[editarCliente]", error);
@@ -105,7 +106,7 @@ export async function cambiarActivoCliente(datos: { id: string; activo: boolean 
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => cambiarActivoClienteEnTx(tx, parsed.data.id, parsed.data.activo));
+    await conNegocio(await negocioActual(), (tx) => cambiarActivoClienteEnTx(tx, parsed.data.id, parsed.data.activo));
   } catch (error) {
     console.error("[cambiarActivoCliente]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo actualizar el cliente.") };

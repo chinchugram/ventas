@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { dbDisponible, prisma } from "@/lib/prisma";
+import { dbDisponible } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { verificarPermiso } from "@/lib/permisos";
 import { mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { esquemaConfiguracion, esquemaMaquina, type DatosConfiguracion, type DatosMaquina } from "@/lib/configuracion";
@@ -14,7 +15,6 @@ import {
   guardarDatosFiscalesEnTx,
 } from "@/lib/dominio/configuracion";
 import { CLAVES_FISCALES, validarDatosFiscales, type CampoFiscal } from "@/lib/datos-fiscales";
-import { negocioUnico } from "@/lib/dominio/auth";
 
 /**
  * Guarda nombre, costo/hora de mano de obra, IVA y margen objetivo.
@@ -31,7 +31,8 @@ export async function guardarConfiguracion(datos: DatosConfiguracion): Promise<R
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => guardarConfiguracionEnTx(tx, parsed.data));
+    const negocioId = await negocioActual();
+    await conNegocio(negocioId, (tx) => guardarConfiguracionEnTx(tx, parsed.data, negocioId));
   } catch (error) {
     console.error("[guardarConfiguracion]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar la configuración.") };
@@ -87,7 +88,8 @@ export async function guardarDatosFiscales(datos: DatosFiscalesFormulario): Prom
     CAMPOS_FORMULARIO.map((campo) => [CLAVES_FISCALES[campo], revision.valores[CLAVES_FISCALES[campo]] ?? ""]),
   );
   try {
-    await prisma.$transaction((tx) => guardarDatosFiscalesEnTx(tx, valores));
+    const negocioId = await negocioActual();
+    await conNegocio(negocioId, (tx) => guardarDatosFiscalesEnTx(tx, valores, negocioId));
   } catch (error) {
     console.error("[guardarDatosFiscales]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudieron guardar los datos fiscales.") };
@@ -109,7 +111,8 @@ export async function crearMaquina(datos: DatosMaquina): Promise<Resultado> {
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction(async (tx) => crearMaquinaEnTx(tx, await negocioUnico(tx), parsed.data));
+    const negocioId = await negocioActual();
+    await conNegocio(negocioId, (tx) => crearMaquinaEnTx(tx, negocioId, parsed.data));
   } catch (error) {
     console.error("[crearMaquina]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar la máquina.") };
@@ -131,7 +134,7 @@ export async function editarMaquina(datos: DatosMaquina & { id: string }): Promi
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => editarMaquinaEnTx(tx, id.data, parsed.data));
+    await conNegocio(await negocioActual(), (tx) => editarMaquinaEnTx(tx, id.data, parsed.data));
   } catch (error) {
     console.error("[editarMaquina]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar la máquina.") };
@@ -157,7 +160,7 @@ export async function cambiarActivoMaquina(datos: { id: string; activo: boolean 
 
   let recetas: number;
   try {
-    ({ recetas } = await prisma.$transaction((tx) =>
+    ({ recetas } = await conNegocio(await negocioActual(), (tx) =>
       cambiarActivoMaquinaEnTx(tx, parsed.data.id, parsed.data.activo),
     ));
   } catch (error) {

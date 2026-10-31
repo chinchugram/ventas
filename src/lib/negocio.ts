@@ -55,6 +55,24 @@ export async function conNegocio<T>(
   }, opciones);
 }
 
+// ─── Negocio actual (TRANSITORIO hasta F4.1) ─────────────────────────────────
+/**
+ * TRANSITORIO (F3.x): el negocio con el que corren las lecturas y escrituras hasta que
+ * el login por negocio (F4.1) traiga `getNegocioId()` de la sesion. Devuelve el primer
+ * negocio activo (el mas antiguo). Cuando exista `getNegocioId()`, se reemplaza este
+ * helper en sus llamadores (`conNegocio(await negocioActual(), ...)`). `negocios` es la
+ * tabla global: se lee sin contexto.
+ */
+export async function negocioActual(): Promise<string> {
+  const negocio = await prisma.negocio.findFirst({
+    where: { activo: true },
+    orderBy: { creadoEn: "asc" },
+    select: { id: true },
+  });
+  if (!negocio) throw new Error("No hay ningún negocio.");
+  return negocio.id;
+}
+
 // ─── Rol de la app ───────────────────────────────────────────────────────────
 // Si DATABASE_URL apunta a un rol con SUPERUSER o BYPASSRLS, RLS no rige y los
 // negocios quedan mezclados sin ningun error. Se comprueba una vez por proceso.
