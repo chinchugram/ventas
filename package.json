@@ -28,7 +28,6 @@
     "test:rango-fechas": "tsx scripts/verificar-rango-fechas.ts",
     "test:reportes-rango": "tsx scripts/verificar-reportes-rango.ts",
     "test:csv": "tsx scripts/verificar-csv.ts",
-    "demo:video": "tsx scripts/grabar-demo.ts",
     "test:stock": "tsx scripts/verificar-stock.ts",
     "test:integridad": "sh scripts/test-integridad.sh",
     "test:precios": "tsx scripts/verificar-precios.ts",
@@ -77,14 +76,11 @@
     "@prisma/client": "^7.10.1",
     "decimal.js": "^10.6.0",
     "dotenv": "^18.0.4",
-    "ffmpeg-static": "^5.3.0",
     "next": "^16.4.3",
     "pg": "^8.23.0",
-    "playwright": "^1.64.1",
     "qrcode": "1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "testreel": "^0.2.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -94,7 +90,6 @@
     "@types/qrcode": "1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "node-edge-tts": "^1.2.12",
     "prisma": "^7.10.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
@@ -103,7 +98,6 @@
   "allowScripts": {
     "prisma@7.10.1": true,
     "@prisma/engines@7.10.1": true,
-    "esbuild@0.28.2": true,
-    "ffmpeg-static@5.3.0": true
+    "esbuild@0.28.2": true
   }
 }
