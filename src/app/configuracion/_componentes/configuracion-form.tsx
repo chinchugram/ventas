@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarConfiguracion } from "@/app/configuracion/actions";
-import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoDecimal, CampoSelect, CampoTexto, useAccion } from "@/components/form";
+import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoDecimal, CampoSelect, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
 import { canonico, IVAS_VALIDOS, validarCostoHora, validarMargen } from "@/lib/configuracion";
 
 export type ValoresConfiguracion = {
@@ -60,6 +60,7 @@ export function ConfiguracionForm({
       }}
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
     >
+      <NotaObligatorio />
       <h2 className="text-base font-semibold text-slate-900">Datos del negocio</h2>
 
       <CampoTexto

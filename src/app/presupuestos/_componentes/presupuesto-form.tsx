@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { d, fmtMoneda, fmtNumero, type Dinero } from "@/lib/money";
 import { decimalOCero } from "@/lib/acciones";
 import { totalizarPresupuesto, subtotalLinea, VALIDEZ_POR_DEFECTO } from "@/lib/presupuestos";
-import { BloqueError, BotonEnviar, CampoDecimal, CampoNotas, CampoSelect, useAccion } from "@/components/form";
+import { BloqueError, BotonEnviar, CampoDecimal, CampoNotas, CampoSelect, NotaObligatorio, useAccion } from "@/components/form";
 import { preciosParaPresupuesto, type PreciosCliente } from "@/app/ventas/nueva/actions";
 import { crearPresupuesto, editarPresupuesto } from "../actions";
 
@@ -150,6 +150,7 @@ export function PresupuestoForm({
 
   return (
     <form onSubmit={guardar} className="space-y-6 pb-8">
+      <NotaObligatorio />
       <section className="space-y-2">
         <CampoSelect
           etiqueta="Cliente"

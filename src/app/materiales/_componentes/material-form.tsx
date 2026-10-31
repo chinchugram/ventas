@@ -10,6 +10,7 @@ import {
   CampoNotas,
   CampoSelect,
   CampoTexto,
+  NotaObligatorio,
   useAccion,
 } from "@/components/form";
 import { ETIQUETA_UNIDAD } from "@/lib/unidades";
@@ -82,6 +83,7 @@ export function MaterialForm({
       }}
       className="space-y-4"
     >
+      <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} />
 
       <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cambiarMiClave } from "@/app/usuarios/actions";
-import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoTexto, useAccion } from "@/components/form";
+import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
 import { MostrarClaves } from "./mostrar-claves";
 import { CLAVE_MIN } from "./reglas";
 
@@ -43,6 +43,7 @@ export function MiClaveForm({ esModoDemo = false }: { esModoDemo?: boolean }) {
       }}
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
     >
+      <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="la clave" />
       <CampoTexto
         etiqueta="Clave actual"

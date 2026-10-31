@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarDatosFiscales, type DatosFiscalesFormulario } from "@/app/configuracion/actions";
-import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoSelect, CampoTexto, useAccion, type Opcion } from "@/components/form";
+import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoSelect, CampoTexto, NotaObligatorio, useAccion, type Opcion } from "@/components/form";
 import { CONDICIONES_IVA_EMISOR, ETIQUETA_CONDICION_IVA, validarDatosFiscales, type CampoFiscal } from "@/lib/datos-fiscales";
 
 /** Lo que tipea el dueño: todo texto, igual que en la base. */
@@ -61,6 +61,7 @@ export function DatosFiscalesForm({
       }}
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
     >
+      <NotaObligatorio />
       <div>
         <h2 className="text-base font-semibold text-slate-900">Datos fiscales</h2>
         <p className="text-sm text-slate-500">Quién figura como emisor en cada factura o nota de crédito.</p>

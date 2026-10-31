@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { registrarCompra } from "@/app/compras/actions";
+import { MarcaObligatorio, NotaObligatorio } from "@/components/form";
 import { fmtMoneda } from "@/lib/money";
 import { totalizarCompra } from "@/lib/stock";
 
@@ -77,6 +78,7 @@ export function NuevaCompraForm({
       }}
       className="space-y-4"
     >
+      <NotaObligatorio />
       {esModoDemo ? (
         <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
           Modo demostración: sin base de datos conectada, la compra no se guarda.
@@ -85,11 +87,17 @@ export function NuevaCompraForm({
 
       <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-3">
         <div className="sm:col-span-2">
-          <label htmlFor="proveedor">Proveedor</label>
+          <label htmlFor="proveedor">
+            Proveedor
+            <MarcaObligatorio />
+          </label>
           <input id="proveedor" value={proveedor} onChange={(e) => setProveedor(e.target.value)} required />
         </div>
         <div>
-          <label htmlFor="fecha">Fecha</label>
+          <label htmlFor="fecha">
+            Fecha
+            <MarcaObligatorio />
+          </label>
           <input id="fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required />
         </div>
         <div className="sm:col-span-3">
@@ -105,7 +113,10 @@ export function NuevaCompraForm({
             <li key={l.clave} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-end gap-2">
                 <div className="min-w-0 flex-1">
-                  <label htmlFor={`material-${l.clave}`}>Material {i + 1}</label>
+                  <label htmlFor={`material-${l.clave}`}>
+                    Material {i + 1}
+                    <MarcaObligatorio />
+                  </label>
                   <select
                     id={`material-${l.clave}`}
                     value={l.materialId}
@@ -133,7 +144,10 @@ export function NuevaCompraForm({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor={`cantidad-${l.clave}`}>Cantidad{unidad ? ` (${unidad})` : ""}</label>
+                  <label htmlFor={`cantidad-${l.clave}`}>
+                    Cantidad{unidad ? ` (${unidad})` : ""}
+                    <MarcaObligatorio />
+                  </label>
                   <input
                     id={`cantidad-${l.clave}`}
                     inputMode="decimal"
@@ -143,7 +157,10 @@ export function NuevaCompraForm({
                   />
                 </div>
                 <div>
-                  <label htmlFor={`costo-${l.clave}`}>Costo por {unidad ?? "unidad"}</label>
+                  <label htmlFor={`costo-${l.clave}`}>
+                    Costo por {unidad ?? "unidad"}
+                    <MarcaObligatorio />
+                  </label>
                   <input
                     id={`costo-${l.clave}`}
                     inputMode="decimal"
