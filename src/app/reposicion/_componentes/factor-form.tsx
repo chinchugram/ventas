@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarFactorReposicion } from "@/app/reposicion/actions";
-import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoDecimal, useAccion } from "@/components/form";
+import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoDecimal, NotaObligatorio, useAccion } from "@/components/form";
 import { validarFactor } from "@/lib/reposicion";
 
 /** Hasta cuantas veces el minimo se sugiere comprar. Al guardar, la lista se recalcula. */
@@ -28,6 +28,7 @@ export function FactorForm({ inicial, esModoDemo }: { inicial: string; esModoDem
       }}
       className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
     >
+      <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="los cambios" />
       <div className="flex items-end gap-3">
         <CampoDecimal

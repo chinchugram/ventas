@@ -14,6 +14,7 @@ import { AnularPagoBoton } from "./_componentes/anular-pago-boton";
 import { MarcarEntregadaBoton } from "./_componentes/marcar-entregada-boton";
 import { FacturarPanel } from "./_componentes/factur-panel";
 import { EmitirNotaCreditoBoton } from "./_componentes/emitir-nota-credito-boton";
+import { BloqueProduccion } from "@/app/produccion/_componentes/bloque-produccion";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +119,8 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
           </li>
         ))}
       </ul>
+
+      <BloqueProduccion ventaId={venta.id} />
 
       <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-900">Pagos</h2>

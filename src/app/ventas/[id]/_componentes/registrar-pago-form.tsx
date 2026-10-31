@@ -11,6 +11,7 @@ import {
   CampoNotas,
   CampoSelect,
   CampoTexto,
+  NotaObligatorio,
   useAccion,
 } from "@/components/form";
 import { decimalOCero, esDecimal } from "@/lib/acciones";
@@ -53,6 +54,7 @@ export function RegistrarPagoForm({ ventaId, saldo, hoy }: { ventaId: string; sa
       className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
     >
       <h2 className="text-sm font-semibold text-slate-900">Registrar pago</h2>
+      <NotaObligatorio />
       <CampoDecimal
         etiqueta="Monto"
         prefijo="$"

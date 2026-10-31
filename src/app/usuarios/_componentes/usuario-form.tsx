@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearUsuario } from "@/app/usuarios/actions";
-import { AvisoDemo, BloqueError, BotonEnviar, CampoSelect, CampoTexto, useAccion } from "@/components/form";
+import { AvisoDemo, BloqueError, BotonEnviar, CampoSelect, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
 import { MostrarClaves } from "./mostrar-claves";
 import { AVISO_USUARIO, CLAVE_MIN, normalizarUsuario, usuarioValido } from "./reglas";
 
@@ -38,6 +38,7 @@ export function UsuarioForm({ esModoDemo = false }: { esModoDemo?: boolean }) {
       }}
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
     >
+      <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="los usuarios" />
       <CampoTexto
         etiqueta="Nombre"

@@ -154,6 +154,7 @@ model Material {
   compraItems CompraItem[]
   movimientos MovimientoStock[]
   negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
+  consumosProduccion TrabajoConsumo[]
 
   @@index([activo])
   @@index([nombre])
@@ -174,6 +175,7 @@ model Maquina {
 
   componentes RecetaComponente[]
   negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
+  tiemposProduccion TrabajoTiempo[]
 
   @@index([activo])
   @@index([negocioId])
@@ -359,6 +361,8 @@ model VentaItem {
   venta    Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
   articulo Articulo @relation(fields: [articuloId], references: [id])
   negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
+  /// Trabajos de produccion de esta linea (ola 6). Vigente hay uno solo; los anulados quedan de historial.
+  trabajos TrabajoProduccion[]
 
   @@index([ventaId])
   @@index([articuloId])
@@ -637,6 +641,8 @@ model Usuario {
   // Trazabilidad (ola 5): quien emitio cada comprobante.
   comprobantes      Comprobante[]
   negocio Negocio? @relation(fields: [negocioId], references: [id], onDelete: Restrict)
+  // Trazabilidad (ola 6): quien cargo cada trabajo de produccion.
+  trabajosProduccion TrabajoProduccion[]
 
   @@unique([negocioId, usuario])
   @@index([negocioId])
@@ -822,4 +828,82 @@ model ComprobanteIva {
   @@unique([comprobanteId, alicuotaPct])
   @@index([negocioId])
   @@map("comprobante_iva")
+}
+
+// ---------------------------------------------------------------------------
+// Produccion (ola 6): lo que de verdad se uso en cada trabajo, para pasar de
+// margen estimado (receta) a margen real. Ver `docs/02-modelo-datos.md`.
+// ---------------------------------------------------------------------------
+
+/// Un trabajo de produccion = lo que se hizo para UNA linea de venta. Vigente hay
+/// uno solo por linea (indice unico parcial en la migracion); para corregirlo se
+/// anula y se vuelve a cargar. Nunca se borra. Guarda lo medido y los costos unitarios
+/// CONGELADOS al cargarlo (como `costoUnitarioSnapshot` de la venta): un cambio de
+/// precio posterior no reescribe el margen real de lo ya producido.
+/// CHECK en la migracion: minutos >= 0, costo >= 0 y (anuladoEn nulo) <=> (motivoAnulacion nulo).
+model TrabajoProduccion {
+  id                        String   @id @default(uuid()) @db.Uuid
+  ventaItemId               String   @db.Uuid
+  fecha                     DateTime @db.Date
+  /// Minutos de mano de obra del trabajo (las maquinas van en `tiempos`).
+  minutosManoObra           Decimal  @default(0) @db.Decimal(10, 2)
+  /// Costo/hora de mano de obra vigente al cargarlo (configuracion).
+  costoHoraManoObraSnapshot Decimal  @default(0) @db.Decimal(14, 2)
+  notas                     String?
+
+  // Baja logica: anulado no cuenta en ningun reporte.
+  anuladoEn       DateTime? @db.Timestamptz(3)
+  motivoAnulacion String?
+
+  /// Quien lo cargo. NULL = historico (se muestra "—").
+  usuarioId String? @db.Uuid
+
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  ventaItem VentaItem        @relation(fields: [ventaItemId], references: [id], onDelete: Restrict)
+  usuario   Usuario?         @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  tiempos   TrabajoTiempo[]
+  consumos  TrabajoConsumo[]
+
+  @@index([ventaItemId])
+  @@index([fecha])
+  @@index([usuarioId])
+  @@map("trabajos_produccion")
+}
+
+/// Minutos de una maquina en un trabajo. Una fila por maquina y trabajo.
+model TrabajoTiempo {
+  id                String  @id @default(uuid()) @db.Uuid
+  trabajoId         String  @db.Uuid
+  maquinaId         String  @db.Uuid
+  minutos           Decimal @db.Decimal(10, 2)
+  /// `Maquina.costoHora` vigente al cargarlo.
+  costoHoraSnapshot Decimal @default(0) @db.Decimal(14, 2)
+
+  trabajo TrabajoProduccion @relation(fields: [trabajoId], references: [id], onDelete: Restrict)
+  maquina Maquina           @relation(fields: [maquinaId], references: [id], onDelete: Restrict)
+
+  @@unique([trabajoId, maquinaId])
+  @@index([maquinaId])
+  @@map("trabajo_tiempos")
+}
+
+/// Material realmente usado en un trabajo, en la unidad del material. NO mueve stock
+/// por si solo: el stock baja por receta al vender; la diferencia se ajusta aparte
+/// (movimiento `AJUSTE` explicito y confirmado).
+model TrabajoConsumo {
+  id                    String  @id @default(uuid()) @db.Uuid
+  trabajoId             String  @db.Uuid
+  materialId            String  @db.Uuid
+  cantidad              Decimal @db.Decimal(14, 3)
+  /// `Material.costoUnitario` vigente al cargarlo.
+  costoUnitarioSnapshot Decimal @default(0) @db.Decimal(14, 4)
+
+  trabajo  TrabajoProduccion @relation(fields: [trabajoId], references: [id], onDelete: Restrict)
+  material Material          @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@unique([trabajoId, materialId])
+  @@index([materialId])
+  @@map("trabajo_consumos")
 }

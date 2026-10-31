@@ -496,3 +496,13 @@ Decisiones tomadas en la auditoría (3.3b) y estado después de la tarea 4.0a (r
 
 - `docs/03-stack-y-decisiones.md` dice Prisma 6, mientras `package.json` tiene Prisma 7. Conviene resolver esa discrepancia.
 - Quedó sin verificar el build con Turbopack sin symlink y el changelog de next 16.4.1.
+
+
+---
+
+## Actualización (ola 6.4)
+
+Resueltos en la ola 6: **F2** (baja de máquina sin `window.confirm()`, confirmación en el lugar), el indicador de obligatorio
+visible y accesible en los formularios (WCAG 3.3.2) y los montos del gráfico "Ventas por día" para lectores de pantalla (tabla
+oculta visualmente). N1, N2 y N5 ya estaban resueltos en la ola 4 (4.0b). Pendiente: los `h3` en las líneas de receta y los
+otros `window.confirm()` (clientes, usuarios, anular venta, facturar, marcar entregada).

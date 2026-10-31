@@ -44,3 +44,7 @@ backups/
 
 # videos y audios generados por testreel
 /testreel-output/
+
+# Obsidian (docs/vault): estado local y plugins con tokens
+/docs/vault/.obsidian/workspace*.json
+/docs/vault/.obsidian/plugins/

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { anularPago } from "@/app/ventas/[id]/actions";
-import { BloqueError, BotonEnviar, CampoTexto, useAccion } from "@/components/form";
+import { BloqueError, BotonEnviar, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
 
 /**
  * Anular un pago pide el motivo: el pago no se borra, queda tachado con ese
@@ -39,6 +39,7 @@ export function AnularPagoBoton({ pagoId }: { pagoId: string }) {
       }}
       className="mt-2 w-full space-y-2 rounded-lg bg-red-50 p-3"
     >
+      <NotaObligatorio />
       <CampoTexto
         etiqueta="Motivo de la anulación"
         valor={motivo}

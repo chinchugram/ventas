@@ -9,10 +9,10 @@
 | Plataforma | Web **responsive, mobile-first** | El mostrador se atiende con el celular en la mano. Diseño mobile-first real, no un desktop comprimido. |
 | Usuarios | Varios, con **login y roles** (`DUENO` / `EMPLEADO`) | Desde la etapa 3 (ola 4): cada venta, cobro y compra queda con quién la cargó. Antes, un solo usuario sin login. Ver `docs/seguridad-ola-4-auth.md`. |
 | Cobranzas | Sí, cuenta corriente calculada | El negocio vende a crédito. |
-| Framework | **Next.js 15** (App Router, React Server Components) | Un solo lenguaje, SSR para que el celular cargue rápido, y Server Actions que eliminan una capa entera de API REST. |
+| Framework | **Next.js 16** (App Router, React Server Components) | Un solo lenguaje, SSR para que el celular cargue rápido, y Server Actions que eliminan una capa entera de API REST. |
 | Lenguaje | **TypeScript** estricto | El dominio es dinero: los tipos son la primera línea de defensa. |
 | Base de datos | **PostgreSQL 17** | Numeración correlativa transaccional, CHECK constraints para la integridad de las recetas, aggregating de reportes. |
-| ORM | **Prisma 6** | Migraciones versionadas, tipos derivados del schema, seed. |
+| ORM | **Prisma 7** (con `@prisma/adapter-pg`) | Migraciones versionadas, tipos derivados del schema, seed. |
 | Dinero | `Decimal` de Prisma + `decimal.js` en el browser | **Nunca `float`.** Un redondeo mal aplicado en un subtotal se propaga al margen. |
 | Validación | **Zod 4** | Un solo schema por formulario, reutilizado en el server y en el cliente. |
 | UI | **Tailwind CSS 4** + componentes propios | Sin librería de UI externa: el diseño es simple, una dependencia menos que mantener. |
@@ -64,19 +64,21 @@ ventas/
 ├── src/
 │   ├── app/                  # Rutas (App Router) = la UI
 │   │   ├── page.tsx          # Dashboard
-│   │   ├── clientes/
-│   │   ├── catalogo/         # Artículos
-│   │   ├── materiales/
-│   │   ├── maquinas/
-│   │   ├── ventas/
-│   │   └── reportes/
+│   │   ├── <modulo>/         # clientes, catalogo, materiales, ventas, compras, cobranzas,
+│   │   │   ├── page.tsx      #   comprobantes, presupuestos, listas-precios, produccion,
+│   │   │   └── actions.ts    #   reportes, usuarios, configuracion, login…
+│   │   │                     # actions.ts = Server Actions de escritura del módulo
+│   │   └── layout.tsx
+│   ├── proxy.ts              # Primer filtro de acceso: sesión válida en cada pedido
 │   ├── components/           # Componentes compartidos
-│   ├── lib/
-│   │   ├── prisma.ts         # Cliente singleton
-│   │   ├── costing.ts        # Motor de costeo y margen (sin DB, puro y testeable)
-│   │   ├── money.ts          # Aritmética decimal
-│   │   └── queries/          # Lecturas agrupadas por dominio
-│   └── actions/              # Server Actions: escritura
+│   └── lib/
+│       ├── prisma.ts         # Cliente singleton
+│       ├── costing.ts        # Motor de costeo y margen (sin DB, puro y testeable)
+│       ├── money.ts          # Aritmética decimal
+│       ├── queries/          # Lecturas agrupadas por dominio
+│       ├── dominio/          # Reglas de negocio con transacción (ventas, pagos, stock,
+│       │                     #   comprobantes…), llamadas desde las actions
+│       └── fiscal/           # Emisor fiscal abstracto + emisor simulado (ARCA pendiente)
 ├── docker-compose.yml
 └── .env.example
 ```
@@ -87,7 +89,7 @@ ventas/
   `+`, `*` y template literals con números de dinero.
 - **Toda consulta de negocio va en `lib/queries/`**, nunca en un componente. Los Server Components
   son finos: piden datos y renderizan.
-- **Toda escritura va en `src/actions/`** como Server Action validada con Zod.
+- **Toda escritura va en `src/app/<modulo>/actions.ts`** como Server Action validada con Zod; la lógica transaccional vive en `src/lib/dominio/`.
 - **Nombres de dominio en español**, código en inglés. El dominio es lo que hay que entender
   sin traducciones: `costoTotalSnapshot`, `stockMinimo`, `saldoCliente`.
 - Soft delete (`activo = false`) en todo catálogo. Nunca se borra algo con historial.

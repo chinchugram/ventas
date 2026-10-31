@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearMaquina, editarMaquina } from "@/app/configuracion/actions";
-import { AvisoDemo, BloqueError, BotonEnviar, CampoDecimal, CampoNotas, CampoTexto, useAccion } from "@/components/form";
+import { AvisoDemo, BloqueError, BotonEnviar, CampoDecimal, CampoNotas, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
 import { canonico, validarCostoHora, type DatosMaquina } from "@/lib/configuracion";
 
 type Valores = { nombre: string; costoHora: string; notas: string };
@@ -41,6 +41,7 @@ export function MaquinaForm({
       }}
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
     >
+      <NotaObligatorio />
       <CampoTexto
         etiqueta="Nombre"
         valor={valores.nombre}

@@ -68,7 +68,8 @@ import { crearEmisorSimulado } from "../src/lib/fiscal/emisor-simulado";
 // ─── Configuracion ────────────────────────────────────────────────────────────
 
 const RAIZ = join(__dirname, "..");
-const PUERTO = 3103;
+// 3103 por defecto; `ACCESO_PUERTO` lo cambia (por ejemplo, si otra tarea tiene `next dev` ahi).
+const PUERTO = Number(process.env.ACCESO_PUERTO ?? 3103);
 const BASE_URL = `http://127.0.0.1:${PUERTO}`;
 const NOMBRE_BASE = process.env.ACCESO_BASE ?? "ventas_acceso";
 const COOKIE = nombreCookie(true); // __Host-ventas_sesion: la que usa `next start`
@@ -108,6 +109,8 @@ const CLASIFICACION: Record<string, Clase> = {
   "/materiales/nuevo": "dueno",
   "/materiales/[id]/editar": "dueno",
   "/reportes": "dueno",
+  "/reportes/margen-real": "dueno", // ola 6: costo real contra receta (solo dueno)
+  "/reportes/margen-real/export": "dueno",
   "/reportes/stock": "dueno",
   "/reportes/export/[reporte]": "dueno",
   "/usuarios": "dueno",
@@ -130,6 +133,10 @@ const CLASIFICACION: Record<string, Clase> = {
   "/presupuestos/[id]": "ambos",
   "/presupuestos/[id]/editar": "ambos",
   "/presupuestos/[id]/imprimir": "ambos",
+  "/produccion": "ambos",
+  "/produccion/cargar/[ventaItemId]": "ambos",
+  "/produccion/estimar": "ambos",
+  "/produccion/trabajo/[id]": "ambos",
   "/reposicion": "ambos",
   "/usuarios/mi-clave": "ambos",
   "/ventas": "ambos",
@@ -493,7 +500,48 @@ async function sembrarDistintivos(prisma: Prisma) {
   }
 }
 
-type Ids = { articulo: string; cliente: string; maquina: string; lista: string; material: string; presupuesto: string; venta: string; usuario: string; comprobante: string };
+/**
+ * Ola 6: dos trabajos de produccion VIGENTES (de hoy: caen en el mes que muestra el margen real por defecto) con
+ * costos congelados distintivos y con centavos, mas uno ANULADO (que no cuenta y tiene su propio costo distintivo).
+ * Asi el margen real tiene numeros que se pueden buscar si se filtraran al empleado.
+ */
+async function sembrarProduccion(prisma: Prisma, usuarioId: string) {
+  const hoy = new Date();
+  const fecha = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()));
+  const material = (nombre: string) => prisma.material.findFirstOrThrow({ where: { nombre } });
+  const maquina = (nombre: string) => prisma.maquina.findFirstOrThrow({ where: { nombre } });
+  const vinil = await material("Vinil adhesivo brillante");
+  const transportador = await material("Transportador (vinil transfer)");
+  const plotter = await maquina("Plotter de impresión");
+  const laser = await maquina("Láser CO2");
+  const items = await prisma.ventaItem.findMany({ where: { venta: { estado: { not: "ANULADA" } } }, orderBy: [{ venta: { numero: "asc" } }, { id: "asc" }], take: 3 });
+  if (items.length < 3) throw new Error("El seed no trae 3 renglones de ventas para sembrar produccion.");
+  const [i1, i2, i3] = items as [(typeof items)[number], (typeof items)[number], (typeof items)[number]];
+  // 1: consumo + maquinas + mano de obra.
+  await prisma.trabajoProduccion.create({
+    data: {
+      ventaItemId: i1.id, fecha, usuarioId, minutosManoObra: "22", costoHoraManoObraSnapshot: COSTO_HORA_MANO_OBRA,
+      consumos: { create: [{ materialId: vinil.id, cantidad: "2.75", costoUnitarioSnapshot: vinil.costoUnitario.toString() }, { materialId: transportador.id, cantidad: "1.4", costoUnitarioSnapshot: transportador.costoUnitario.toString() }] },
+      tiempos: { create: [{ maquinaId: plotter.id, minutos: "37", costoHoraSnapshot: plotter.costoHora.toString() }, { maquinaId: laser.id, minutos: "14.5", costoHoraSnapshot: laser.costoHora.toString() }] },
+    },
+  });
+  // 2: solo materiales.
+  await prisma.trabajoProduccion.create({
+    data: {
+      ventaItemId: i2.id, fecha, usuarioId,
+      consumos: { create: [{ materialId: vinil.id, cantidad: "4.2", costoUnitarioSnapshot: vinil.costoUnitario.toString() }] },
+    },
+  });
+  // 3: anulado, con un costo que no tiene que aparecer en ningun lado (3.333 x 7531,27 = 25.103,2...).
+  await prisma.trabajoProduccion.create({
+    data: {
+      ventaItemId: i3.id, fecha, usuarioId, anuladoEn: new Date(), motivoAnulacion: "Prueba de acceso: cargado mal",
+      consumos: { create: [{ materialId: vinil.id, cantidad: "3.333", costoUnitarioSnapshot: vinil.costoUnitario.toString() }] },
+    },
+  });
+}
+
+type Ids = { articulo: string; cliente: string; maquina: string; lista: string; material: string; presupuesto: string; venta: string; usuario: string; comprobante: string; ventaItem: string; trabajo: string };
 
 /** Lo que el seed no trae (lista de precios y presupuesto) y los ids para instanciar las rutas dinamicas. */
 async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Ids> {
@@ -523,7 +571,9 @@ async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Id
   const emisor = crearEmisorSimulado(accesoSimulado(prisma));
   const emitida = await emitirFactura(prisma, negocioId, venta.id, usuarioId, { emisor });
   if (emitida.estado !== "EMITIDO") throw new Error(`No se pudo sembrar la factura de prueba: ${emitida.mensaje}`);
-  return { articulo: articulo.id, cliente: cliente.id, maquina: maquina.id, lista: lista.id, material: material.id, presupuesto: presupuesto.id, venta: venta.id, usuario: usuarioId, comprobante: emitida.id };
+  // Ola 6: un renglon cualquiera (para la pantalla de carga) y un trabajo vigente (para su detalle), sembrados antes.
+  const trabajo = await prisma.trabajoProduccion.findFirstOrThrow({ where: { anuladoEn: null }, orderBy: { creadoEn: "asc" } });
+  return { articulo: articulo.id, cliente: cliente.id, maquina: maquina.id, lista: lista.id, material: material.id, presupuesto: presupuesto.id, venta: venta.id, usuario: usuarioId, comprobante: emitida.id, ventaItem: trabajo.ventaItemId, trabajo: trabajo.id };
 }
 
 /** Ids con los que se instancia cada segmento dinamico. */
@@ -541,6 +591,8 @@ function ejemplares(ids: Ids): Record<string, string[]> {
     "/presupuestos/[id]": [ids.presupuesto],
     "/presupuestos/[id]/editar": [ids.presupuesto],
     "/presupuestos/[id]/imprimir": [ids.presupuesto],
+    "/produccion/cargar/[ventaItemId]": [ids.ventaItem],
+    "/produccion/trabajo/[id]": [ids.trabajo],
     "/reportes/export/[reporte]": REPORTES_CSV,
     "/usuarios/[id]": [ids.usuario],
     "/ventas/[id]": [ids.venta],
@@ -640,6 +692,42 @@ async function valoresSensibles(prisma: Prisma): Promise<{ sensibles: Sensible[]
     if (!precio.isZero()) lista.push(sensible("margen", `${a.nombre}`, precio.minus(costo).div(precio).times(100), "pct"));
     if (!costo.isZero()) lista.push(sensible("margen", `${a.nombre} (recargo sobre costo)`, precio.minus(costo).div(costo).times(100), "pct"));
   }
+
+  // Produccion (ola 6): costo real de cada trabajo VIGENTE, desvio contra la receta y margen real (misma cuenta, a mano).
+  const dos = (v: Decimal) => v.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  let realTodos = new Decimal(0);
+  let recetaTodos = new Decimal(0);
+  let netoTodos = new Decimal(0);
+  const trabajos = await prisma.trabajoProduccion.findMany({
+    where: { anuladoEn: null, ventaItem: { venta: { estado: { not: "ANULADA" } } } },
+    include: { consumos: true, tiempos: true, ventaItem: true },
+  });
+  for (const t of trabajos) {
+    const materialesT = dos(t.consumos.reduce((a, c) => a.plus(D(c.cantidad).times(D(c.costoUnitarioSnapshot))), new Decimal(0)));
+    const maquinasT = dos(t.tiempos.reduce((a, x) => a.plus(D(x.minutos).div(60).times(D(x.costoHoraSnapshot))), new Decimal(0)));
+    const manoObraT = dos(D(t.minutosManoObra).div(60).times(D(t.costoHoraManoObraSnapshot)));
+    const real = materialesT.plus(maquinasT).plus(manoObraT);
+    const receta = D(t.ventaItem.costoTotalSnapshot);
+    const neto = D(t.ventaItem.subtotalNeto);
+    realTodos = realTodos.plus(real);
+    recetaTodos = recetaTodos.plus(receta);
+    netoTodos = netoTodos.plus(neto);
+    const etiqueta = `trabajo ${t.id.slice(0, 8)}`;
+    lista.push(sensible("costo real de produccion", `${etiqueta} (total)`, real));
+    lista.push(sensible("costo real de produccion", `${etiqueta} (materiales)`, materialesT));
+    lista.push(sensible("costo real de produccion", `${etiqueta} (maquinas)`, maquinasT));
+    lista.push(sensible("costo real de produccion", `${etiqueta} (mano de obra)`, manoObraT));
+    lista.push(sensible("desvio de produccion", `${etiqueta} (real − receta)`, real.minus(receta)));
+    if (!receta.isZero()) lista.push(sensible("desvio de produccion", `${etiqueta} (%)`, real.minus(receta).div(receta).times(100), "pct"));
+    if (!neto.isZero()) lista.push(sensible("margen real", etiqueta, neto.minus(real).div(neto).times(100), "pct"));
+    inocentesDec.push(D(t.minutosManoObra), ...t.consumos.map((c) => D(c.cantidad)), ...t.tiempos.map((x) => D(x.minutos)));
+  }
+  lista.push(sensible("costo real de produccion", "suma de los vigentes", realTodos));
+  lista.push(sensible("desvio de produccion", "suma de los vigentes (real − receta)", realTodos.minus(recetaTodos)));
+  if (!recetaTodos.isZero()) lista.push(sensible("desvio de produccion", "suma de los vigentes (%)", realTodos.minus(recetaTodos).div(recetaTodos).times(100), "pct"));
+  if (!netoTodos.isZero()) lista.push(sensible("margen real", "global de los vigentes", netoTodos.minus(realTodos).div(netoTodos).times(100), "pct"));
+  // El trabajo ANULADO: su costo (3,333 x 7531,27) tampoco puede aparecer en ninguna pantalla del dueno ni del empleado.
+  lista.push(sensible("costo de un trabajo anulado (no debe verse en ningun lado)", "trabajo anulado", dos(new Decimal("3.333").times(COSTOS_MATERIAL["Vinil adhesivo brillante"]!))));
 
   // Descarta duplicados exactos y nulos.
   const vistos = new Set<string>();
@@ -884,7 +972,7 @@ async function probarRuta(patron: string, clase: Clase, url: string, ctx: Contex
 
 // ─── Huella de la base: los pedidos rechazados no pueden escribir nada ────────
 
-const TABLAS = ["ventas", "venta_items", "pagos", "compras", "compra_items", "movimientos_stock", "clientes", "materiales", "articulos", "recetas", "receta_componentes", "maquinas", "configuracion", "listas_precios", "lista_precio_items", "presupuestos", "presupuesto_items", "contactos_cobranza", "usuarios", "comprobantes", "comprobante_items", "comprobante_iva"];
+const TABLAS = ["ventas", "venta_items", "pagos", "compras", "compra_items", "movimientos_stock", "clientes", "materiales", "articulos", "recetas", "receta_componentes", "maquinas", "configuracion", "listas_precios", "lista_precio_items", "presupuestos", "presupuesto_items", "contactos_cobranza", "usuarios", "comprobantes", "comprobante_items", "comprobante_iva", "trabajos_produccion", "trabajo_tiempos", "trabajo_consumos"];
 
 /** Hash del contenido de cada tabla (no se mira `sesiones`: el proxy renueva su vencimiento al pasar). */
 async function huella(prisma: Prisma): Promise<Record<string, string>> {
@@ -937,6 +1025,9 @@ const CLASIFICACION_ACCIONES: Record<string, Clase> = {
   "presupuestos/actions.ts#crearPresupuesto": "ambos",
   "presupuestos/actions.ts#editarPresupuesto": "ambos",
   "presupuestos/actions.ts#anularPresupuesto": "ambos",
+  "produccion/actions.ts#cargarTrabajo": "ambos", // la casilla de ajustar stock exige ademas ajustarStock
+  "produccion/actions.ts#anularTrabajo": "ambos",
+  "produccion/actions.ts#ajustarStockDeTrabajo": "dueno",
   "presupuestos/actions.ts#convertirPresupuesto": "ambos",
   "presupuestos/actions.ts#duplicarPresupuesto": "ambos",
   "reposicion/actions.ts#guardarFactorReposicion": "dueno",
@@ -1067,6 +1158,7 @@ async function main() {
       bajaId: baja.id,
     };
 
+    await sembrarProduccion(prisma, dueno.id);
     const ids = await prepararEjemplares(prisma, dueno.id);
     const { sensibles, descartes } = await valoresSensibles(prisma);
     console.log(`Valores sensibles sembrados: ${sensibles.length} (${[...new Set(sensibles.map((s) => s.categoria))].join(", ")})`);
@@ -1142,7 +1234,12 @@ async function main() {
     const vistos = new Map<string, number>();
     for (const x of buscarFugas(todo, sensibles)) vistos.set(x.categoria, (vistos.get(x.categoria) ?? 0) + 1);
     for (const [categoria, n] of [...vistos].sort()) console.log(`     ${categoria}: ${n} valores aparecen en las paginas del dueno`);
-    for (const obligatoria of ["costo de material", "costo de venta", "ganancia", "margen", "valorizacion de stock", "costo de articulo", "costo estimado de reposicion"]) {
+    comprobarSuelta(
+      "el costo de un trabajo ANULADO no aparece en ninguna pagina del dueno",
+      (vistos.get("costo de un trabajo anulado (no debe verse en ningun lado)") ?? 0) === 0,
+      "el margen real esta contando un trabajo anulado",
+    );
+    for (const obligatoria of ["costo de material", "costo de venta", "ganancia", "margen", "valorizacion de stock", "costo de articulo", "costo estimado de reposicion", "costo real de produccion", "desvio de produccion", "margen real"]) {
       comprobarSuelta(`el dueno ve "${obligatoria}" (el detector no esta ciego)`, (vistos.get(obligatoria) ?? 0) > 0, "ninguna pagina del dueno muestra un valor de esta categoria");
     }
   } finally {
