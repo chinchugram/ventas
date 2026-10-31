@@ -16,6 +16,7 @@ import {
 import { UNIDADES } from "@/lib/materiales";
 import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { cambiarEstadoMaterialEnTx, crearMaterialEnTx, editarMaterialEnTx } from "@/lib/dominio/materiales";
+import { negocioUnico } from "@/lib/dominio/auth";
 
 // Alta, edicion y baja logica de materiales. El stock no se edita aca: solo
 // cambia por compras, ventas y ajustes (el alta deja su "Stock inicial").
@@ -93,8 +94,8 @@ export async function crearMaterial(
   const usuarioId = idParaGuardar(sesion.usuario);
   let id: string;
   try {
-    ({ id } = await prisma.$transaction((tx) =>
-      crearMaterialEnTx(tx, {
+    ({ id } = await prisma.$transaction(async (tx) =>
+      crearMaterialEnTx(tx, await negocioUnico(tx), {
         nombre: m.nombre,
         unidad: m.unidad,
         stockInicial: d(m.stockInicial),

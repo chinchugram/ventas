@@ -8,6 +8,7 @@ import { d } from "@/lib/money";
 import { decimalNoNegativo, mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { ajustarStockEnTx } from "@/lib/dominio/stock";
+import { negocioUnico } from "@/lib/dominio/auth";
 
 const esquema = z.object({
   materialId: z.uuid("Material inválido"),
@@ -28,8 +29,8 @@ export async function ajustarStock(datos: z.input<typeof esquema>): Promise<Resu
   if (!sesion.ok) return sesion;
   const usuarioId = idParaGuardar(sesion.usuario);
   try {
-    await prisma.$transaction((tx) =>
-      ajustarStockEnTx(tx, { materialId, motivo, usuarioId, stockContado: d(parsed.data.stockContado) }),
+    await prisma.$transaction(async (tx) =>
+      ajustarStockEnTx(tx, await negocioUnico(tx), { materialId, motivo, usuarioId, stockContado: d(parsed.data.stockContado) }),
     );
   } catch (error) {
     console.error("[ajustarStock]", error);

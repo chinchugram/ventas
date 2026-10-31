@@ -10,6 +10,7 @@ import { accesoSimulado, emitirFactura as emitirFacturaDeDominio, resolverPendie
 import { esFactura } from "@/lib/comprobantes";
 import { entornoDelProceso, obtenerEmisorFiscal } from "@/lib/fiscal";
 import { revalidarVentas } from "@/lib/revalidar";
+import { negocioUnico } from "@/lib/dominio/auth";
 
 // Acciones de facturacion (tarea 5.5). La logica de emision vive en
 // `src/lib/dominio/comprobantes.ts`; aca solo se verifica permiso y sesion, se
@@ -62,7 +63,7 @@ export async function emitirFactura(datos: z.input<typeof esquemaVenta>): Promis
   if (!obtenido.ok) return { ok: false, error: obtenido.error };
 
   try {
-    const c = await emitirFacturaDeDominio(prisma, ventaId, usuarioId, { emisor: obtenido.emisor });
+    const c = await emitirFacturaDeDominio(prisma, await negocioUnico(prisma), ventaId, usuarioId, { emisor: obtenido.emisor });
     revalidarFacturacion(ventaId, c.id);
     return { ok: true, comprobanteId: c.id, estado: c.estado, mensaje: c.mensaje, advertencias: c.advertencias };
   } catch (error) {
