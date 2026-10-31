@@ -116,6 +116,8 @@ const PAGINAS_ESPERADAS: Record<string, Accion[]> = {
   "/presupuestos/[id]": ["verPresupuestos"],
   "/presupuestos/[id]/editar": ["cargarPresupuesto"],
   "/presupuestos/[id]/imprimir": ["verPresupuestos"],
+  // Ola 6 (6.3): estimar tiempos de un pedido. Solo lectura y sin costos: dueño y empleado.
+  "/produccion/estimar": ["cargarProduccion"],
   "/reportes": ["verReportes", "verCostos", "verMargenes"],
   "/reportes/margen-real": ["verReportes", "verCostos", "verMargenes", "verMargenReal"],
   "/reportes/stock": ["verReportes", "verCostos"],
