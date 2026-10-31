@@ -147,31 +147,6 @@ export function NuevaVentaForm({ articulos, clientes, esModoDemo = false, verCos
     return resuelto ?? { precio: articulo.precioVenta, origen: "CATALOGO" };
   }
 
-  function cargarEjemploDemo() {
-    // Solo artículos con receta: uno sin receta tiene costo 0 y mostraría un
-    // margen inflado en la primera pantalla que ve el cliente.
-    const costeados = articulos.filter((a) => costosDe(a)?.recetaConfiable);
-    const a1 = costeados[0] ?? articulos[0];
-    if (!a1) return;
-    const a2 = costeados[1] ?? a1;
-    if (clientes[0]) {
-      setClienteId(clientes[0].id);
-    }
-    setLineas([
-      { id: `l${++secuenciaLinea}`, articuloId: a1.id, cantidad: "2" },
-      { id: `l${++secuenciaLinea}`, articuloId: a2.id, cantidad: "25" },
-    ]);
-    setObservaciones("Entrega coordinada para el viernes. Diseños aprobados.");
-    setModoCobro("TOTAL");
-  }
-
-  function limpiarFormulario() {
-    setLineas([]);
-    setMontoParcial("");
-    setObservaciones("");
-    setModoCobro("TOTAL");
-  }
-
   const porId = useMemo(() => new Map(articulos.map((a) => [a.id, a])), [articulos]);
   const cliente = clientes.find((c) => c.id === clienteId);
 
@@ -318,15 +293,6 @@ export function NuevaVentaForm({ articulos, clientes, esModoDemo = false, verCos
 
   return (
     <div className="space-y-6 pb-28">
-      {esModoDemo ? (
-        <BannerMockup
-          onCargarEjemplo={cargarEjemploDemo}
-          onLimpiar={limpiarFormulario}
-          tieneLineas={lineas.length > 0}
-          esModoDemo={esModoDemo}
-        />
-      ) : null}
-
       <section>
         <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
           Cliente
@@ -770,56 +736,6 @@ function ComprobanteSimulado({
           Volver a editar la venta
         </button>
       )}
-    </div>
-  );
-}
-
-function BannerMockup({
-  onCargarEjemplo,
-  onLimpiar,
-  tieneLineas,
-  esModoDemo = false,
-}: {
-  onCargarEjemplo: () => void;
-  onLimpiar: () => void;
-  tieneLineas: boolean;
-  esModoDemo?: boolean;
-}) {
-  return (
-    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center rounded-md bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-900">
-              {esModoDemo ? "Mockup con catálogo demo" : "Mockup interactivo"}
-            </span>
-            <p className="text-sm font-semibold text-amber-900">Simulación en vivo (no guarda en base)</p>
-          </div>
-          <p className="mt-1 text-sm text-amber-800">
-            Los cálculos de costo, alícuotas de IVA y márgenes se computan en tiempo real según las recetas.
-            Podés seleccionar artículos, modificar cantidades y simular la emisión del comprobante.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {!tieneLineas ? (
-            <button
-              type="button"
-              onClick={onCargarEjemplo}
-              className="min-h-11 rounded-lg bg-amber-800 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-amber-900"
-            >
-              <span aria-hidden="true">⚡</span> Cargar ejemplo demo
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onLimpiar}
-              className="min-h-11 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
-            >
-              Limpiar líneas
-            </button>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

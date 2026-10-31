@@ -11,7 +11,6 @@ import { getMateriales } from "@/lib/queries/materiales";
 import { Seccion, SemaforoMargen, Tarjeta, Vacio } from "@/components/ui";
 import { GananciaDelMes, VentasPorDia, type DiaVentas } from "@/components/tablero";
 import { getVentas, type VentaRow } from "@/lib/queries/ventas";
-import { AvisoRespaldo } from "@/components/aviso-respaldo";
 import { requierePermisoPagina } from "@/lib/permisos";
 
 // El dashboard lee datos que cambian con cada venta: nunca se cachea ni se
@@ -51,7 +50,6 @@ export default async function Dashboard() {
 
   return (
     <>
-      <AvisoRespaldo />
       <Seccion
         titulo={`${NOMBRES_MES[resumen.mes - 1]} ${resumen.anio}`}
         descripcion={
