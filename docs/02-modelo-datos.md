@@ -33,10 +33,15 @@ Un solo modelo para todo el sistema, tal como queda con las olas 0 a 5 y 7 integ
    al emitirse. Después no lee el cliente, el artículo ni la configuración: editarlos no cambia ni un byte del
    comprobante. Lo que un comprobante emitido tiene mal se corrige con una nota de crédito, nunca editándolo.
 
+9. **Cada fila tiene dueño (multi-tenant).** Todas las tablas de datos guardan `negocioId` (ver "Negocio y
+   multi-tenant"). Es la base del aislamiento por RLS; las restricciones únicas y las consultas por negocio
+   llegan en F1.2, F2.1 y F3.
+
 ## Mapa de tablas
 
 | Grupo | Tablas |
 |---|---|
+| Negocios (multi-tenant) | `negocios` |
 | Usuarios y acceso | `usuarios`, `sesiones` (enum `Rol`) |
 | Clientes | `clientes` (con `condicionIva` y `dni`) |
 | Facturación | `comprobantes`, `comprobante_items`, `comprobante_iva` |
@@ -49,6 +54,53 @@ Un solo modelo para todo el sistema, tal como queda con las olas 0 a 5 y 7 integ
 ---
 
 ## Entidades
+
+### Negocio y multi-tenant
+
+#### `Negocio`
+Un negocio (tenant) y dueño de todos los datos. Tabla `negocios`.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `nombre` | string | "HL Laser" |
+| `slug` | string | único; identificador corto ("hl-laser") |
+| `logoUrl` | string? | opcional |
+| `activo` | bool | baja lógica: un negocio no se borra |
+| `creadoEn`, `actualizadoEn` | timestamptz | |
+
+#### `negocioId` en las demás tablas
+Lo llevan las 22 tablas de datos: `clientes`, `materiales`, `maquinas`, `articulos`, `listas_precios`,
+`lista_precio_items`, `recetas`, `receta_componentes`, `ventas`, `venta_items`, `pagos`, `compras`,
+`compra_items`, `movimientos_stock`, `contactos_cobranza`, `presupuestos`, `presupuesto_items`, `usuarios`,
+`sesiones`, `comprobantes`, `comprobante_items` y `comprobante_iva`.
+
+- `uuid NOT NULL`, FK a `negocios` con `ON DELETE RESTRICT`. Sin `DEFAULT`: toda fila nueva tiene que decir de
+  qué negocio es.
+- **Decisión: columna propia también en las hijas** (`venta_items`, `pagos`, `receta_componentes`,
+  `comprobante_items`, ...) en lugar de heredar el negocio por la FK del padre. Cuesta una columna por fila
+  y permite que RLS (F2.1) filtre sin joins. Que la hija y su padre coincidan en negocio no lo garantiza esta
+  migración (queda para F1.2/F2.1).
+- **`usuarios.negocioId` es nullable**: solo el futuro `SUPERADMIN` va sin negocio. Hoy todos los usuarios
+  tienen negocio.
+- **`configuracion` no lleva `negocioId`**: la resuelve F1.2 (clave compuesta).
+- Los únicos (`ventas(anio, numero)`, `presupuestos(anio, numero)`, `listas_precios.nombre`,
+  `usuarios.usuario`, CUIT de cliente, numeración de comprobantes) siguen globales hasta F1.2.
+- Índices: uno por `negocioId` en cada tabla. En las grandes, `negocioId` es la primera columna de los
+  compuestos, que ya cubren las consultas solo por negocio: `ventas(negocioId, fecha)` y `(negocioId, estado)`,
+  `pagos(negocioId, fecha)` y `(negocioId, ventaId)`, `movimientos_stock(negocioId, materialId, creadoEn)`,
+  `comprobantes(negocioId, fecha)` y `(negocioId, estado)`.
+- `TrabajoProduccion`, `TrabajoTiempo` y `TrabajoConsumo`, que nombra el ticket F1.1, todavía no existen en
+  este esquema: cuando se creen, nacen con `negocioId`.
+
+#### Migración y backfill (`20260601000000_negocio`)
+Crea el negocio "HL Laser" (`hl-laser`) y se lo asigna a todas las filas existentes. Por tabla: columna
+nullable → `UPDATE` → `SET NOT NULL` (salvo `usuarios`) → FK → índice. En una base vacía solo queda el negocio.
+Los triggers de `comprobantes`, `comprobante_items` y `comprobante_iva` (lo fiscal es inmutable) se desactivan
+solo durante el `UPDATE` de cada una de esas tablas y se reactivan enseguida: asignar el dueño no cambia nada
+fiscal. Prueba: `NEGOCIO_TEST_URL=postgresql://ventas:ventas@localhost:5432 sh scripts/test-negocio-migracion.sh`
+(base vacía y base con datos; compara filas por tabla, `SUM(ventas.totalBruto)`, saldos de clientes y
+`materiales.stockActual` antes y después) y `scripts/verificar-negocio.sql` sobre cualquier base migrada.
 
 ### Usuarios y sesiones
 
@@ -553,6 +605,8 @@ Están en `prisma/migrations/`. Cada una tiene su encabezado con el porqué.
 11. `20260301000000_comprobantes`: enums `CondicionIva`, `TipoComprobante`, `AmbienteFiscal` y `EstadoComprobante`;
     tablas `comprobantes`, `comprobante_items` y `comprobante_iva`; `clientes.condicionIva` y `clientes.dni`. Con sus
     `CHECK`, índices parciales y triggers (ver "Facturación").
+12. `20260601000000_negocio`: tabla `negocios`, negocio "HL Laser" y `negocioId` (con FK e índices) en las 22
+    tablas de datos, con backfill (ver "Negocio y multi-tenant").
 
 ---
 
