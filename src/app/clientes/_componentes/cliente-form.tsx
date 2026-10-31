@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearCliente, editarCliente, type DatosCliente } from "@/app/clientes/actions";
-import { AvisoDemo, BloqueError, BotonEnviar, CampoNotas, CampoSelect, CampoTexto, useAccion, type Opcion } from "@/components/form";
+import { AvisoDemo, BloqueError, BotonEnviar, CampoNotas, CampoSelect, CampoTexto, NotaObligatorio, useAccion, type Opcion } from "@/components/form";
 import { normalizarCuit, validarCuit } from "@/lib/cuit";
 import { normalizarDni } from "@/lib/comprobantes";
 import { ETIQUETA_CONDICION_IVA } from "@/lib/datos-fiscales";
@@ -98,6 +98,7 @@ export function ClienteForm({
       }}
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
     >
+      <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="los clientes" />
       <CampoTexto
         etiqueta="Nombre o razón social"
@@ -113,7 +114,6 @@ export function ClienteForm({
         alCambiar={(v) => setValores((x) => ({ ...x, condicionIva: v as CondicionIvaCliente }))}
         opciones={OPCIONES_CONDICION_IVA}
         ayuda="Consumidor final si no se indica otra cosa. Decide la letra de la factura."
-        required
       />
       <CampoTexto
         etiqueta="CUIT (opcional)"

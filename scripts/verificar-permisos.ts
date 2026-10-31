@@ -74,6 +74,9 @@ const MATRIZ: Fila[] = [
   { accion: "verComprobantes", DUENO: true, EMPLEADO: true },
   { accion: "emitirComprobante", DUENO: true, EMPLEADO: true },
   { accion: "emitirNotaCredito", DUENO: true, EMPLEADO: false },
+  // Ola 6: cargar produccion (minutos y materiales, sin costos) es del taller; el margen real es costo: solo dueno.
+  { accion: "cargarProduccion", DUENO: true, EMPLEADO: true },
+  { accion: "verMargenReal", DUENO: true, EMPLEADO: false },
 ];
 
 // ─── 2. Que exige cada pagina y cada accion (a mano) ───────────────────────────
@@ -105,12 +108,18 @@ const PAGINAS_ESPERADAS: Record<string, Accion[]> = {
   "/materiales/[id]": ["verStock"],
   "/materiales/nuevo": ["editarMateriales"],
   "/materiales/[id]/editar": ["editarMateriales", "verCostos", "verMargenes"],
+  "/produccion": ["cargarProduccion"],
+  "/produccion/cargar/[ventaItemId]": ["cargarProduccion"],
+  "/produccion/trabajo/[id]": ["cargarProduccion"],
   "/presupuestos": ["verPresupuestos"],
   "/presupuestos/nuevo": ["cargarPresupuesto"],
   "/presupuestos/[id]": ["verPresupuestos"],
   "/presupuestos/[id]/editar": ["cargarPresupuesto"],
   "/presupuestos/[id]/imprimir": ["verPresupuestos"],
+  // Ola 6 (6.3): estimar tiempos de un pedido. Solo lectura y sin costos: dueño y empleado.
+  "/produccion/estimar": ["cargarProduccion"],
   "/reportes": ["verReportes", "verCostos", "verMargenes"],
+  "/reportes/margen-real": ["verReportes", "verCostos", "verMargenes", "verMargenReal"],
   "/reportes/stock": ["verReportes", "verCostos"],
   "/reposicion": ["verReposicion"],
   "/ventas": ["verVentas"],
@@ -149,6 +158,10 @@ const ACCIONES_ESPERADAS: Record<string, Accion> = {
   "presupuestos/actions.ts#anularPresupuesto": "cargarPresupuesto",
   "presupuestos/actions.ts#duplicarPresupuesto": "cargarPresupuesto",
   "presupuestos/actions.ts#convertirPresupuesto": "convertirPresupuesto",
+  // Ola 6 (6.1): cargar y anular produccion es del taller (empleado incluido); ajustar el stock por la diferencia es del dueno.
+  "produccion/actions.ts#cargarTrabajo": "cargarProduccion",
+  "produccion/actions.ts#anularTrabajo": "cargarProduccion",
+  "produccion/actions.ts#ajustarStockDeTrabajo": "ajustarStock",
   "reposicion/actions.ts#guardarFactorReposicion": "configuracion",
   "ventas/actions.ts#registrarVenta": "cargarVenta",
   "ventas/[id]/actions.ts#anularVenta": "anularVenta",
@@ -227,15 +240,20 @@ function main() {
 
   console.log("--- Route handlers ---");
   const handlers = routeHandlers();
-  comprobar("route handlers", lista(handlers.map((h) => h.archivo)), "reportes/export/[reporte]/route.ts");
+  comprobar("route handlers", lista(handlers.map((h) => h.archivo)), lista(["reportes/export/[reporte]/route.ts", "reportes/margen-real/export/route.ts"]));
   for (const h of handlers) {
     comprobar(`${h.archivo}: verifica sesion y permisos`, String(verificaRouteHandler(h.texto)), "true");
     for (const accion of ["exportarCsv", "verReportes", "verCostos", "verMargenes"]) {
       comprobar(`${h.archivo}: exige ${accion}`, String(h.texto.includes(`"${accion}"`)), "true");
     }
     comprobar(`${h.archivo}: 403 con texto, no redireccion`, String(/denegado\(403/.test(h.texto) && !/redirect\s*\(/.test(h.texto)), "true");
-    comprobar(`${h.archivo}: pide sesion y permisos antes de leer el reporte`, String(h.texto.indexOf("usuarioActual()") < h.texto.indexOf("EXPORTACIONES.get(")), "true");
+    // Antes de leer el reporte: antes de buscarlo en el mapa de exportaciones, o antes de llamar a su consulta.
+    const lecturas = ["EXPORTACIONES.get(", "getMargenReal("].map((m) => h.texto.indexOf(m)).filter((i) => i >= 0);
+    comprobar(`${h.archivo}: pide sesion y permisos antes de leer el reporte`, String(lecturas.length > 0 && h.texto.indexOf("usuarioActual()") < Math.min(...lecturas)), "true");
   }
+  // Ola 6: el margen real exige ademas su permiso propio (costos reales y margenes: solo el dueno).
+  const margenReal = handlers.find((h) => h.archivo === "reportes/margen-real/export/route.ts");
+  comprobar("reportes/margen-real/export/route.ts: exige verMargenReal", String(margenReal?.texto.includes('"verMargenReal"') ?? false), "true");
 
   console.log("--- Costos en las listas de precios (ola 7) ---");
   const leerSrc = (...partes: string[]) => readFileSync(join(__dirname, "..", "src", ...partes), "utf8");
@@ -263,6 +281,14 @@ function main() {
   const consultasComprobantes = leerSrc("lib", "queries", "comprobantes.ts");
   comprobar("las consultas de comprobantes no leen costos ni margenes", String(/costo|margen/i.test(consultasComprobantes.replace(/^.*\/\/.*$/gm, ""))), "false");
 
+  console.log("--- Produccion desde la venta (ola 6, 6.1) ---");
+  const bloqueProduccion = leerSrc("app", "produccion", "_componentes", "bloque-produccion.tsx");
+  comprobar(
+    "BloqueProduccion verifica cargarProduccion ANTES de consultar la produccion de la venta",
+    String(bloqueProduccion.includes('"cargarProduccion"') && bloqueProduccion.indexOf('"cargarProduccion"') < bloqueProduccion.indexOf("await getProduccionDeVenta(")),
+    "true",
+  );
+
   console.log("--- Navbar: cada entrada pide lo mismo que su pagina ---");
   const navbar = leerSrc("components", "navbar.tsx");
   // Algunas entradas usan una constante de ruta (`href: RUTA_RECORDATORIOS`): se resuelve contra su `const X = "/ruta"`.
@@ -271,7 +297,7 @@ function main() {
     href: m[1] ?? rutas.get(m[2]!) ?? `(constante ${m[2]} sin resolver)`,
     acciones: [...m[3]!.matchAll(/"([A-Za-z]+)"/g)].map((x) => x[1]!),
   }));
-  comprobar("entradas del navbar leidas", String(entradas.length), "16");
+  comprobar("entradas del navbar leidas", String(entradas.length), "17");
   for (const e of entradas) {
     if (e.href === "/usuarios") {
       comprobar("navbar /usuarios: solo con gestionarUsuarios (la pagina la crea 4.4)", lista(e.acciones), "gestionarUsuarios");
@@ -283,11 +309,11 @@ function main() {
   }
   const visibles = (rol: "DUENO" | "EMPLEADO") => entradas.filter((e) => puedeTodo({ rol }, e.acciones as Accion[])).map((e) => e.href);
   comprobar(
-    "el empleado ve solo ventas, clientes, materiales, reposicion, presupuestos, comprobantes, cobranzas y recordatorios",
+    "el empleado ve solo ventas, clientes, materiales, reposicion, produccion, presupuestos, comprobantes, cobranzas y recordatorios",
     lista(visibles("EMPLEADO")),
-    lista(["/ventas", "/clientes", "/materiales", "/reposicion", "/presupuestos", "/comprobantes", "/cobranzas", "/cobranzas/hoy"]),
+    lista(["/ventas", "/clientes", "/materiales", "/reposicion", "/produccion", "/presupuestos", "/comprobantes", "/cobranzas", "/cobranzas/hoy"]),
   );
-  comprobar("el dueno ve las 16 entradas", String(visibles("DUENO").length), "16");
+  comprobar("el dueno ve las 17 entradas", String(visibles("DUENO").length), "17");
 
   console.log("--- El auditor detecta lo que tiene que detectar ---");
   const base = (cuerpo: string, extra = "") => `"use server";\n${extra}\nexport async function f(datos: { a: string }): Promise<{ ok: true } | { ok: false; error: string }> {\n${cuerpo}\n}\n`;

@@ -11,6 +11,7 @@ import {
   CampoNotas,
   CampoSelect,
   CampoTexto,
+  NotaObligatorio,
   useAccion,
   type Opcion,
 } from "@/components/form";
@@ -133,6 +134,7 @@ export function ArticuloForm({
       }}
       className="space-y-4"
     >
+      <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="el artículo y su receta" />
 
       <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">

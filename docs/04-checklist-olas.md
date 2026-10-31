@@ -5,9 +5,8 @@ Cada **ola** es un conjunto de tareas **independientes entre sí** (no tocan los
 se lanzan juntas y, cuando todas terminan y se integran, empieza la ola siguiente.
 
 Estado al día de hoy: **etapas 1, 2, 3, comercial (ola 7) y la etapa 4 (facturación con emisor simulado) hechas;
-olas 0 a 5 y 7 cerradas, salvo la 5.2.** La etapa 4 está hecha sin ARCA real: todo comprobante es simulado y sin
-validez fiscal. Pendiente de las etapas 4 a 6 de `docs/01-alcance-funcional.md`: la 5.2 (integración con ARCA,
-diferida) y la ola 6 (productividad, etapa 5).
+olas 0 a 7 cerradas, salvo la 5.2.** La etapa 4 está hecha sin ARCA real: todo comprobante es simulado y sin
+validez fiscal. Pendiente de `docs/01-alcance-funcional.md`: solo la 5.2 (integración con ARCA, diferida).
 
 Leyenda: `[x]` hecho · `[ ]` pendiente · `(R)` toca archivos compartidos, ver "Reglas".
 
@@ -155,13 +154,24 @@ Migraciones: `20260301…`. Hecha con emisor simulado; la integración real (5.2
 - [x] **5.6 Guía de facturación con ARCA**: `docs/06-facturacion-arca.md`, qué falta para la integración real y qué necesita el dueño.
 - [x] **5.7 Documentación de la ola 5**: README, modelo de datos, esta lista y `docs/fiscal-5.1-decisiones.md` al día.
 
-## Ola 6 — Etapa 5: productividad (paralela, 3 tareas)
+## Ola 6 — Etapa 5: productividad (serie → paralela)
 
-Migraciones: `20260401…`.
+Migraciones: `20260401…` (van antes de las de la ola 7 por timestamp; no dependen de ellas).
 
-- [ ] **6.1 Registro de producción**: tiempos y consumos reales por trabajo (máquina, minutos, material medido).
-- [ ] **6.2 Margen real**: comparar costo de receta contra costo real y mostrar desvíos por artículo.
-- [ ] **6.3 Tiempos por arte**: estimar horas de máquina de un pedido a partir de trabajos anteriores.
+- [x] **6.0 Modelo de producción (R)**: `trabajos_produccion`, `trabajo_tiempos`, `trabajo_consumos` (migración
+      `20260401000000_produccion`), permisos `cargarProduccion` y `verMargenReal`. Decisiones en `docs/02-modelo-datos.md`.
+- [x] **6.1 Registro de producción**: tiempos y consumos reales por línea de venta, anulación con motivo y ajuste de stock opcional (solo dueño).
+- [x] **6.2 Margen real**: costo real contra costo de receta, desvío por artículo y período, CSV (solo dueño).
+- [x] **6.3 Tiempos por arte**: estimar minutos de máquina y mano de obra con la mediana de trabajos anteriores.
+- [x] **6.4 Accesibilidad pendiente**: asterisco de obligatorio, baja de máquina sin `window.confirm()` y montos del gráfico
+      de ventas para lectores de pantalla. La hoja "Más" ya estaba resuelta.
+- [x] **6.5 Documentación**: README, alcance, modelo de datos y esta lista.
+
+> Supuestos con el dueño: el consumo real no toca el stock (ajuste opcional y confirmado); producción por línea de venta;
+> carga dueño y empleado, margen real solo dueño; costos congelados al cargar.
+
+> **Despliegue de la ola 6:** la migración se aplica a mano sobre Neon con
+> `DATABASE_URL="<DATABASE_URL_UNPOOLED>" npm run db:deploy`, y recién después se redeploya `staging` en Vercel.
 
 ## Ola 7 — Etapa 6: comercial (paralela, 3 tareas)
 

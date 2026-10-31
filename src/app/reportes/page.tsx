@@ -49,12 +49,20 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
         titulo="Reportes"
         descripcion={`Período: ${rango.etiqueta}`}
         accion={
-          <Link
-            href="/reportes/stock"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
-            Reporte de stock
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/reportes/stock"
+              className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
+            >
+              Reporte de stock
+            </Link>
+            <Link
+              href="/reportes/margen-real"
+              className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
+            >
+              Margen real
+            </Link>
+          </div>
         }
       />
 
