@@ -240,7 +240,7 @@ export async function crearUsuarioEnTx(tx: Tx, datos: DatosUsuarioNuevo): Promis
  * Un lock de transaccion evita que dos corridas simultaneas creen dos.
  */
 export async function crearDuenoEnTx(tx: Tx, datos: Omit<DatosUsuarioNuevo, "rol">): Promise<UsuarioSesion> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('ventas:crear-dueno'))`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('crear-dueno:' || coalesce(nullif(current_setting('app.negocio_id', true), ''), '-'), 0))`;
   const existente = await tx.usuario.findFirst({ where: { rol: "DUENO" }, select: { usuario: true, activo: true } });
   if (existente) {
     throw new ErrorDeNegocio(

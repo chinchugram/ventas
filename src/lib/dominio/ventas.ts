@@ -8,6 +8,14 @@ import { ETIQUETA_UNIDAD } from "@/lib/unidades";
 import { cargarListaDeCliente } from "./listas-precios";
 import type { Tx } from "./tx";
 
+/**
+ * Clave textual del advisory lock que numera las ventas de un (negocio, anio). Lleva el
+ * negocio: dos negocios cargando ventas a la vez no se esperan ni comparten correlativo.
+ */
+export function claveLockVentas(negocioId: string, anio: number): string {
+  return `ventas:${negocioId}:${anio}`;
+}
+
 export type MetodoPago = "EFECTIVO" | "TRANSFERENCIA" | "TARJETA" | "OTRO";
 
 export type VentaNueva = {
@@ -124,9 +132,9 @@ export async function registrarVentaEnTx(tx: Tx, negocioId: string, venta: Venta
     throw new ErrorDeNegocio("El pago no puede superar el total de la venta.");
   }
 
-  // Un solo escritor numera por anio a la vez: el correlativo no se repite ni deja huecos.
-  // El correlativo es por negocio (el filtro de lectura va aca; el candado lo reescribe F3.6).
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${anio})`;
+  // Un solo escritor numera por (negocio, anio) a la vez: el correlativo no se repite ni deja huecos,
+  // y dos negocios no se esperan entre si (la clave del candado lleva el negocio).
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${claveLockVentas(negocioId, anio)}, 0))`;
   const ultimo = await tx.venta.aggregate({ where: { negocioId, anio }, _max: { numero: true } });
   const numero = (ultimo._max.numero ?? 0) + 1;
 
@@ -159,7 +167,7 @@ export async function registrarVentaEnTx(tx: Tx, negocioId: string, venta: Venta
   for (const [materialId, consumo] of [...consumos].sort(([a], [b]) => a.localeCompare(b))) {
     const filas = await tx.$queryRaw<{ stockActual: string; nombre: string; unidad: string }[]>`
       SELECT "stockActual"::text AS "stockActual", nombre, unidad::text AS unidad
-      FROM "materiales" WHERE id = ${materialId}::uuid FOR UPDATE`;
+      FROM "materiales" WHERE id = ${materialId}::uuid AND "negocioId" = ${negocioId}::uuid FOR UPDATE`;
     const fila = filas[0];
     if (!fila) continue;
 
@@ -210,7 +218,7 @@ export async function registrarVentaEnTx(tx: Tx, negocioId: string, venta: Venta
  */
 export async function anularVentaEnTx(tx: Tx, negocioId: string, ventaId: string, usuarioId?: string | null): Promise<void> {
   const filas = await tx.$queryRaw<{ estado: string; numero: number; anio: number }[]>`
-    SELECT estado::text AS estado, numero, anio FROM "ventas" WHERE id = ${ventaId}::uuid FOR UPDATE`;
+    SELECT estado::text AS estado, numero, anio FROM "ventas" WHERE id = ${ventaId}::uuid AND "negocioId" = ${negocioId}::uuid FOR UPDATE`;
   const venta = filas[0];
   if (!venta) throw new ErrorDeNegocio("La venta no existe.");
   if (venta.estado === "ANULADA") throw new ErrorDeNegocio("La venta ya estaba anulada.");
