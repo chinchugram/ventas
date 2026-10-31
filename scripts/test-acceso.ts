@@ -133,6 +133,10 @@ const CLASIFICACION: Record<string, Clase> = {
   "/presupuestos/[id]": "ambos",
   "/presupuestos/[id]/editar": "ambos",
   "/presupuestos/[id]/imprimir": "ambos",
+  "/produccion": "ambos",
+  "/produccion/cargar/[ventaItemId]": "ambos",
+  "/produccion/estimar": "ambos",
+  "/produccion/trabajo/[id]": "ambos",
   "/reposicion": "ambos",
   "/usuarios/mi-clave": "ambos",
   "/ventas": "ambos",
@@ -536,7 +540,7 @@ async function sembrarProduccion(prisma: Prisma, usuarioId: string) {
   });
 }
 
-type Ids = { articulo: string; cliente: string; maquina: string; lista: string; material: string; presupuesto: string; venta: string; usuario: string; comprobante: string };
+type Ids = { articulo: string; cliente: string; maquina: string; lista: string; material: string; presupuesto: string; venta: string; usuario: string; comprobante: string; ventaItem: string; trabajo: string };
 
 /** Lo que el seed no trae (lista de precios y presupuesto) y los ids para instanciar las rutas dinamicas. */
 async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Ids> {
@@ -564,7 +568,9 @@ async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Id
   const emisor = crearEmisorSimulado(accesoSimulado(prisma));
   const emitida = await emitirFactura(prisma, venta.id, usuarioId, { emisor });
   if (emitida.estado !== "EMITIDO") throw new Error(`No se pudo sembrar la factura de prueba: ${emitida.mensaje}`);
-  return { articulo: articulo.id, cliente: cliente.id, maquina: maquina.id, lista: lista.id, material: material.id, presupuesto: presupuesto.id, venta: venta.id, usuario: usuarioId, comprobante: emitida.id };
+  // Ola 6: un renglon cualquiera (para la pantalla de carga) y un trabajo vigente (para su detalle), sembrados antes.
+  const trabajo = await prisma.trabajoProduccion.findFirstOrThrow({ where: { anuladoEn: null }, orderBy: { creadoEn: "asc" } });
+  return { articulo: articulo.id, cliente: cliente.id, maquina: maquina.id, lista: lista.id, material: material.id, presupuesto: presupuesto.id, venta: venta.id, usuario: usuarioId, comprobante: emitida.id, ventaItem: trabajo.ventaItemId, trabajo: trabajo.id };
 }
 
 /** Ids con los que se instancia cada segmento dinamico. */
@@ -582,6 +588,8 @@ function ejemplares(ids: Ids): Record<string, string[]> {
     "/presupuestos/[id]": [ids.presupuesto],
     "/presupuestos/[id]/editar": [ids.presupuesto],
     "/presupuestos/[id]/imprimir": [ids.presupuesto],
+    "/produccion/cargar/[ventaItemId]": [ids.ventaItem],
+    "/produccion/trabajo/[id]": [ids.trabajo],
     "/reportes/export/[reporte]": REPORTES_CSV,
     "/usuarios/[id]": [ids.usuario],
     "/ventas/[id]": [ids.venta],
@@ -1013,6 +1021,9 @@ const CLASIFICACION_ACCIONES: Record<string, Clase> = {
   "presupuestos/actions.ts#crearPresupuesto": "ambos",
   "presupuestos/actions.ts#editarPresupuesto": "ambos",
   "presupuestos/actions.ts#anularPresupuesto": "ambos",
+  "produccion/actions.ts#cargarTrabajo": "ambos", // la casilla de ajustar stock exige ademas ajustarStock
+  "produccion/actions.ts#anularTrabajo": "ambos",
+  "produccion/actions.ts#ajustarStockDeTrabajo": "dueno",
   "presupuestos/actions.ts#convertirPresupuesto": "ambos",
   "presupuestos/actions.ts#duplicarPresupuesto": "ambos",
   "reposicion/actions.ts#guardarFactorReposicion": "dueno",

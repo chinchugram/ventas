@@ -297,7 +297,7 @@ function main() {
     href: m[1] ?? rutas.get(m[2]!) ?? `(constante ${m[2]} sin resolver)`,
     acciones: [...m[3]!.matchAll(/"([A-Za-z]+)"/g)].map((x) => x[1]!),
   }));
-  comprobar("entradas del navbar leidas", String(entradas.length), "16");
+  comprobar("entradas del navbar leidas", String(entradas.length), "17");
   for (const e of entradas) {
     if (e.href === "/usuarios") {
       comprobar("navbar /usuarios: solo con gestionarUsuarios (la pagina la crea 4.4)", lista(e.acciones), "gestionarUsuarios");
@@ -309,11 +309,11 @@ function main() {
   }
   const visibles = (rol: "DUENO" | "EMPLEADO") => entradas.filter((e) => puedeTodo({ rol }, e.acciones as Accion[])).map((e) => e.href);
   comprobar(
-    "el empleado ve solo ventas, clientes, materiales, reposicion, presupuestos, comprobantes, cobranzas y recordatorios",
+    "el empleado ve solo ventas, clientes, materiales, reposicion, produccion, presupuestos, comprobantes, cobranzas y recordatorios",
     lista(visibles("EMPLEADO")),
-    lista(["/ventas", "/clientes", "/materiales", "/reposicion", "/presupuestos", "/comprobantes", "/cobranzas", "/cobranzas/hoy"]),
+    lista(["/ventas", "/clientes", "/materiales", "/reposicion", "/produccion", "/presupuestos", "/comprobantes", "/cobranzas", "/cobranzas/hoy"]),
   );
-  comprobar("el dueno ve las 16 entradas", String(visibles("DUENO").length), "16");
+  comprobar("el dueno ve las 17 entradas", String(visibles("DUENO").length), "17");
 
   console.log("--- El auditor detecta lo que tiene que detectar ---");
   const base = (cuerpo: string, extra = "") => `"use server";\n${extra}\nexport async function f(datos: { a: string }): Promise<{ ok: true } | { ok: false; error: string }> {\n${cuerpo}\n}\n`;

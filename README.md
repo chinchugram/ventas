@@ -277,6 +277,10 @@ Las decisiones fiscales (numeración, redondeo, receptor, umbral) y las dudas pa
 | `/compras` | Historial de compras; `/compras/nueva` registra una (suma stock y actualiza el costo) |
 | `/reportes` | Resumen, ganancia por producto, más rentables, deuda por cliente y consumo de materiales; filtro por mes o rango de fechas en la URL y botón "Exportar CSV" por reporte |
 | `/reportes/stock` | Valorización del stock, materiales sin movimiento, consumo real vs teórico y rotación; mismo filtro de fechas |
+| `/produccion` | Líneas de venta sin cargar y trabajos cargados; carga de lo realmente usado (minutos de máquina, mano de obra y materiales), mobile-first. Dueño y empleado, sin costos |
+| `/produccion/cargar/[ventaItemId]`, `/produccion/trabajo/[id]` | Carga precargada con la receta; detalle de un trabajo (real contra receta), anular para corregir y, solo el dueño, ajustar el stock por la diferencia |
+| `/produccion/estimar` | Estimación de minutos de máquina y de mano de obra de un pedido con la mediana de los últimos trabajos del mismo artículo. Sin datos suficientes lo dice, no inventa |
+| `/reportes/margen-real` | Costo real contra costo de receta por artículo, por período y los trabajos con más desvío; CSV en `/reportes/margen-real/export` (solo `DUENO`) |
 | `/login` | Entrar con usuario y clave. Es la única pantalla que se ve sin sesión |
 | `/usuarios` | Lista de usuarios, con alta, rol, baja y reinicio de clave (solo `DUENO`) |
 | `/usuarios/nuevo` | Alta de un usuario: el dueño elige su clave inicial y se la pasa (solo `DUENO`) |
@@ -329,6 +333,9 @@ el mostrador con el teléfono en la mano.
 | `npm run test:auth` / `test:auth:db` | Login sin base (claves, pausa por fallos, sesiones, cookies, y que cada página y acción verifica sesión) / el mismo núcleo contra Postgres real, con el alta del dueño |
 | `npm run test:permisos` | Matriz rol × acción y qué permiso exige cada acción y página, más acciones reales invocadas con un empleado contra Postgres |
 | `npm run test:usuarios` | Administración de usuarios (alta, baja, rol, reinicio de clave, clave propia) contra Postgres de desarrollo o de prueba; se niega con `NODE_ENV=production` |
+| `npm run test:produccion` / `test:produccion:db` | Registro de producción: sugerencia desde la receta, validación, costo real, ajuste de stock idempotente / el mismo flujo contra Postgres real (un vigente por línea, costos congelados, CHECK). Sin rastro |
+| `npm run test:margen-real` / `test:margen-real:db` | Margen real con cuentas a mano (desvíos, nulos, CSV) / contra Postgres real con trabajos sembrados (rango de fechas, anulados) |
+| `npm run test:estimacion-tiempos` / `test:estimacion-tiempos:db` | Mediana, mínimo de muestras y totales de la estimación / contra Postgres real con trabajos sembrados |
 | `npm run test:acceso` | Autorización por HTTP contra la app de producción (`next build && next start` en el puerto 3103) y una base descartable `ventas_acceso`: rutas sin sesión, empleado, sesión expirada o de baja, y que el HTML y el RSC del empleado no traigan costos ni márgenes. Reconstruye `.next`. Ver el encabezado de `scripts/test-acceso.ts` |
 | `npm run test:datos-fiscales` | Validación y normalización de los datos fiscales del negocio: cada campo con sus bordes y lo que falta para emitir. Sin base |
 | `npm run test:comprobantes` | Lógica pura de facturación: letras y códigos ARCA, documento del receptor y umbral, importes por alícuota con sus redondeos, factura C, guarda de producción y emisor simulado con acceso en memoria. Sin base |
@@ -403,6 +410,7 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 - [x] Recordatorios de cobranza: a quién llamar hoy (ola 7.3)
 - [x] Login con usuarios y roles, permisos por rol, trazabilidad (quién cargó cada venta, cobro, compra y movimiento) y administración de usuarios (ola 4)
 - [x] Integración 4+7 (rama `integracion-4-7`): permisos de las pantallas de la ola 7, trazabilidad de presupuestos, contactos de cobranza y listas de precios, y `npm run test:acceso`
+- [x] Productividad (ola 6, etapa 5): registro de producción por línea de venta, margen real contra receta (solo dueño), estimación de tiempos por arte y pendientes de accesibilidad
 - [x] Facturación con emisor simulado (ola 5, etapa 4): facturar desde la venta, listado y detalle de comprobantes, vista imprimible con QR, notas de crédito totales y datos fiscales. La integración con ARCA (5.2) está diferida
 
 El plan completo, por olas y pensado para repartir a subagentes en paralelo, está en
@@ -417,6 +425,15 @@ del costo en `/listas-precios/[id]` usa costos de receta: como la pantalla es so
 
 **La ola 5 (facturación) está integrada** en `ola-5`, salvo la 5.2 (integración con ARCA), que está **diferida**: hasta
 entonces, todo comprobante es simulado y sin validez fiscal. El estado de cada tarea está en `docs/04-checklist-olas.md`.
+
+**La ola 6 (productividad) está integrada** en `ola-6`. Pasa de margen estimado (costo de receta) a **margen real**:
+- **Producción por línea de venta** (`/produccion`): minutos de máquina, minutos de mano de obra y materiales realmente usados.
+  Un trabajo vigente por línea; corregir = anular y recargar. Los costos unitarios quedan congelados al cargar.
+- **El consumo real no mueve el stock.** El stock sigue bajando por receta al vender; el dueño puede ajustar la diferencia
+  (movimiento `AJUSTE` explícito y confirmado, nunca doble descuento).
+- **Permisos:** `cargarProduccion` (dueño y empleado, sin costos) y `verMargenReal` (solo dueño).
+- **Margen real** en `/reportes/margen-real` y **estimación de tiempos** en `/produccion/estimar`.
+- La migración `20260401000000_produccion` hay que aplicarla a mano en Neon antes de redeployar (ver "Despliegue" en `docs/04-checklist-olas.md`).
 
 ---
 

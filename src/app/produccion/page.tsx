@@ -30,7 +30,15 @@ export default async function ProduccionPage({ searchParams }: { searchParams: P
 
   return (
     <>
-      <Seccion titulo="Producción" descripcion="Cargá lo que realmente se usó en cada trabajo: minutos de máquina, mano de obra y materiales" />
+      <Seccion
+        titulo="Producción"
+        descripcion="Cargá lo que realmente se usó en cada trabajo: minutos de máquina, mano de obra y materiales"
+        accion={
+          <Link href="/produccion/estimar" className={`${BOTON} border border-slate-300 bg-white text-slate-800`}>
+            Estimar tiempos
+          </Link>
+        }
+      />
 
       <nav aria-label="Filtro" className="mb-3 flex flex-wrap gap-2">
         {FILTROS_PRODUCCION.map((f) => (
