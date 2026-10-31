@@ -16,6 +16,7 @@ import { datosFiscalesDesdeConfiguracion, faltantesParaEmitir, mensajeFaltantes 
 import type { AmbienteFiscal, EmisorFiscal, ResultadoCae, SolicitudCae } from "@/lib/fiscal/emisor";
 import type { AccesoComprobantesSimulados } from "@/lib/fiscal/emisor-simulado";
 import { d } from "@/lib/money";
+import { conNegocio, type OpcionesConNegocio } from "@/lib/negocio";
 import type { Tx } from "./tx";
 
 // Emision de facturas.
@@ -44,11 +45,13 @@ import type { Tx } from "./tx";
 // ni nada que perder. Con un emisor que no sea SIMULADO se niega.
 //
 // ─── Numeracion ───────────────────────────────────────────────────────────────
-// Por (ambiente, punto de venta, tipo), serializada con un advisory lock por
-// serie. Numero = ultimo autorizado SEGUN EL EMISOR + 1, y ademas:
+// Por (negocio, ambiente, punto de venta, tipo), serializada con un advisory lock
+// por serie. La serie es DEL NEGOCIO (multi-tenant): dos negocios pueden emitir la
+// factura B 0001-00000001 sin chocar, cada uno con su CUIT y su punto de venta, y
+// el lock de uno no hace esperar al otro. Numero = ultimo autorizado SEGUN EL EMISOR + 1, y ademas:
 //  - con un PENDIENTE en la misma serie no se emite (no se sabe si el emisor lo
 //    autorizo, asi que no se sabe cual es el proximo); la base lo garantiza con
-//    un indice unico parcial;
+//    un indice unico parcial (que incluye el negocio);
 //  - el ultimo autorizado del emisor tiene que coincidir con el ultimo EMITIDO
 //    de la base; si no, algo se autorizo sin quedar registrado (o al reves) y no
 //    se emite hasta aclararlo.
@@ -61,6 +64,13 @@ import type { Tx } from "./tx";
 // vez en la misma serie: la segunda espera el lock y despues encuentra el
 // PENDIENTE de la primera → "probá de nuevo en unos segundos" (con la emision en
 // una sola transaccion, simplemente espera y toma el numero siguiente).
+//
+// ─── Negocio ──────────────────────────────────────────────────────────────────
+// Todo corre dentro de `conNegocio` (RLS fija el negocio en la base) y ademas cada
+// consulta filtra por `negocioId`: la segunda barrera sigue sirviendo si alguna vez
+// se corre con un rol que se salta RLS (migraciones, seed, pruebas). Los datos
+// fiscales del emisor (CUIT, punto de venta, razon social...) salen de la
+// `Configuracion` del negocio; el comprobante guarda una FOTO y no cambia despues.
 
 export type OpcionesEmision = {
   emisor: EmisorFiscal;
@@ -92,13 +102,25 @@ export type ComprobanteProcesado = {
   mensaje: string;
 };
 
-/** Advisory lock de la numeracion. Distinto de ventas (el anio) y presupuestos (7.200.000.000 + anio). */
-export const CLAVE_LOCK_COMPROBANTES = 5_100_000_000;
-const INDICE_AMBIENTE: Record<AmbienteFiscal, number> = { SIMULADO: 0, HOMOLOGACION: 1, PRODUCCION: 2 };
+/**
+ * Clave textual de la serie (negocio, ambiente, punto de venta, tipo). Series
+ * distintas (y negocios distintos) tienen claves distintas, asi que no se esperan.
+ * El prefijo la separa de los otros advisory locks (ventas por anio, presupuestos...).
+ */
+export function claveLockSerie(negocioId: string, ambiente: AmbienteFiscal, puntoVenta: number, tipo: TipoComprobante): string {
+  return `comprobantes:${negocioId}:${ambiente}:${puntoVenta}:${CODIGO_ARCA[tipo]}`;
+}
 
-/** Una clave por serie (ambiente, punto de venta, tipo): series distintas no se esperan. */
-export function claveLockSerie(ambiente: AmbienteFiscal, puntoVenta: number, tipo: TipoComprobante): number {
-  return CLAVE_LOCK_COMPROBANTES + INDICE_AMBIENTE[ambiente] * 10_000_000 + puntoVenta * 100 + CODIGO_ARCA[tipo];
+/** Toma el lock de transaccion de la serie: un escritor por serie (y por negocio) a la vez. */
+export async function bloquearSerie(
+  tx: Tx,
+  negocioId: string,
+  ambiente: AmbienteFiscal,
+  puntoVenta: number,
+  tipo: TipoComprobante,
+): Promise<void> {
+  const clave = claveLockSerie(negocioId, ambiente, puntoVenta, tipo);
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${clave}, 0))`;
 }
 
 /**
@@ -132,13 +154,13 @@ export async function reservarFacturaEnTx(
   >`
     SELECT estado::text AS estado, "clienteId"::text AS "clienteId", "totalNeto"::text AS "totalNeto",
            "totalIVA"::text AS "totalIVA", "totalBruto"::text AS "totalBruto"
-    FROM "ventas" WHERE id = ${ventaId}::uuid FOR UPDATE`;
+    FROM "ventas" WHERE id = ${ventaId}::uuid AND "negocioId" = ${negocioId}::uuid FOR UPDATE`;
   const venta = filas[0];
   if (!venta) throw new ErrorDeNegocio("La venta no existe.");
   if (venta.estado === "ANULADA") throw new ErrorDeNegocio("No se factura una venta anulada.");
 
   const vigente = await tx.comprobante.findFirst({
-    where: { ventaId, tipo: { in: [...TIPOS_FACTURA] }, estado: { in: ["PENDIENTE", "EMITIDO"] } },
+    where: { negocioId, ventaId, tipo: { in: [...TIPOS_FACTURA] }, estado: { in: ["PENDIENTE", "EMITIDO"] } },
     select: { tipo: true, puntoVenta: true, numero: true, estado: true },
   });
   if (vigente) {
@@ -150,18 +172,19 @@ export async function reservarFacturaEnTx(
     );
   }
 
-  const config = Object.fromEntries((await tx.configuracion.findMany()).map((c) => [c.clave, c.valor]));
+  // Datos fiscales DEL NEGOCIO: su Configuracion (CUIT, punto de venta, razon social...).
+  const config = Object.fromEntries((await tx.configuracion.findMany({ where: { negocioId } })).map((c) => [c.clave, c.valor]));
   const fiscales = datosFiscalesDesdeConfiguracion(config, hoy);
   if (!fiscales.ok) throw new ErrorDeNegocio(mensajeFaltantes(faltantesParaEmitir(config, hoy)));
   const emisorDatos = fiscales.datos;
 
-  const cliente = await tx.cliente.findUniqueOrThrow({
-    where: { id: venta.clienteId },
+  const cliente = await tx.cliente.findFirstOrThrow({
+    where: { id: venta.clienteId, negocioId },
     select: { nombre: true, cuit: true, dni: true, condicionIva: true, direccion: true },
   });
   const tipo = tipoDeComprobante(emisorDatos, cliente);
 
-  const items = await tx.ventaItem.findMany({ where: { ventaId }, orderBy: { id: "asc" } });
+  const items = await tx.ventaItem.findMany({ where: { negocioId, ventaId }, orderBy: { id: "asc" } });
   const calculo = calcularImportes(
     items.map((i) => ({
       descripcion: i.descripcion,
@@ -185,9 +208,9 @@ export async function reservarFacturaEnTx(
   // Numeracion: un escritor por serie a la vez.
   const { ambiente } = emisor;
   const puntoVenta = emisorDatos.puntoVenta;
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${claveLockSerie(ambiente, puntoVenta, tipo)})`;
+  await bloquearSerie(tx, negocioId, ambiente, puntoVenta, tipo);
   const pendiente = await tx.comprobante.findFirst({
-    where: { ambiente, puntoVenta, tipo, estado: "PENDIENTE" },
+    where: { negocioId, ambiente, puntoVenta, tipo, estado: "PENDIENTE" },
     select: { numero: true },
   });
   if (pendiente) {
@@ -198,8 +221,8 @@ export async function reservarFacturaEnTx(
   }
   const ultimo = await emisor.ultimoAutorizado(puntoVenta, tipo);
   const local =
-    (await tx.comprobante.aggregate({ where: { ambiente, puntoVenta, tipo, estado: "EMITIDO" }, _max: { numero: true } }))._max
-      .numero ?? 0;
+    (await tx.comprobante.aggregate({ where: { negocioId, ambiente, puntoVenta, tipo, estado: "EMITIDO" }, _max: { numero: true } }))
+      ._max.numero ?? 0;
   if (ultimo !== local) {
     throw new ErrorDeNegocio(
       `El emisor tiene autorizada la ${NOMBRE_TIPO[tipo]} del punto de venta ${puntoVenta} hasta el número ${ultimo}, ` +
@@ -381,10 +404,24 @@ export async function emitirFacturaEnTx(
   return registrarResultadoEnTx(tx, reserva.comprobanteId, resultado, reserva.advertencias);
 }
 
-/** Lo minimo de Prisma que necesita el flujo en dos fases. */
+/** Lo minimo de Prisma que necesita el flujo en dos fases: abrir transacciones. */
 export type BaseDeDatos = Pick<PrismaClient, "$transaction">;
 
 const OPCIONES_TX = { timeout: 30_000 } as const;
+
+/**
+ * La base "parada" en un negocio: cada transaccion que abre es un `conNegocio`
+ * (RLS fija el negocio en Postgres). Es lo que las server actions le pasan a
+ * `emitirFactura`, `emitirNotaCredito` y `resolverPendiente`, que abren varias
+ * transacciones cortas (reservar, registrar) y todas tienen que ser del negocio.
+ * Las pruebas con un rol que se salta RLS pueden pasar un `PrismaClient` comun.
+ */
+export function baseDeNegocio(negocioId: string): BaseDeDatos {
+  return {
+    $transaction: ((fn: (tx: Tx) => Promise<unknown>, opciones?: OpcionesConNegocio) =>
+      conNegocio(negocioId, fn, opciones)) as BaseDeDatos["$transaction"],
+  };
+}
 
 /**
  * Flujo completo en dos fases (el de la server action). Lanza `ErrorDeNegocio`
@@ -420,12 +457,12 @@ export async function emitirFactura(
  * `ANTIGUEDAD_MINIMA_PENDIENTE_MS`: uno mas nuevo puede estar en curso.
  */
 export async function resolverPendiente(
-  db: BaseDeDatos & Pick<PrismaClient, "comprobante">,
+  db: BaseDeDatos,
   comprobanteId: string,
   emisor: EmisorFiscal,
   ahora: Date = new Date(),
 ): Promise<ComprobanteProcesado> {
-  const c = await db.comprobante.findUnique({ where: { id: comprobanteId } });
+  const c = await db.$transaction((tx) => tx.comprobante.findUnique({ where: { id: comprobanteId } }), OPCIONES_TX);
   if (!c) throw new ErrorDeNegocio("El comprobante no existe.");
   if (c.estado !== "PENDIENTE") throw new ErrorDeNegocio(`El comprobante ya estaba ${c.estado}.`);
   if (c.ambiente !== emisor.ambiente) {
@@ -470,25 +507,39 @@ export function traducirErrorDeEmision(error: unknown): unknown {
 // ─── Acceso a datos del emisor simulado ───────────────────────────────────────
 
 /**
- * Lo que el simulador lee de la base. Con un `tx`, ve lo de esa transaccion
- * (para `emitirFacturaEnTx`); con el cliente global, lo confirmado.
+ * Lo que el simulador lee de la base, de UN negocio (su serie, no la de los demas).
+ * Con un `tx`, ve lo de esa transaccion (para `emitirFacturaEnTx`); con el cliente
+ * global, lo confirmado.
  */
-export function accesoSimulado(db: Pick<Tx, "comprobante">): AccesoComprobantesSimulados {
+export function accesoSimulado(db: Pick<Tx, "comprobante">, negocioId: string): AccesoComprobantesSimulados {
   return {
     async ultimoNumeroEmitido(puntoVenta, tipo) {
       const r = await db.comprobante.aggregate({
-        where: { ambiente: "SIMULADO", puntoVenta, tipo, estado: "EMITIDO" },
+        where: { negocioId, ambiente: "SIMULADO", puntoVenta, tipo, estado: "EMITIDO" },
         _max: { numero: true },
       });
       return r._max.numero ?? 0;
     },
     async buscarEmitido(puntoVenta, tipo, numero) {
       const c = await db.comprobante.findFirst({
-        where: { ambiente: "SIMULADO", puntoVenta, tipo, numero, estado: "EMITIDO" },
+        where: { negocioId, ambiente: "SIMULADO", puntoVenta, tipo, numero, estado: "EMITIDO" },
         select: { cae: true, caeVencimiento: true, fecha: true, importeTotal: true },
       });
       if (!c || !c.cae || !c.caeVencimiento) return null;
       return { cae: c.cae, caeVencimiento: c.caeVencimiento, fecha: c.fecha, importeTotal: d(c.importeTotal.toString()) };
     },
+  };
+}
+
+/**
+ * Lo mismo para las server actions (que no tienen una transaccion a mano): cada
+ * lectura abre su propio `conNegocio`, asi RLS ve el negocio correcto.
+ */
+export function accesoSimuladoDeNegocio(negocioId: string): AccesoComprobantesSimulados {
+  return {
+    ultimoNumeroEmitido: (puntoVenta, tipo) =>
+      conNegocio(negocioId, (tx) => accesoSimulado(tx, negocioId).ultimoNumeroEmitido(puntoVenta, tipo)),
+    buscarEmitido: (puntoVenta, tipo, numero) =>
+      conNegocio(negocioId, (tx) => accesoSimulado(tx, negocioId).buscarEmitido(puntoVenta, tipo, numero)),
   };
 }

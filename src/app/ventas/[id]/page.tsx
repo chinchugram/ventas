@@ -6,9 +6,9 @@ import { ETIQUETA_METODO, tieneSaldo } from "@/lib/cobranzas";
 import { ESTILO_ESTADO_PAGO, ETIQUETA_ESTADO_PAGO, getVenta } from "@/lib/queries/ventas";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { dbDisponible, prisma } from "@/lib/prisma";
-import { facturaAnulableDeVenta } from "@/lib/dominio/notas-credito";
-import { negocioUnico } from "@/lib/dominio/auth";
 import { conNegocio } from "@/lib/negocio";
+import { negocioUnico } from "@/lib/dominio/auth";
+import { facturaAnulableDeVenta } from "@/lib/dominio/notas-credito";
 import { AnularVentaBoton } from "@/components/anular-venta-boton";
 import { Seccion, Tarjeta } from "@/components/ui";
 import { RegistrarPagoForm } from "./_componentes/registrar-pago-form";
@@ -51,7 +51,9 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
   const debe = !anulada && tieneSaldo(venta.saldo);
   // Solo el dueño ve el botón (la acción vuelve a verificar el permiso); sin base no hay facturas.
   const facturaAnulable =
-    puedeNotaCredito && !anulada && (await dbDisponible()) ? await conNegocio(await negocioUnico(prisma), (tx) => facturaAnulableDeVenta(tx, venta.id)) : null;
+    puedeNotaCredito && !anulada && (await dbDisponible())
+      ? await negocioUnico(prisma).then((negocioId) => conNegocio(negocioId, (tx) => facturaAnulableDeVenta(tx, negocioId, venta.id)))
+      : null;
 
   return (
     <>

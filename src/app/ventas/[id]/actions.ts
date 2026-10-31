@@ -21,7 +21,7 @@ import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { anularVentaEnTx } from "@/lib/dominio/ventas";
 import { anularPagoEnTx, marcarEntregadaEnTx, registrarPagoEnTx } from "@/lib/dominio/pagos";
 import { revalidarVentas } from "@/lib/revalidar";
-import { accesoSimulado } from "@/lib/dominio/comprobantes";
+import { accesoSimuladoDeNegocio, baseDeNegocio } from "@/lib/dominio/comprobantes";
 import { emitirNotaCredito as emitirNotaCreditoDeVenta } from "@/lib/dominio/notas-credito";
 import { entornoDelProceso, obtenerEmisorFiscal } from "@/lib/fiscal";
 import { negocioUnico } from "@/lib/dominio/auth";
@@ -180,12 +180,12 @@ export async function emitirNotaCredito(datos: z.input<typeof esquemaNotaCredito
   if (!sesion.ok) return sesion;
   const usuarioId = idParaGuardar(sesion.usuario);
 
-  const emisor = obtenerEmisorFiscal(entornoDelProceso(), accesoSimulado(prisma));
-  if (!emisor.ok) return { ok: false, error: emisor.error };
-
   let procesado;
   try {
-    procesado = await emitirNotaCreditoDeVenta(prisma, await negocioUnico(prisma), ventaId, usuarioId, { emisor: emisor.emisor, facturaId: comprobanteId });
+    const negocioId = await negocioUnico(prisma);
+    const emisor = obtenerEmisorFiscal(entornoDelProceso(), accesoSimuladoDeNegocio(negocioId));
+    if (!emisor.ok) return { ok: false, error: emisor.error };
+    procesado = await emitirNotaCreditoDeVenta(baseDeNegocio(negocioId), negocioId, ventaId, usuarioId, { emisor: emisor.emisor, facturaId: comprobanteId });
   } catch (error) {
     console.error("[emitirNotaCredito]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo emitir la nota de crédito.") };
