@@ -100,9 +100,9 @@ Estado al día de hoy. El detalle de tareas y su orden de ejecución está en `d
 |---|---|---|---|
 | **2 — Stock real** | **Hecha.** Compras, libro de movimientos, ajuste por conteo, ventas que descuentan stock y anulación, lista de reposición sugerida | Compras, movimientos de entrada/salida, alertas por stock mínimo | Hoy el dueño compra a ciegas. El MVP solo le avisa si el stock *virtual* baja del mínimo. |
 | **3 — Multi-usuario** | **Hecha.** Login con usuarios y roles (`DUENO` / `EMPLEADO`), sesiones en base, permisos por rol, trazabilidad (quién cargó cada venta, cobro, compra y movimiento de stock) y administración de usuarios | Login, roles y registro de quién hizo cada cosa | Cuando el negocio crezca o para no perder trazabilidad. |
-| **4 — Facturación electrónica** | Pendiente (ola 5) | Factura A/B ante ARCA, CAE, certificado digital | Requisito legal/comercial. El modelo ya está preparado: falta el emisor. |
+| **4 — Facturación electrónica** | **Hecha con emisor simulado** (ola 5). La integración real con ARCA (5.2) quedó diferida | Factura A/B/C y notas de crédito, CAE, datos fiscales | Requisito legal/comercial. Sin ARCA real, todo comprobante sale `SIMULADO` y sin validez fiscal. Ver `docs/06-facturacion-arca.md`. |
 | **5 — Productividad** | **Hecha** (ola 6) | Costeo real por máquina/consumo medido, tiempos por arte | Pasa de margen estimado a margen real. Es el salto de calidad. |
-| **6 — Comercial** | **Hecha** (ola 7). Sin roles hasta la ola 4 | Listas de precios, presupuestos que se convierten en venta, recordatorios de cobranza | Antes de perder un cliente por no llamar al que debe. |
+| **6 — Comercial** | **Hecha** (ola 7), con roles | Listas de precios, presupuestos que se convierten en venta, recordatorios de cobranza | Antes de perder un cliente por no llamar al que debe. |
 
 Las **altas y ediciones** (clientes, materiales, artículos, recetas, configuración) y los **cobros
 sobre ventas existentes**, que hacían falta antes de las etapas 3 a 6, ya están hechos (olas 1 y 2
@@ -166,7 +166,7 @@ Tres funciones. Ninguna manda nada sola: quien usa la app decide cada envío.
 - **No hace:** no envía mensajes ni llama, no hace recordatorios automáticos ni por fecha, y no modifica
   ventas ni pagos. La lista se arma al abrir la pantalla.
 
-Las tres pantallas todavía no tienen roles: se clasifican en la ola 4 (ver `README.md`).
+Las tres pantallas ya tienen roles (ola 8): ver `README.md` y `docs/seguridad-ola-4-auth.md`.
 
 ---
 

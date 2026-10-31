@@ -1,6 +1,6 @@
 # Modelo de datos
 
-Un solo modelo para todo el sistema, tal como queda con las olas 0 a 5 y 7 integradas (ramas
+Un solo modelo para todo el sistema, tal como queda con las olas 0 a 7 integradas (ramas
 `integracion-4-7` y `ola-5`). La fuente de verdad es `prisma/schema.prisma`; lo que Prisma no expresa
 (`CHECK`, índices únicos parciales, triggers) está en las migraciones de `prisma/migrations/`, listadas al final.
 
