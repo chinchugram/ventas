@@ -1,5 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { conNegocio, type TxNegocio } from "@/lib/negocio";
+import { negocioUnico } from "@/lib/dominio/auth";
 import { demoVentas } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { hoyArgentina } from "@/lib/acciones";
@@ -9,15 +11,29 @@ import { rangoMes } from "@/lib/queries/ventas";
 
 // Lecturas de /cobranzas. Como en el resto del sistema, el saldo se calcula
 // (total menos pagos no anulados) y nunca se lee guardado.
+//
+// Multi-tenant (F3.5): cada lectura corre en UNA `conNegocio` (RLS filtra por negocio).
+// `negocioId` va primero y lo pone quien llama a partir de la sesion. TRANSITORIO: hasta
+// que F3.2 (/cobranzas y recordatorios) lo pase explicito, si falta se usa el negocio
+// unico (`negocioUnico`), que falla cerrado cuando hay mas de uno. Cuando F3.2 pase el id
+// en todos los llamados, volver el parametro obligatorio y borrar `resolverNegocio`.
+
+async function resolverNegocio(negocioId: string | undefined): Promise<string> {
+  return negocioId ?? negocioUnico(prisma);
+}
 
 /** Ventas no anuladas que todavia deben algo. */
 export const getVentasConSaldo = cache(
-  (): Promise<VentaConSaldo[]> => conRespaldo(ventasConSaldoDesdeBase, ventasConSaldoDemo),
+  (negocioId?: string): Promise<VentaConSaldo[]> =>
+    conRespaldo(
+      async () => conNegocio(await resolverNegocio(negocioId), ventasConSaldoDesdeBase),
+      ventasConSaldoDemo,
+    ),
 );
 
-async function ventasConSaldoDesdeBase(): Promise<VentaConSaldo[]> {
+async function ventasConSaldoDesdeBase(tx: TxNegocio): Promise<VentaConSaldo[]> {
   const hoy = hoyArgentina();
-  const ventas = await prisma.venta.findMany({
+  const ventas = await tx.venta.findMany({
     where: { estado: { not: "ANULADA" } },
     orderBy: [{ fecha: "asc" }, { numero: "asc" }],
     select: {
@@ -96,17 +112,19 @@ export type PagoReciente = {
 
 /** Ultimos pagos registrados, tambien los anulados (se muestran tachados). Sin base no hay. */
 export const getPagosRecientes = cache(
-  (limite = 20): Promise<PagoReciente[]> =>
+  (limite = 20, negocioId?: string): Promise<PagoReciente[]> =>
     conRespaldo(
       async () => {
-        const pagos = await prisma.pago.findMany({
-          orderBy: [{ fecha: "desc" }, { creadoEn: "desc" }],
-          take: limite,
-          include: {
-            venta: { select: { numero: true, anio: true, estado: true } },
-            cliente: { select: { id: true, nombre: true } },
-          },
-        });
+        const pagos = await conNegocio(await resolverNegocio(negocioId), (tx) =>
+          tx.pago.findMany({
+            orderBy: [{ fecha: "desc" }, { creadoEn: "desc" }],
+            take: limite,
+            include: {
+              venta: { select: { numero: true, anio: true, estado: true } },
+              cliente: { select: { id: true, nombre: true } },
+            },
+          }),
+        );
         return pagos.map((p) => ({
           id: p.id,
           fecha: p.fecha,
@@ -129,15 +147,17 @@ export const getPagosRecientes = cache(
 
 /** Cobrado en el mes en curso (Argentina): pagos vigentes de ventas vigentes. */
 export const getCobradoDelMes = cache(
-  (): Promise<Dinero> =>
+  (negocioId?: string): Promise<Dinero> =>
     conRespaldo(
       async () => {
         const hoy = hoyArgentina();
         const { desde, hasta } = rangoMes(hoy.getUTCFullYear(), hoy.getUTCMonth() + 1);
-        const r = await prisma.pago.aggregate({
-          where: { fecha: { gte: desde, lt: hasta }, anuladoEn: null, venta: { estado: { not: "ANULADA" } } },
-          _sum: { monto: true },
-        });
+        const r = await conNegocio(await resolverNegocio(negocioId), (tx) =>
+          tx.pago.aggregate({
+            where: { fecha: { gte: desde, lt: hasta }, anuladoEn: null, venta: { estado: { not: "ANULADA" } } },
+            _sum: { monto: true },
+          }),
+        );
         return aMoneda(d(r._sum.monto));
       },
       () => {

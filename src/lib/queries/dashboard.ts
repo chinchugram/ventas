@@ -1,5 +1,7 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocio, type TxNegocio } from "@/lib/negocio";
+import { dbDisponible, prisma } from "@/lib/prisma";
+import { negocioDeUsuario } from "@/lib/dominio/auth";
 import {
   DEMO_CONFIG,
   demoDeudas,
@@ -7,13 +9,14 @@ import {
   demoPendienteTotal,
   demoResumenMes,
   demoUltimasVentas,
+  demoVentas,
 } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { aMoneda, CERO, d, Dinero, sumar } from "@/lib/money";
 import { estadoPago, EstadoPago } from "@/lib/costing";
 import { hoyEnArgentina, rangoDeMes, type RangoFechas } from "@/lib/rango-fechas";
 import { ETIQUETA_UNIDAD } from "@/lib/unidades";
-import { getConfig, configNumero } from "./catalogo";
+import { configNumero } from "@/lib/receta";
 
 /**
  * ─── Reportes: que se filtra por periodo y que es "a hoy" ───────────────────
@@ -37,6 +40,15 @@ import { getConfig, configNumero } from "./catalogo";
  *
  * Criterio de "en el periodo": siempre la fecha de la VENTA (dia calendario),
  * nunca el instante en que se cargo, para que todos los reportes cuadren entre si.
+ *
+ * ─── Negocio (multi-tenant F3.5) ────────────────────────────────────────────
+ * Todas las funciones reciben `negocioId` como primer argumento y leen dentro de
+ * UNA sola `conNegocio` (una transaccion, una conexion): el aislamiento lo fuerza
+ * Postgres con RLS, no un `where`. Dentro de la transaccion se usa SIEMPRE el
+ * `tx` recibido; un `prisma` suelto saldria de la transaccion, sin contexto de
+ * negocio, y devolveria vacio. Las consultas de una funcion corren en serie sobre
+ * el mismo `tx` (una conexion no ejecuta dos consultas a la vez). El `negocioId`
+ * lo pone quien llama a partir de la sesion, nunca de la URL ni de un formulario.
  */
 
 export type ResumenMes = {
@@ -68,9 +80,9 @@ export type ResumenPeriodo = ResumenMes & {
  * en hora Argentina (no con getMonth() del servidor, que es UTC: el ultimo dia
  * del mes de noche ya diria el mes siguiente).
  */
-export const getResumenMes = cache((fechaReferencia = new Date()): Promise<ResumenMes> => {
+export const getResumenMes = cache((negocioId: string, fechaReferencia = new Date()): Promise<ResumenMes> => {
   const hoy = hoyEnArgentina(fechaReferencia);
-  return getResumenPeriodo(rangoDeMes(hoy.anio, hoy.mes));
+  return getResumenPeriodo(negocioId, rangoDeMes(hoy.anio, hoy.mes));
 });
 
 /**
@@ -83,10 +95,11 @@ export const getResumenMes = cache((fechaReferencia = new Date()): Promise<Resum
  * `pendienteCobro` NO depende del rango: es la deuda total a hoy (`pendienteTotal`).
  */
 export function getResumenPeriodo(
+  negocioId: string,
   rango: Pick<RangoFechas, "desde" | "hasta" | "etiqueta" | "tipo">,
 ): Promise<ResumenPeriodo> {
   return conRespaldo(
-    () => resumenPeriodoDesdeBase(rango),
+    () => conNegocio(negocioId, (tx) => resumenPeriodoDesdeBase(tx, rango)),
     () => resumenPeriodoDemo(rango),
   );
 }
@@ -130,23 +143,22 @@ function resumenPeriodoDemo(rango: Pick<RangoFechas, "desde" | "hasta" | "etique
 }
 
 async function resumenPeriodoDesdeBase(
+  tx: TxNegocio,
   rango: Pick<RangoFechas, "desde" | "hasta" | "etiqueta">,
 ): Promise<ResumenPeriodo> {
-  const config = await getConfig();
+  const config = await configDelNegocio(tx);
   const metaMargenPct = configNumero(config, "margenObjetivo", "40");
   const { desde, hasta } = rango;
 
-  const [agregado, cobrado] = await Promise.all([
-    prisma.venta.aggregate({
-      where: { fecha: { gte: desde, lt: hasta }, estado: { not: "ANULADA" } },
-      _count: { _all: true },
-      _sum: { totalBruto: true, totalNeto: true, totalIVA: true, costoTotal: true },
-    }),
-    prisma.pago.aggregate({
-      where: { fecha: { gte: desde, lt: hasta }, anuladoEn: null, venta: { estado: { not: "ANULADA" } } },
-      _sum: { monto: true },
-    }),
-  ]);
+  const agregado = await tx.venta.aggregate({
+    where: { fecha: { gte: desde, lt: hasta }, estado: { not: "ANULADA" } },
+    _count: { _all: true },
+    _sum: { totalBruto: true, totalNeto: true, totalIVA: true, costoTotal: true },
+  });
+  const cobrado = await tx.pago.aggregate({
+    where: { fecha: { gte: desde, lt: hasta }, anuladoEn: null, venta: { estado: { not: "ANULADA" } } },
+    _sum: { monto: true },
+  });
 
   const facturadoBruto = aMoneda(d(agregado._sum.totalBruto));
   const facturadoNeto = aMoneda(d(agregado._sum.totalNeto));
@@ -154,7 +166,7 @@ async function resumenPeriodoDesdeBase(
   const costoTotal = aMoneda(d(agregado._sum.costoTotal));
   const ganancia = aMoneda(facturadoBruto.minus(costoTotal));
   const cobradoMes = aMoneda(d(cobrado._sum.monto));
-  const pendienteCobro = aMoneda(await pendienteTotal());
+  const pendienteCobro = await pendienteTotalEn(tx);
 
   return {
     anio: desde.getUTCFullYear(),
@@ -175,30 +187,36 @@ async function resumenPeriodoDesdeBase(
   };
 }
 
+/** Configuracion del negocio de la transaccion (clave -> valor), como la que usan las pantallas. */
+async function configDelNegocio(tx: TxNegocio): Promise<Record<string, string>> {
+  const filas = await tx.configuracion.findMany();
+  return Object.fromEntries(filas.map((f) => [f.clave, f.valor]));
+}
+
 /**
  * Total que se le debe al negocio: todo lo facturado y no cobrado, de toda la
  * historia. Se calcula, no se guarda, asi que siempre cuadra con los pagos.
  */
 export const pendienteTotal = cache(
-  (): Promise<Dinero> =>
-    conRespaldo(async () => {
-      const [facturado, pagado] = await Promise.all([
-        prisma.venta.aggregate({
-          where: { estado: { not: "ANULADA" } },
-          _sum: { totalBruto: true },
-        }),
-        // Solo pagos vigentes de ventas vigentes: lo cobrado de una venta anulada
-        // no descuenta deuda de las demas.
-        prisma.pago.aggregate({
-          where: { anuladoEn: null, venta: { estado: { not: "ANULADA" } } },
-          _sum: { monto: true },
-        }),
-      ]);
-
-      const saldo = d(facturado._sum.totalBruto).minus(d(pagado._sum.monto));
-      return saldo.isNegative() ? CERO : aMoneda(saldo);
-    }, demoPendienteTotal),
+  (negocioId: string): Promise<Dinero> =>
+    conRespaldo(() => conNegocio(negocioId, (tx) => pendienteTotalEn(tx)), demoPendienteTotal),
 );
+
+async function pendienteTotalEn(tx: TxNegocio): Promise<Dinero> {
+  const facturado = await tx.venta.aggregate({
+    where: { estado: { not: "ANULADA" } },
+    _sum: { totalBruto: true },
+  });
+  // Solo pagos vigentes de ventas vigentes: lo cobrado de una venta anulada
+  // no descuenta deuda de las demas.
+  const pagado = await tx.pago.aggregate({
+    where: { anuladoEn: null, venta: { estado: { not: "ANULADA" } } },
+    _sum: { monto: true },
+  });
+
+  const saldo = d(facturado._sum.totalBruto).minus(d(pagado._sum.monto));
+  return saldo.isNegative() ? CERO : aMoneda(saldo);
+}
 
 export type VentaListada = {
   id: string;
@@ -217,15 +235,15 @@ export type VentaListada = {
 
 /** Últimas ventas con su estado de pago ya resuelto. */
 export const getUltimasVentas = cache(
-  (limite = 8): Promise<VentaListada[]> =>
+  (negocioId: string, limite = 8): Promise<VentaListada[]> =>
     conRespaldo(
-      () => ultimasVentasDesdeBase(limite),
+      () => conNegocio(negocioId, (tx) => ultimasVentasDesdeBase(tx, limite)),
       () => demoUltimasVentas(limite),
     ),
 );
 
-async function ultimasVentasDesdeBase(limite: number): Promise<VentaListada[]> {
-  const ventas = await prisma.venta.findMany({
+async function ultimasVentasDesdeBase(tx: TxNegocio, limite: number): Promise<VentaListada[]> {
+  const ventas = await tx.venta.findMany({
     where: { estado: { not: "ANULADA" } },
     orderBy: [{ fecha: "desc" }, { numero: "desc" }],
     take: limite,
@@ -270,11 +288,12 @@ export type DeudaCliente = {
  * No recibe rango a proposito: es el saldo vivo de toda la historia (ver cabecera del archivo).
  */
 export const getDeudas = cache(
-  (): Promise<DeudaCliente[]> => conRespaldo(deudasDesdeBase, demoDeudas),
+  (negocioId: string): Promise<DeudaCliente[]> =>
+    conRespaldo(() => conNegocio(negocioId, deudasDesdeBase), demoDeudas),
 );
 
-async function deudasDesdeBase(): Promise<DeudaCliente[]> {
-  const ventas = await prisma.venta.findMany({
+async function deudasDesdeBase(tx: TxNegocio): Promise<DeudaCliente[]> {
+  const ventas = await tx.venta.findMany({
     where: { estado: { not: "ANULADA" } },
     select: {
       clienteId: true,
@@ -336,16 +355,19 @@ export type TopProducto = {
  * Se agrega en SQL por articulo. Traer los items y agrupar en JS multiplicaria
  * por N el trabajo de red sin agregar nada.
  */
-export function getGananciaPorProducto(rango: Pick<RangoFechas, "desde" | "hasta">): Promise<TopProducto[]> {
+export function getGananciaPorProducto(
+  negocioId: string,
+  rango: Pick<RangoFechas, "desde" | "hasta">,
+): Promise<TopProducto[]> {
   const { desde, hasta } = rango;
   return conRespaldo(
-    () => gananciaPorProductoDesdeBase(desde, hasta),
+    () => conNegocio(negocioId, (tx) => gananciaPorProductoDesdeBase(tx, desde, hasta)),
     () => demoGananciaPorProducto(desde, hasta),
   );
 }
 
-async function gananciaPorProductoDesdeBase(desde: Date, hasta: Date): Promise<TopProducto[]> {
-  const filas = await prisma.ventaItem.groupBy({
+async function gananciaPorProductoDesdeBase(tx: TxNegocio, desde: Date, hasta: Date): Promise<TopProducto[]> {
+  const filas = await tx.ventaItem.groupBy({
     by: ["articuloId"],
     where: {
       venta: { fecha: { gte: desde, lt: hasta }, estado: { not: "ANULADA" } },
@@ -359,7 +381,7 @@ async function gananciaPorProductoDesdeBase(desde: Date, hasta: Date): Promise<T
 
   if (filas.length === 0) return [];
 
-  const articulos = await prisma.articulo.findMany({
+  const articulos = await tx.articulo.findMany({
     where: { id: { in: filas.map((f) => f.articuloId) } },
     select: { id: true, nombre: true },
   });
@@ -407,13 +429,19 @@ export type ConsumoMaterial = {
  * Ordenado por costo estimado, de mayor a menor. Sin base no hay libro de stock
  * de demostracion: devuelve lista vacia.
  */
-export function getConsumoMateriales(rango: Pick<RangoFechas, "desde" | "hasta">): Promise<ConsumoMaterial[]> {
+export function getConsumoMateriales(
+  negocioId: string,
+  rango: Pick<RangoFechas, "desde" | "hasta">,
+): Promise<ConsumoMaterial[]> {
   const { desde, hasta } = rango;
-  return conRespaldo(() => consumoMaterialesDesdeBase(desde, hasta), () => []);
+  return conRespaldo(
+    () => conNegocio(negocioId, (tx) => consumoMaterialesDesdeBase(tx, desde, hasta)),
+    () => [],
+  );
 }
 
-async function consumoMaterialesDesdeBase(desde: Date, hasta: Date): Promise<ConsumoMaterial[]> {
-  const filas = await prisma.movimientoStock.groupBy({
+async function consumoMaterialesDesdeBase(tx: TxNegocio, desde: Date, hasta: Date): Promise<ConsumoMaterial[]> {
+  const filas = await tx.movimientoStock.groupBy({
     by: ["materialId"],
     where: {
       tipo: "VENTA",
@@ -423,7 +451,7 @@ async function consumoMaterialesDesdeBase(desde: Date, hasta: Date): Promise<Con
   });
   if (filas.length === 0) return [];
 
-  const materiales = await prisma.material.findMany({
+  const materiales = await tx.material.findMany({
     where: { id: { in: filas.map((f) => f.materialId) } },
     select: { id: true, nombre: true, unidad: true, costoUnitario: true, stockActual: true },
   });
@@ -444,4 +472,57 @@ async function consumoMaterialesDesdeBase(desde: Date, hasta: Date): Promise<Con
     })
     .filter((c) => !c.cantidad.isZero())
     .sort((a, b) => b.costoEstimado.cmp(a.costoEstimado));
+}
+
+/** Facturado de un dia calendario (`dia` = "AAAA-MM-DD", como se guarda `ventas.fecha`). */
+export type FacturadoDia = { dia: string; total: Dinero };
+
+/**
+ * Facturado por dia desde `desde` (inclusive) en adelante, sin ventas anuladas: lo que
+ * dibuja el grafico del dashboard. Se agrega en SQL por fecha; los dias sin ventas no
+ * aparecen. Reemplaza a "las ultimas 50 ventas", que dejaba dias afuera si habia muchas.
+ */
+export const getFacturadoPorDia = cache(
+  (negocioId: string, desde: Date): Promise<FacturadoDia[]> =>
+    conRespaldo(
+      () =>
+        conNegocio(negocioId, async (tx) => {
+          const filas = await tx.venta.groupBy({
+            by: ["fecha"],
+            where: { fecha: { gte: desde }, estado: { not: "ANULADA" } },
+            _sum: { totalBruto: true },
+          });
+          return filas.map((f) => ({ dia: f.fecha.toISOString().slice(0, 10), total: aMoneda(d(f._sum.totalBruto)) }));
+        }),
+      () => facturadoPorDiaDemo(desde),
+    ),
+);
+
+function facturadoPorDiaDemo(desde: Date): FacturadoDia[] {
+  const porDia = new Map<string, Dinero[]>();
+  for (const v of demoVentas(100_000)) {
+    if (v.estado === "ANULADA" || v.fecha < desde) continue;
+    const dia = v.fecha.toISOString().slice(0, 10);
+    porDia.set(dia, [...(porDia.get(dia) ?? []), v.totalBruto]);
+  }
+  return [...porDia].map(([dia, totales]) => ({ dia, total: aMoneda(sumar(...totales)) }));
+}
+
+/** UUID nulo: negocio "de mentira" para el modo demo (sin base no se consulta nada con el). */
+const NEGOCIO_DEMO = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * El negocio de la sesion, para pasarselo a las funciones de reportes. Sale SIEMPRE del
+ * usuario autenticado (cookie de sesion → usuario → negocio); nunca de un parametro de la
+ * URL ni de un formulario, tambien en las exportaciones CSV.
+ *
+ * TRANSITORIO (F3.5): `UsuarioSesion` todavia no trae `negocioId`, asi que se resuelve con
+ * `negocioDeUsuario` (el de su fila de usuario o, si no tiene, el negocio unico; con mas de
+ * uno y sin negocio propio lanza, no elige). Cuando la sesion cargue el negocio (F3.1/F2.1),
+ * reemplazar el cuerpo por `usuario.negocioId` y los llamados no cambian.
+ * Sin base (modo demo) devuelve un UUID nulo: las consultas caen a los datos de demostracion.
+ */
+export async function negocioDeLaSesion(usuario: { id: string }): Promise<string> {
+  if (!(await dbDisponible())) return NEGOCIO_DEMO;
+  return negocioDeUsuario(prisma, usuario.id);
 }

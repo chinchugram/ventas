@@ -7,6 +7,7 @@ import {
   getDeudas,
   getGananciaPorProducto,
   getResumenPeriodo,
+  negocioDeLaSesion,
 } from "@/lib/queries/dashboard";
 import {
   hoyEnArgentina,
@@ -35,7 +36,8 @@ const TOP_RENTABLES = 5;
 type Exportacion = {
   /** true: depende del rango del filtro. false: saldo a hoy (no recibe rango). */
   porPeriodo: boolean;
-  generar: (rango: RangoFechas) => Promise<string>;
+  /** `negocioId` es el de la sesion (ver `GET`): las consultas nunca lo reciben de la URL. */
+  generar: (negocioId: string, rango: RangoFechas) => Promise<string>;
 };
 
 const EXPORTACIONES = new Map<string, Exportacion>([
@@ -43,10 +45,10 @@ const EXPORTACIONES = new Map<string, Exportacion>([
     "resumen",
     {
       porPeriodo: true,
-      async generar(rango) {
+      async generar(negocioId, rango) {
         const [resumen, productos] = await Promise.all([
-          getResumenPeriodo(rango),
-          getGananciaPorProducto(rango),
+          getResumenPeriodo(negocioId, rango),
+          getGananciaPorProducto(negocioId, rango),
         ]);
         const unidades = sumar(...productos.map((p) => p.unidades));
         return construirCSV(
@@ -72,8 +74,8 @@ const EXPORTACIONES = new Map<string, Exportacion>([
     "ganancia-por-producto",
     {
       porPeriodo: true,
-      async generar(rango) {
-        const productos = await getGananciaPorProducto(rango);
+      async generar(negocioId, rango) {
+        const productos = await getGananciaPorProducto(negocioId, rango);
         return construirCSV(
           ["Artículo", "Unidades", "Facturado", "Costo", "Ganancia", "Margen %"],
           productos.map((p) => [
@@ -92,8 +94,8 @@ const EXPORTACIONES = new Map<string, Exportacion>([
     "productos-rentables",
     {
       porPeriodo: true,
-      async generar(rango) {
-        const productos = await getGananciaPorProducto(rango);
+      async generar(negocioId, rango) {
+        const productos = await getGananciaPorProducto(negocioId, rango);
         return construirCSV(
           ["Posición", "Artículo", "Unidades", "Ganancia", "Margen %"],
           productos.slice(0, TOP_RENTABLES).map((p, i) => [
@@ -111,8 +113,8 @@ const EXPORTACIONES = new Map<string, Exportacion>([
     "deuda-por-cliente",
     {
       porPeriodo: false,
-      async generar() {
-        const deudas = await getDeudas();
+      async generar(negocioId) {
+        const deudas = await getDeudas(negocioId);
         return construirCSV(
           ["Cliente", "Teléfono", "Ventas pendientes", "Desde", "Debe"],
           deudas.map((x): Celda[] => [
@@ -130,8 +132,8 @@ const EXPORTACIONES = new Map<string, Exportacion>([
     "consumo-materiales",
     {
       porPeriodo: true,
-      async generar(rango) {
-        const consumo = await getConsumoMateriales(rango);
+      async generar(negocioId, rango) {
+        const consumo = await getConsumoMateriales(negocioId, rango);
         return construirCSV(
           ["Material", "Unidad", "Consumido", "Costo estimado", "Stock hoy"],
           consumo.map((c) => [
@@ -192,8 +194,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ repo
   const exportacion = EXPORTACIONES.get(reporte);
   if (!exportacion) return texto404();
 
+  // El negocio sale de la sesion. De la URL solo se leen las fechas (`paramsDesde`); un
+  // `?negocioId=...` o `?negocio=...` se ignora, y ademas RLS no deja ver otro negocio.
+  const negocioId = await negocioDeLaSesion(usuario);
   const rango = parseRangoFechas(paramsDesde(new URL(request.url)));
-  const csv = await exportacion.generar(rango);
+  const csv = await exportacion.generar(negocioId, rango);
 
   // Deuda no depende del periodo: el nombre lleva la fecha de hoy (Argentina).
   const periodo = exportacion.porPeriodo ? periodoDe(rango) : fechaHoy();
