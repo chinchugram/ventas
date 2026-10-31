@@ -61,7 +61,7 @@ import Decimal from "decimal.js";
 import { Client } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
-import { generarToken, hashDeToken, hashearClave, nombreCookie } from "../src/lib/auth-pura";
+import { armarValorDeCookie, generarToken, hashDeToken, hashearClave, nombreCookie } from "../src/lib/auth-pura";
 import { accesoSimulado, emitirFactura } from "../src/lib/dominio/comprobantes";
 import { crearEmisorSimulado } from "../src/lib/fiscal/emisor-simulado";
 
@@ -872,7 +872,13 @@ async function crearSesionDirecta(prisma: Prisma, usuarioId: string, opciones: {
   const expiraEn = new Date(opciones.vencida ? ahora - 10 * DIA : ahora + 30 * DIA);
   const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
   await prisma.sesion.create({ data: { negocioId, tokenHash: hashDeToken(token), usuarioId, creadaEn, renovadaEn: creadaEn, expiraEn } });
-  return token;
+  return armarValorDeCookie(negocioId, token); // la cookie lleva `<negocioId>.<token>`
+}
+
+/** Cookie con la forma valida pero sin fila en la base (token inventado, negocio existente). */
+async function cookieInventada(prisma: Prisma): Promise<string> {
+  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
+  return armarValorDeCookie(negocioId, generarToken());
 }
 
 // ─── Prueba de cada ruta ──────────────────────────────────────────────────────
@@ -957,7 +963,7 @@ async function probarRuta(patron: string, clase: Clase, url: string, ctx: Contex
   const rBajaRsc = await pedir(url, { cookie: await crearSesionDirecta(ctx.prisma, ses.bajaId), rsc: true });
   registrar(f, "baja", aLogin(rBajaRsc), "usuario dado de baja (RSC): redireccion a /login o 401", evidencia(rBajaRsc));
   // Y con una cookie inventada (formato valido, sin fila): lo mismo.
-  const rTrucha = await pedir(url, { cookie: generarToken() });
+  const rTrucha = await pedir(url, { cookie: await cookieInventada(ctx.prisma) });
   registrar(f, "sinCookie", aLogin(rTrucha), "cookie inventada: redireccion a /login o 401", evidencia(rTrucha));
 
   // 6. POST sin cookie: ni la server action ni el formulario corren.
@@ -1145,8 +1151,9 @@ async function main() {
 
     // Usuarios de prueba: claves hasheadas con la funcion del repo (una sola vez; scrypt es caro a proposito).
     const hashClave = await hashearClave(CLAVE_DE_PRUEBA);
+    const { id: negocioDePrueba } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
     const crear = (usuario: string, nombre: string, rol: "DUENO" | "EMPLEADO", activo = true) =>
-      prisma!.usuario.create({ data: { usuario, nombre, rol, hashClave, activo } });
+      prisma!.usuario.create({ data: { negocioId: negocioDePrueba, usuario, nombre, rol, hashClave, activo } });
     const dueno = await crear("acceso.dueno", "Dueño de prueba (acceso)", "DUENO");
     const empleado = await crear("acceso.empleado", "Empleado de prueba (acceso)", "EMPLEADO");
     const baja = await crear("acceso.baja", "Dueño dado de baja (acceso)", "DUENO", false);

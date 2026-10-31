@@ -55,23 +55,48 @@ export async function conNegocio<T>(
   }, opciones);
 }
 
-// ─── Negocio actual (TRANSITORIO hasta F4.1) ─────────────────────────────────
+// ─── Negocio de la sesion (F4.1) ─────────────────────────────────────────────
 /**
- * TRANSITORIO (F3.x): el negocio con el que corren las lecturas y escrituras hasta que
- * el login por negocio (F4.1) traiga `getNegocioId()` de la sesion. Devuelve el primer
- * negocio activo (el mas antiguo). Cuando exista `getNegocioId()`, se reemplaza este
- * helper en sus llamadores (`conNegocio(await negocioActual(), ...)`). `negocios` es la
- * tabla global: se lee sin contexto.
+ * El negocio del pedido: sale SIEMPRE de la fila de la sesion (cookie → `sesiones` →
+ * `negocioId`), validada contra la base en cada pedido (`usuarioActual`). Nunca de un
+ * parametro, formulario, header ni de la URL: ninguna accion ni consulta acepta un
+ * `negocioId` que mande el cliente. Cambiar la cookie a mano no cambia de negocio (ver
+ * `leerValorDeCookie`). Sin sesion valida lanza: el proxy ya redirige a /login, esto es la
+ * segunda barrera.
+ *
+ *   const clientes = await conNegocio(await getNegocioId(), (tx) => tx.cliente.findMany());
+ *
+ * Se carga `@/lib/auth` recien al llamarlo para no atar este modulo (que usan tambien los
+ * scripts) a Next ni crear un ciclo de imports.
  */
-export async function negocioActual(): Promise<string> {
-  const negocio = await prisma.negocio.findFirst({
-    where: { activo: true },
-    orderBy: { creadoEn: "asc" },
-    select: { id: true },
-  });
-  if (!negocio) throw new Error("No hay ningún negocio.");
-  return negocio.id;
+export async function getNegocioId(): Promise<string> {
+  if (negocioDePrueba && process.env.NODE_ENV !== "production") return negocioDePrueba;
+  const { usuarioActual } = await import("@/lib/auth");
+  const usuario = await usuarioActual();
+  if (!usuario) throw new Error("No hay sesión: no se puede saber el negocio.");
+  return usuario.negocioId;
 }
+
+/**
+ * SOLO PARA SCRIPTS DE PRUEBA que llaman consultas o acciones sin pedido HTTP (no hay cookie
+ * que leer): fija el negocio que devuelve `getNegocioId()`. Nunca lo llama codigo de la app, no
+ * se puede fijar desde un pedido (es una funcion, no un parametro ni una variable de entorno) y
+ * en produccion ni se escribe ni se lee.
+ */
+let negocioDePrueba: string | null = null;
+export function usarNegocioDePrueba(negocioId: string | null): void {
+  if (process.env.NODE_ENV === "production") throw new Error("usarNegocioDePrueba no existe en produccion.");
+  negocioDePrueba = negocioId;
+}
+
+/**
+ * Antes devolvia el primer negocio activo (F3.x). Ahora es el negocio de la sesion; queda
+ * con este nombre solo porque lo importan las acciones y consultas de F3.x: hay que
+ * renombrar esos llamadores a `getNegocioId()` y borrar este alias.
+ *
+ * @deprecated Usar `getNegocioId()`.
+ */
+export const negocioActual = getNegocioId;
 
 // ─── Rol de la app ───────────────────────────────────────────────────────────
 // Si DATABASE_URL apunta a un rol con SUPERUSER o BYPASSRLS, RLS no rige y los

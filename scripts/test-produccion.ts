@@ -14,6 +14,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { usarNegocioDePrueba } from "../src/lib/negocio";
 import { d, type Dinero } from "../src/lib/money";
 import { ErrorDeNegocio, fechaDesdeISO, hoyArgentinaISO } from "../src/lib/acciones";
 import type { Tx } from "../src/lib/dominio/tx";
@@ -177,6 +178,7 @@ const sumaAjustes = async (tx: Tx, ventaItemId: string, materialId: string) =>
 
 async function main() {
   await resolverNegocio();
+  usarNegocioDePrueba(negocioId); // las consultas leen el negocio de la sesion: aca no hay pedido
   await escenario("Alta del trabajo: lo medido, los costos congelados y ningún movimiento de stock", async (tx) => {
     const b = await armar(tx);
     comprobar("la venta descontó la receta (100 − 2)", await stockDe(tx, b.vinilo.id), "98");

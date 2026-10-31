@@ -3,23 +3,28 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import { dbDisponible } from "@/lib/prisma";
 import { destinoSeguro, nombreCookie, opcionesCookie } from "@/lib/auth-pura";
-import { hayUsuarios, resolverSesion, type Db, type SesionResuelta } from "@/lib/dominio/auth";
+import { hayNegocios, resolverSesion, type Db, type SesionResuelta } from "@/lib/dominio/auth";
+import { rutaDeInicio, rutaPermitidaParaRol } from "@/lib/permisos-pura";
 
 /**
  * Primer filtro de acceso: corre antes de cada pagina, navegacion del cliente
  * (RSC), server action (POST) y route handler (export CSV).
  *
  * Next 16 ejecuta el proxy en Node.js, asi que aca la sesion se verifica de
- * verdad contra la base (existe, no vencio, usuario activo), no solo por la
- * presencia de la cookie: es la unica puerta por la que pasan todos los pedidos,
+ * verdad contra la base (existe EN SU NEGOCIO, no vencio, negocio y usuario activos), no
+ * solo por la presencia de la cookie. La cookie es `<negocioId>.<token>`: el negocioId solo
+ * abre el contexto RLS para buscar la sesion, no otorga nada (ver `leerValorDeCookie`): es la unica puerta por la que pasan todos los pedidos,
  * incluidas las acciones y paginas que todavia no llaman a `requiereUsuario()`.
  * Igual NO es la unica defensa: paginas y acciones verifican con `usuarioActual()`
  * / `requierePermiso()` (ver docs/seguridad-ola-4-auth.md).
  *
  * - Sin sesion: GET → /login?siguiente=<ruta>; server action → 401 (el cliente
  *   navega a /login); cualquier otro metodo → 303 a /login. Nada de eso ejecuta codigo.
- * - Sesion valida: sigue, y una vez por dia extiende el vencimiento (cookie nueva).
- * - Sin ningun usuario en la base: 503 con instrucciones (nunca queda abierto).
+ * - Sesion valida: sigue, y una vez por dia extiende el vencimiento (cookie nueva). Cada rol
+ *   solo entra a su zona (`rutaPermitidaParaRol`): `/admin/**` es solo del SUPERADMIN, que a
+ *   su vez no entra a ninguna pantalla de un negocio.
+ * - Negocio suspendido (`activo = false`): sus sesiones dejan de valer.
+ * - Sin ningun negocio en la base: 503 con instrucciones (nunca queda abierto).
  * - Sin base: en desarrollo sigue (modo demo, "Demo" como dueno); en produccion 503.
  */
 
@@ -38,11 +43,11 @@ function db(): Db {
   return globalProxy.prismaDelProxy;
 }
 
-// Los usuarios nunca se borran (baja logica): una vez que hay uno, siempre hay.
-let hayUsuariosConfirmado = false;
-async function hayAlgunUsuario(): Promise<boolean> {
-  if (!hayUsuariosConfirmado) hayUsuariosConfirmado = await hayUsuarios(db());
-  return hayUsuariosConfirmado;
+// Los negocios nunca se borran (baja logica): una vez que hay uno, siempre hay.
+let hayNegociosConfirmado = false;
+async function hayAlgunNegocio(): Promise<boolean> {
+  if (!hayNegociosConfirmado) hayNegociosConfirmado = await hayNegocios(db());
+  return hayNegociosConfirmado;
 }
 
 export async function proxy(request: NextRequest) {
@@ -53,11 +58,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get(COOKIE)?.value;
+  const valorCookie = request.cookies.get(COOKIE)?.value;
   let sesion: SesionResuelta | null = null;
   try {
-    if (token) sesion = await resolverSesion(db(), token, new Date(), { renovar: true });
-    if (!sesion && !(await hayAlgunUsuario())) return pagina503(SIN_USUARIOS);
+    if (valorCookie) sesion = await resolverSesion(db(), valorCookie, new Date(), { renovar: true });
+    if (!sesion && !(await hayAlgunNegocio())) return pagina503(SIN_NEGOCIOS);
   } catch (error) {
     const hayBase = await dbDisponible();
     if (!hayBase && !PRODUCCION) return conCabeceras(NextResponse.next()); // modo demo
@@ -67,9 +72,11 @@ export async function proxy(request: NextRequest) {
   }
 
   if (sesion) {
+    // Aislamiento por ruta: /admin/** solo para el SUPERADMIN; el SUPERADMIN solo ahi.
+    if (!rutaPermitidaParaRol(sesion.usuario.rol, pathname)) return conCabeceras(fueraDeZona(request, sesion));
     const respuesta = NextResponse.next();
-    if (token && sesion.renovadaHasta) {
-      respuesta.cookies.set(COOKIE, token, opcionesCookie(sesion.renovadaHasta, PRODUCCION));
+    if (valorCookie && sesion.renovadaHasta) {
+      respuesta.cookies.set(COOKIE, valorCookie, opcionesCookie(sesion.renovadaHasta, PRODUCCION));
     }
     return conCabeceras(respuesta);
   }
@@ -77,8 +84,19 @@ export async function proxy(request: NextRequest) {
   // Sin sesion valida. /login (la pagina y su accion de entrar) es lo unico que se atiende.
   const respuesta = pathname === "/login" ? NextResponse.next() : sinSesion(request);
   // Cookie vencida, revocada o trucha: se borra (con los mismos atributos, o `__Host-` la rechaza).
-  if (token) respuesta.cookies.set(COOKIE, "", { ...opcionesCookie(new Date(), PRODUCCION), maxAge: 0 });
+  if (valorCookie) respuesta.cookies.set(COOKIE, "", { ...opcionesCookie(new Date(), PRODUCCION), maxAge: 0 });
   return conCabeceras(respuesta);
+}
+
+/** Sesion valida pero en una zona que no es de su rol: a su inicio (GET) o 403 (acciones y demas). */
+function fueraDeZona(request: NextRequest, sesion: SesionResuelta): NextResponse {
+  if (request.method === "GET" || request.method === "HEAD") {
+    return NextResponse.redirect(new URL(rutaDeInicio(sesion.usuario.rol), request.url));
+  }
+  return new NextResponse("No tenés acceso a esta sección.", {
+    status: 403,
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+  });
 }
 
 function sinSesion(request: NextRequest): NextResponse {
@@ -116,10 +134,10 @@ function conCabeceras(respuesta: NextResponse): NextResponse {
   return respuesta;
 }
 
-const SIN_USUARIOS = {
-  titulo: "Falta crear el primer usuario",
+const SIN_NEGOCIOS = {
+  titulo: "Falta crear el primer negocio",
   texto:
-    "Todavía no hay ningún usuario cargado, así que nadie puede entrar. En el servidor, en la carpeta del proyecto, corré <code>npm run usuarios:crear-dueno</code> y seguí las instrucciones. Después recargá esta página.",
+    "Todavía no hay ningún negocio cargado, así que nadie puede entrar. Hay que dar de alta el negocio y su primer dueño: en el servidor, en la carpeta del proyecto, corré <code>npm run usuarios:crear-dueno</code> y seguí las instrucciones. Después recargá esta página.",
 };
 const SIN_BASE = {
   titulo: "Sistema no disponible",

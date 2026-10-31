@@ -1,4 +1,4 @@
-import type { Rol } from "@/lib/auth-pura";
+import type { Rol, RolConSuperadmin } from "@/lib/auth-pura";
 
 // Tabla de permisos por rol, pura: la puede importar un componente cliente (por
 // ejemplo, para filtrar entradas del navbar) sin arrastrar codigo de servidor.
@@ -78,6 +78,8 @@ export const PERMISOS: Readonly<Record<Accion, readonly Rol[]>> = {
   verReportes: SOLO_DUENO,
   exportarCsv: SOLO_DUENO,
   configuracion: SOLO_DUENO,
+  // El DUENO administra SOLO los usuarios de su negocio: lo hacen cumplir `conNegocio(actor.negocioId)` (RLS)
+  // y los filtros por negocio de `dominio/usuarios.ts`, no esta tabla. El SUPERADMIN no esta en ninguna fila.
   gestionarUsuarios: SOLO_DUENO,
   gestionarListasPrecios: SOLO_DUENO,
   emitirNotaCredito: SOLO_DUENO,
@@ -109,9 +111,11 @@ export const ACCIONES = Object.keys(PERMISOS) as Accion[];
  * `DUENO` puede todo lo que esta en la tabla. Sin usuario, nada. Una accion
  * desconocida, nada (tampoco para el dueno: ante la duda, cerrado).
  */
-export function puede(usuario: { rol: Rol } | null | undefined, accion: Accion): boolean {
+export function puede(usuario: { rol: RolConSuperadmin } | null | undefined, accion: Accion): boolean {
   if (!usuario) return false;
   if (!Object.hasOwn(PERMISOS, accion)) return false;
+  // El SUPERADMIN no esta en ninguna fila de la tabla: no puede nada sobre datos de un negocio.
+  if (usuario.rol === "SUPERADMIN") return false;
   if (usuario.rol === "DUENO") return true;
   return PERMISOS[accion].includes(usuario.rol);
 }
@@ -121,11 +125,27 @@ export function puede(usuario: { rol: Rol } | null | undefined, accion: Accion):
  * (a donde lleva el login); esa importa `node:crypto` y no se puede usar en un
  * componente cliente, esta si. `scripts/verificar-permisos.ts` comprueba que coinciden.
  */
-export function rutaDeInicio(rol: Rol): string {
+export function rutaDeInicio(rol: RolConSuperadmin): string {
+  if (rol === "SUPERADMIN") return "/admin/negocios";
   return rol === "DUENO" ? "/" : "/ventas/nueva";
 }
 
+/** `/admin` o cualquier ruta debajo: la zona del SUPERADMIN (F4.3). */
+export function esRutaDeAdmin(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
+}
+
+/**
+ * Aislamiento por ruta (lo aplica el proxy a toda sesion valida): el SUPERADMIN solo
+ * entra a `/admin/**` (y a /login para salir); los roles de un negocio nunca entran a
+ * `/admin/**`. Lo que cada rol puede dentro de su zona lo decide la tabla `PERMISOS`.
+ */
+export function rutaPermitidaParaRol(rol: RolConSuperadmin, pathname: string): boolean {
+  if (rol === "SUPERADMIN") return esRutaDeAdmin(pathname) || pathname === "/login";
+  return !esRutaDeAdmin(pathname);
+}
+
 /** Puede con todas las acciones de la lista (una lista vacia no exige nada). */
-export function puedeTodo(usuario: { rol: Rol } | null | undefined, acciones: readonly Accion[]): boolean {
+export function puedeTodo(usuario: { rol: RolConSuperadmin } | null | undefined, acciones: readonly Accion[]): boolean {
   return acciones.every((a) => puede(usuario, a));
 }

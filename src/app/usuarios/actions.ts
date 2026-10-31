@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { dbDisponible, prisma } from "@/lib/prisma";
+import { conNegocio } from "@/lib/negocio";
 import { ErrorDeNegocio, mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { CLAVE_MAX } from "@/lib/auth-pura";
 import { COOKIE_SESION, opcionesCookieSesion } from "@/lib/auth";
@@ -23,7 +24,8 @@ export type { Resultado } from "@/lib/acciones";
 // la primera linea es `verificarPermiso("gestionarUsuarios")` y la logica (con su
 // propio chequeo de permiso) vive en `src/lib/dominio/usuarios.ts`. El rol y el
 // id se validan aca antes de tocar la base: roles fuera del enum e ids que no
-// son UUID no pasan. Ver docs/seguridad-ola-4-auth.md.
+// son UUID no pasan. El negocio sale SIEMPRE de la sesion (`permiso.usuario.negocioId`):
+// ninguna accion lo recibe del cliente, y el dueno solo administra usuarios de su negocio. Ver docs/seguridad-ola-4-auth.md.
 
 const idUsuario = z.uuid("Usuario inválido");
 const rol = z.enum(["DUENO", "EMPLEADO"], "Elegí un rol válido: dueño o empleado.");
@@ -64,7 +66,7 @@ export async function crearUsuario(datos: DatosAltaUsuario): Promise<{ ok: true;
 
   let id: string;
   try {
-    ({ id } = await prisma.$transaction((tx) => crearUsuarioComoDuenoEnTx(tx, permiso.usuario, parsed.data)));
+    ({ id } = await conNegocio(permiso.usuario.negocioId, (tx) => crearUsuarioComoDuenoEnTx(tx, permiso.usuario, parsed.data)));
   } catch (error) {
     if (esDuplicado(error)) return { ok: false, error: "Ya existe un usuario con ese nombre de usuario." };
     return fallo("crearUsuario", error, "No se pudo crear el usuario.");
@@ -83,7 +85,7 @@ export async function cambiarActivoUsuario(datos: { id: string; activo: boolean 
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => cambiarActivoUsuarioEnTx(tx, permiso.usuario, parsed.data.id, parsed.data.activo));
+    await conNegocio(permiso.usuario.negocioId, (tx) => cambiarActivoUsuarioEnTx(tx, permiso.usuario, parsed.data.id, parsed.data.activo));
   } catch (error) {
     return fallo("cambiarActivoUsuario", error, "No se pudo actualizar el usuario.");
   }
@@ -101,7 +103,7 @@ export async function cambiarRolUsuario(datos: { id: string; rol: string }): Pro
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => cambiarRolUsuarioEnTx(tx, permiso.usuario, parsed.data.id, parsed.data.rol));
+    await conNegocio(permiso.usuario.negocioId, (tx) => cambiarRolUsuarioEnTx(tx, permiso.usuario, parsed.data.id, parsed.data.rol));
   } catch (error) {
     return fallo("cambiarRolUsuario", error, "No se pudo cambiar el rol.");
   }
@@ -119,7 +121,7 @@ export async function resetearClaveUsuario(datos: { id: string; clave: string })
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => resetearClaveUsuarioEnTx(tx, permiso.usuario, parsed.data.id, parsed.data.clave));
+    await conNegocio(permiso.usuario.negocioId, (tx) => resetearClaveUsuarioEnTx(tx, permiso.usuario, parsed.data.id, parsed.data.clave));
   } catch (error) {
     return fallo("resetearClaveUsuario", error, "No se pudo cambiar la clave.");
   }
@@ -145,7 +147,7 @@ export async function cambiarMiClave(datos: { actual: string; nueva: string; rep
     // `prisma` y no una transaccion: la verificacion de la clave actual tiene que
     // dejar anotado el intento fallido aunque la operacion termine en error.
     const nueva = await cambiarClavePropia(prisma, permiso.usuario, parsed.data);
-    (await cookies()).set(COOKIE_SESION, nueva.token, opcionesCookieSesion(nueva.expiraEn));
+    (await cookies()).set(COOKIE_SESION, nueva.valorCookie, opcionesCookieSesion(nueva.expiraEn));
   } catch (error) {
     return fallo("cambiarMiClave", error, "No se pudo cambiar la clave.");
   }

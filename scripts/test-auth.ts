@@ -14,15 +14,22 @@ import { join } from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { ErrorDeNegocio } from "../src/lib/acciones";
-import { formatoDeTokenValido, hashDeToken, hashearClave, SCRYPT_ACTUAL } from "../src/lib/auth-pura";
+import {
+  armarValorDeCookie,
+  formatoDeTokenValido,
+  hashDeToken,
+  hashearClave,
+  SCRYPT_ACTUAL,
+} from "../src/lib/auth-pura";
 import {
   cerrarSesion,
   cerrarSesionesDeUsuario,
   crearDuenoEnTx,
   crearSesion,
   crearUsuarioEnTx,
-  hayUsuarios,
+  hayNegocios,
   iniciarSesion,
+  negocioDeLogin,
   resolverSesion,
   verificarCredenciales,
 } from "../src/lib/dominio/auth";
@@ -41,6 +48,7 @@ const prisma = new PrismaClient({
 });
 
 /** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+const SLUG = "hl-laser";
 let negocioId = "";
 async function resolverNegocio() {
   negocioId = (
@@ -92,15 +100,15 @@ const DIA = 24 * 60 * 60 * 1000;
 const ahora = () => new Date();
 const mas = (ms: number, desde: Date) => new Date(desde.getTime() + ms);
 
-async function usuarioDePrueba(tx: Tx, rol: "DUENO" | "EMPLEADO" = "EMPLEADO", usuario = "prueba.auth") {
-  return crearUsuarioEnTx(tx, { usuario, nombre: "Prueba Auth", rol, clave: CLAVE });
+async function usuarioDePrueba(tx: Tx, rol: "DUENO" | "EMPLEADO" = "EMPLEADO", usuario = "prueba.auth", negocio = negocioId) {
+  return crearUsuarioEnTx(tx, { negocioId: negocio, usuario, nombre: "Prueba Auth", rol, clave: CLAVE });
 }
 
 async function main() {
   await resolverNegocio();
   await escenario("Login correcto", async (tx) => {
     const u = await usuarioDePrueba(tx);
-    const r = await iniciarSesion(tx, "  Prueba.AUTH ", CLAVE);
+    const r = await iniciarSesion(tx, `  ${SLUG.toUpperCase()} `, "  Prueba.AUTH ", CLAVE);
     comprobar("entra (usuario normalizado)", String(r.ok), "true");
     if (!r.ok) return;
     comprobar("token con formato", String(formatoDeTokenValido(r.token)), "true");
@@ -111,22 +119,24 @@ async function main() {
     comprobar("la base guarda el hash del token", String(filas[0]?.tokenHash === hashDeToken(r.token)), "true");
     comprobar("y nunca el token", String(filas.some((f) => f.tokenHash.includes(r.token))), "false");
 
-    const sesion = await resolverSesion(tx, r.token);
+    const sesion = await resolverSesion(tx, r.valorCookie);
     comprobar("la sesion resuelve al usuario", String(sesion?.usuario.id === u.id), "true");
-    comprobar("solo id, usuario, nombre y rol", Object.keys(sesion?.usuario ?? {}).sort().join(","), "id,nombre,rol,usuario");
-    comprobar("token inventado no", String(await resolverSesion(tx, r.token.replace(/.$/, (c) => (c === "A" ? "B" : "A")))), "null");
+    comprobar("solo id, negocioId, usuario, nombre y rol", Object.keys(sesion?.usuario ?? {}).sort().join(","), "id,negocioId,nombre,rol,usuario");
+    comprobar("el negocio de la sesion es el del login", String(sesion?.usuario.negocioId === negocioId && r.negocioId === negocioId), "true");
+    comprobar("token inventado no", String(await resolverSesion(tx, r.valorCookie.replace(/.$/, (c) => (c === "A" ? "B" : "A")))), "null");
     comprobar("token vacio no", String(await resolverSesion(tx, "")), "null");
+    comprobar("el token solo (sin negocio) no vale", String(await resolverSesion(tx, r.token)), "null");
 
-    const otra = await iniciarSesion(tx, "prueba.auth", CLAVE);
+    const otra = await iniciarSesion(tx, SLUG, "prueba.auth", CLAVE);
     comprobar("cada login estrena token", String(otra.ok && otra.token !== r.token), "true");
   });
 
   await escenario("Clave mala, usuario inexistente y usuario dado de baja: misma respuesta", async (tx) => {
     const u = await usuarioDePrueba(tx);
     const t1 = performance.now();
-    const mala = await iniciarSesion(tx, "prueba.auth", "otra-clave-cualquiera");
+    const mala = await iniciarSesion(tx, SLUG, "prueba.auth", "otra-clave-cualquiera");
     const t2 = performance.now();
-    const inexistente = await iniciarSesion(tx, "no.existe.nadie", "otra-clave-cualquiera");
+    const inexistente = await iniciarSesion(tx, SLUG, "no.existe.nadie", "otra-clave-cualquiera");
     const t3 = performance.now();
     comprobar("clave mala", JSON.stringify(mala), '{"ok":false}');
     comprobar("inexistente: identica", JSON.stringify(inexistente), JSON.stringify(mala));
@@ -135,7 +145,7 @@ async function main() {
     comprobar("inexistente tarda parecido (hace scrypt igual)", String(razon > 0.5 && razon < 2), "true");
 
     await tx.usuario.update({ where: { id: u.id }, data: { activo: false } });
-    const baja = await iniciarSesion(tx, "prueba.auth", CLAVE);
+    const baja = await iniciarSesion(tx, SLUG, "prueba.auth", CLAVE);
     comprobar("dado de baja con la clave correcta: identica", JSON.stringify(baja), JSON.stringify(mala));
     comprobar("no se abrio ninguna sesion", String(await tx.sesion.count({ where: { usuarioId: u.id } })), "0");
   });
@@ -145,85 +155,85 @@ async function main() {
     const hoy = ahora();
 
     const vieja = await crearSesion(tx, negocioId, u.id, mas(-31 * DIA, hoy));
-    comprobar("sesion de hace 31 dias no vale", String(await resolverSesion(tx, vieja.token, hoy)), "null");
+    comprobar("sesion de hace 31 dias no vale", String(await resolverSesion(tx, vieja.valorCookie, hoy)), "null");
     comprobar("y se borra", String(await tx.sesion.count({ where: { tokenHash: hashDeToken(vieja.token) } })), "0");
 
     const casi = await crearSesion(tx, negocioId, u.id, mas(-29 * DIA, hoy));
-    comprobar("de hace 29 dias todavia vale", String((await resolverSesion(tx, casi.token, hoy))?.usuario.id === u.id), "true");
-    comprobar("un segundo despues del vencimiento no", String(await resolverSesion(tx, casi.token, mas(1000, casi.expiraEn))), "null");
+    comprobar("de hace 29 dias todavia vale", String((await resolverSesion(tx, casi.valorCookie, hoy))?.usuario.id === u.id), "true");
+    comprobar("un segundo despues del vencimiento no", String(await resolverSesion(tx, casi.valorCookie, mas(1000, casi.expiraEn))), "null");
 
     const reciente = await crearSesion(tx, negocioId, u.id, mas(-2 * DIA, hoy));
-    const sinRenovar = await resolverSesion(tx, reciente.token, hoy);
+    const sinRenovar = await resolverSesion(tx, reciente.valorCookie, hoy);
     comprobar("sin pedir renovacion no renueva", String(sinRenovar?.renovadaHasta), "null");
-    const renovada = await resolverSesion(tx, reciente.token, hoy, { renovar: true });
+    const renovada = await resolverSesion(tx, reciente.valorCookie, hoy, { renovar: true });
     comprobar("renueva a 30 dias desde ahora", String(renovada?.renovadaHasta?.getTime()), String(mas(30 * DIA, hoy).getTime()));
     const fila = await tx.sesion.findUnique({ where: { tokenHash: hashDeToken(reciente.token) } });
     comprobar("el vencimiento se guarda en base", String(fila?.expiraEn.getTime()), String(mas(30 * DIA, hoy).getTime()));
-    const otraVez = await resolverSesion(tx, reciente.token, mas(60_000, hoy), { renovar: true });
+    const otraVez = await resolverSesion(tx, reciente.valorCookie, mas(60_000, hoy), { renovar: true });
     comprobar("en el mismo dia no vuelve a escribir", String(otraVez?.renovadaHasta), "null");
     comprobar("...pero sigue valiendo", String(otraVez?.usuario.id === u.id), "true");
 
     const nueva = await crearSesion(tx, negocioId, u.id, hoy);
-    const sinTocar = await resolverSesion(tx, nueva.token, mas(1000, hoy), { renovar: true });
+    const sinTocar = await resolverSesion(tx, nueva.valorCookie, mas(1000, hoy), { renovar: true });
     comprobar("una sesion recien abierta no se renueva", String(sinTocar?.renovadaHasta), "null");
   });
 
   await escenario("La baja de un usuario corta su sesion al instante", async (tx) => {
     const u = await usuarioDePrueba(tx);
-    const r = await iniciarSesion(tx, "prueba.auth", CLAVE);
+    const r = await iniciarSesion(tx, SLUG, "prueba.auth", CLAVE);
     if (!r.ok) return comprobar("login", "fallo", "ok");
-    comprobar("antes de la baja vale", String((await resolverSesion(tx, r.token))?.usuario.id === u.id), "true");
+    comprobar("antes de la baja vale", String((await resolverSesion(tx, r.valorCookie))?.usuario.id === u.id), "true");
     await tx.usuario.update({ where: { id: u.id }, data: { activo: false } });
-    comprobar("despues de la baja no", String(await resolverSesion(tx, r.token)), "null");
+    comprobar("despues de la baja no", String(await resolverSesion(tx, r.valorCookie)), "null");
     comprobar("y la fila se borra", String(await tx.sesion.count({ where: { usuarioId: u.id } })), "0");
   });
 
   await escenario("Cerrar sesion borra la fila", async (tx) => {
     const u = await usuarioDePrueba(tx);
-    const a = await iniciarSesion(tx, "prueba.auth", CLAVE);
-    const b = await iniciarSesion(tx, "prueba.auth", CLAVE);
+    const a = await iniciarSesion(tx, SLUG, "prueba.auth", CLAVE);
+    const b = await iniciarSesion(tx, SLUG, "prueba.auth", CLAVE);
     if (!a.ok || !b.ok) return comprobar("login", "fallo", "ok");
-    await cerrarSesion(tx, a.token);
+    await cerrarSesion(tx, a.valorCookie);
     comprobar("la fila ya no esta", String(await tx.sesion.count({ where: { tokenHash: hashDeToken(a.token) } })), "0");
-    comprobar("el token cerrado no vale", String(await resolverSesion(tx, a.token)), "null");
-    comprobar("la otra sesion sigue", String((await resolverSesion(tx, b.token))?.usuario.id === u.id), "true");
-    await cerrarSesion(tx, a.token); // dos veces: no falla
+    comprobar("el token cerrado no vale", String(await resolverSesion(tx, a.valorCookie)), "null");
+    comprobar("la otra sesion sigue", String((await resolverSesion(tx, b.valorCookie))?.usuario.id === u.id), "true");
+    await cerrarSesion(tx, a.valorCookie); // dos veces: no falla
     comprobar("cerrar todas las del usuario", String(await cerrarSesionesDeUsuario(tx, u.id)), "1");
-    comprobar("ya no vale ninguna", String(await resolverSesion(tx, b.token)), "null");
+    comprobar("ya no vale ninguna", String(await resolverSesion(tx, b.valorCookie)), "null");
   });
 
   await escenario("Pausa creciente tras intentos fallidos", async (tx) => {
     const u = await usuarioDePrueba(tx);
     let t = ahora();
     for (let i = 1; i <= 4; i++) {
-      await verificarCredenciales(tx, "prueba.auth", `mala-${i}-xxxxxxx`, t);
+      await verificarCredenciales(tx, negocioId, "prueba.auth", `mala-${i}-xxxxxxx`, t);
       t = mas(1000, t);
     }
     let fila = await tx.usuario.findUniqueOrThrow({ where: { id: u.id } });
     comprobar("4 fallos: contados y sin pausa", `${fila.intentosFallidos}/${fila.bloqueadoHasta}`, "4/null");
-    comprobar("con la clave correcta todavia entra", String((await verificarCredenciales(tx, "prueba.auth", CLAVE, t)).ok), "true");
+    comprobar("con la clave correcta todavia entra", String((await verificarCredenciales(tx, negocioId, "prueba.auth", CLAVE, t)).ok), "true");
     fila = await tx.usuario.findUniqueOrThrow({ where: { id: u.id } });
     comprobar("el login correcto resetea la cuenta", `${fila.intentosFallidos}/${fila.bloqueadoHasta}`, "0/null");
 
     for (let i = 1; i <= 5; i++) {
-      await verificarCredenciales(tx, "prueba.auth", `mala-${i}-xxxxxxx`, t);
+      await verificarCredenciales(tx, negocioId, "prueba.auth", `mala-${i}-xxxxxxx`, t);
       t = mas(1000, t);
     }
     fila = await tx.usuario.findUniqueOrThrow({ where: { id: u.id } });
     comprobar("5 fallos: pausa", String(fila.bloqueadoHasta !== null && fila.bloqueadoHasta > t), "true");
-    comprobar("en pausa ni la clave correcta entra", String((await verificarCredenciales(tx, "prueba.auth", CLAVE, t)).ok), "false");
-    await verificarCredenciales(tx, "prueba.auth", "mala-en-pausa-xxxx", t);
+    comprobar("en pausa ni la clave correcta entra", String((await verificarCredenciales(tx, negocioId, "prueba.auth", CLAVE, t)).ok), "false");
+    await verificarCredenciales(tx, negocioId, "prueba.auth", "mala-en-pausa-xxxx", t);
     fila = await tx.usuario.findUniqueOrThrow({ where: { id: u.id } });
     comprobar("lo que llega en pausa no suma", String(fila.intentosFallidos), "5");
     const despues = mas(1000, fila.bloqueadoHasta!);
-    comprobar("pasada la pausa, la clave correcta entra", String((await verificarCredenciales(tx, "prueba.auth", CLAVE, despues)).ok), "true");
+    comprobar("pasada la pausa, la clave correcta entra", String((await verificarCredenciales(tx, negocioId, "prueba.auth", CLAVE, despues)).ok), "true");
   });
 
   await escenario("Intentos en paralelo: no se puede probar muchas claves a la vez", async (tx) => {
     const u = await usuarioDePrueba(tx);
     const t = ahora();
     const intentos = Array.from({ length: 9 }, (_, i) => `mala-paralela-${i}-xx`).concat(CLAVE);
-    const resultados = await Promise.all(intentos.map((c) => verificarCredenciales(tx, "prueba.auth", c, t)));
+    const resultados = await Promise.all(intentos.map((c) => verificarCredenciales(tx, negocioId, "prueba.auth", c, t)));
     const fila = await tx.usuario.findUniqueOrThrow({ where: { id: u.id } });
     comprobar("solo un intento llego a verificarse", String(fila.intentosFallidos), "1");
     comprobar("la clave correcta en la rafaga no entra", String(resultados.at(-1)?.ok), "false");
@@ -232,34 +242,95 @@ async function main() {
   await escenario("Cambio de parametros de scrypt: rehash en el login", async (tx) => {
     const u = await usuarioDePrueba(tx);
     await tx.usuario.update({ where: { id: u.id }, data: { hashClave: await hashearClave(CLAVE, { ln: 14, r: 8, p: 1 }) } });
-    comprobar("el hash viejo sigue entrando", String((await iniciarSesion(tx, "prueba.auth", CLAVE)).ok), "true");
+    comprobar("el hash viejo sigue entrando", String((await iniciarSesion(tx, SLUG, "prueba.auth", CLAVE)).ok), "true");
     const fila = await tx.usuario.findUniqueOrThrow({ where: { id: u.id } });
     const { ln, r, p } = SCRYPT_ACTUAL;
     comprobar("quedo rehasheado con los actuales", String(fila.hashClave.startsWith(`scrypt$ln=${ln},r=${r},p=${p}$`)), "true");
-    comprobar("y sigue entrando", String((await iniciarSesion(tx, "prueba.auth", CLAVE)).ok), "true");
+    comprobar("y sigue entrando", String((await iniciarSesion(tx, SLUG, "prueba.auth", CLAVE)).ok), "true");
+  });
+
+  await escenario("Dos negocios: el mismo usuario en A y en B, cada uno con lo suyo", async (tx) => {
+    const CLAVE_B = "clave-del-negocio-b-456";
+    const negocioB = await tx.negocio.create({ data: { nombre: "Negocio B de prueba", slug: "negocio-b-prueba" }, select: { id: true } });
+    const uA = await usuarioDePrueba(tx);
+    const uB = await crearUsuarioEnTx(tx, { negocioId: negocioB.id, usuario: "prueba.auth", nombre: "Prueba B", rol: "EMPLEADO", clave: CLAVE_B });
+    comprobar("el mismo nombre de usuario existe en los dos negocios", String(uA.id !== uB.id), "true");
+
+    const enA = await iniciarSesion(tx, SLUG, "prueba.auth", CLAVE);
+    const enB = await iniciarSesion(tx, "negocio-b-prueba", "prueba.auth", CLAVE_B);
+    comprobar("entra en A con la clave de A", `${enA.ok && enA.negocioId === negocioId && enA.usuario.id === uA.id}`, "true");
+    comprobar("entra en B con la clave de B", `${enB.ok && enB.negocioId === negocioB.id && enB.usuario.id === uB.id}`, "true");
+
+    // Usuario de A no entra en B ni con la clave correcta (y al reves).
+    const cruzadoAB = await iniciarSesion(tx, "negocio-b-prueba", "prueba.auth", CLAVE);
+    comprobar("clave de A en el negocio B: no", JSON.stringify(cruzadoAB), '{"ok":false}');
+    const cruzadoBA = await iniciarSesion(tx, SLUG, "prueba.auth", CLAVE_B);
+    comprobar("clave de B en el negocio A: no", JSON.stringify(cruzadoBA), '{"ok":false}');
+    // Un usuario que solo existe en A no entra en B.
+    await usuarioDePrueba(tx, "EMPLEADO", "solo.en.a");
+    comprobar("usuario que solo existe en A, en B: no", JSON.stringify(await iniciarSesion(tx, "negocio-b-prueba", "solo.en.a", CLAVE)), '{"ok":false}');
+
+    // La cookie: el negocio es una pista, no un permiso.
+    if (!enA.ok || !enB.ok) return comprobar("logins", "fallaron", "ok");
+    comprobar("la sesion de A, reclamada como de B: no", String(await resolverSesion(tx, armarValorDeCookie(negocioB.id, enA.token))), "null");
+    comprobar("la sesion de B, reclamada como de A: no", String(await resolverSesion(tx, armarValorDeCookie(negocioId, enB.token))), "null");
+    comprobar("negocio inexistente en la cookie: no", String(await resolverSesion(tx, armarValorDeCookie("11111111-1111-4111-8111-111111111111", enA.token))), "null");
+    comprobar("cookie bien formada de A: sigue valiendo", String((await resolverSesion(tx, enA.valorCookie))?.usuario.negocioId === negocioId), "true");
+    await cerrarSesion(tx, armarValorDeCookie(negocioB.id, enA.token)); // cerrar con el negocio equivocado no borra nada
+    comprobar("cerrar con el negocio equivocado no cierra la de A", String((await resolverSesion(tx, enA.valorCookie)) !== null), "true");
+
+    // Slug: inexistente, con forma invalida o reservado dan lo mismo que una clave mala.
+    for (const slug of ["no-existe-nada", "x", "ADMIN", "admin", "con espacio", "", "a".repeat(40)]) {
+      comprobar(`slug "${slug.slice(0, 12)}": misma respuesta`, JSON.stringify(await iniciarSesion(tx, slug, "prueba.auth", CLAVE)), '{"ok":false}');
+    }
+    comprobar("negocioDeLogin resuelve el slug (mayusculas y espacios)", String((await negocioDeLogin(tx, " Negocio-B-Prueba "))?.id === negocioB.id), "true");
+
+    // La pausa por fallos es por negocio (la clave de conteo es negocio + usuario).
+    let t = ahora();
+    for (let i = 1; i <= 5; i++) {
+      await verificarCredenciales(tx, negocioId, "prueba.auth", `mala-${i}-xxxxxxx`, t);
+      t = mas(1000, t);
+    }
+    comprobar("5 fallos en A: A en pausa", String((await verificarCredenciales(tx, negocioId, "prueba.auth", CLAVE, t)).ok), "false");
+    comprobar("...y B (mismo usuario) no", String((await verificarCredenciales(tx, negocioB.id, "prueba.auth", CLAVE_B, t)).ok), "true");
+    const filaB = await tx.usuario.findUniqueOrThrow({ where: { id: uB.id } });
+    comprobar("los fallos de A no contaron en B", String(filaB.intentosFallidos), "0");
+
+    // Negocio suspendido: no entra nadie y las sesiones abiertas dejan de valer (y vuelven al reactivarlo).
+    await tx.negocio.update({ where: { id: negocioB.id }, data: { activo: false } });
+    comprobar("negocio inactivo: no se puede entrar", JSON.stringify(await iniciarSesion(tx, "negocio-b-prueba", "prueba.auth", CLAVE_B)), '{"ok":false}');
+    comprobar("negocio inactivo: negocioDeLogin", String(await negocioDeLogin(tx, "negocio-b-prueba")), "null");
+    comprobar("negocio inactivo: la sesion abierta no vale", String(await resolverSesion(tx, enB.valorCookie)), "null");
+    comprobar("...pero la sesion de A si", String((await resolverSesion(tx, enA.valorCookie)) !== null), "true");
+    await tx.negocio.update({ where: { id: negocioB.id }, data: { activo: true } });
+    comprobar("reactivado: la sesion vuelve a valer", String((await resolverSesion(tx, enB.valorCookie)) !== null), "true");
+
+    // El alta de usuarios queda en el negocio indicado.
+    const nuevo = await crearUsuarioEnTx(tx, { negocioId: negocioB.id, usuario: "alta.en.b", nombre: "Alta", rol: "EMPLEADO", clave: CLAVE });
+    comprobar("el alta escribe el negocio", `${nuevo.negocioId === negocioB.id && (await tx.usuario.findUniqueOrThrow({ where: { id: nuevo.id } })).negocioId === negocioB.id}`, "true");
   });
 
   await escenario("Alta del dueno", async (tx) => {
-    comprobar("hay usuarios (seed)", String(await hayUsuarios(tx)), "true");
+    comprobar("hay negocios (migracion)", String(await hayNegocios(tx)), "true");
     // Sin duenos en esta transaccion: se pasan a empleado (no se borran: pueden tener historial).
     await tx.usuario.updateMany({ where: { rol: "DUENO" }, data: { rol: "EMPLEADO" } });
-    const d = await crearDuenoEnTx(tx, { usuario: "Primer.Dueno", nombre: "Primero", clave: CLAVE });
+    const d = await crearDuenoEnTx(tx, { negocioId, usuario: "Primer.Dueno", nombre: "Primero", clave: CLAVE });
     comprobar("crea el primero, en minusculas", `${d.usuario}/${d.rol}`, "primer.dueno/DUENO");
     await rechaza("un segundo dueno", "Ya existe un dueño", () =>
-      crearDuenoEnTx(tx, { usuario: "segundo.dueno", nombre: "Segundo", clave: CLAVE }),
+      crearDuenoEnTx(tx, { negocioId, usuario: "segundo.dueno", nombre: "Segundo", clave: CLAVE }),
     );
     await tx.usuario.update({ where: { id: d.id }, data: { activo: false } });
     await rechaza("tampoco si el primero esta dado de baja", "dado de baja", () =>
-      crearDuenoEnTx(tx, { usuario: "segundo.dueno", nombre: "Segundo", clave: CLAVE }),
+      crearDuenoEnTx(tx, { negocioId, usuario: "segundo.dueno", nombre: "Segundo", clave: CLAVE }),
     );
     await rechaza("usuario repetido", "Ya existe un usuario", () =>
-      crearUsuarioEnTx(tx, { usuario: "PRIMER.DUENO", nombre: "Otro", rol: "EMPLEADO", clave: CLAVE }),
+      crearUsuarioEnTx(tx, { negocioId, usuario: "PRIMER.DUENO", nombre: "Otro", rol: "EMPLEADO", clave: CLAVE }),
     );
     await rechaza("clave corta", "al menos 10", () =>
-      crearUsuarioEnTx(tx, { usuario: "corta", nombre: "Corta", rol: "EMPLEADO", clave: "123456789" }),
+      crearUsuarioEnTx(tx, { negocioId, usuario: "corta", nombre: "Corta", rol: "EMPLEADO", clave: "123456789" }),
     );
     await rechaza("usuario invalido", "entre 3 y 40", () =>
-      crearUsuarioEnTx(tx, { usuario: "con espacio", nombre: "X", rol: "EMPLEADO", clave: CLAVE }),
+      crearUsuarioEnTx(tx, { negocioId, usuario: "con espacio", nombre: "X", rol: "EMPLEADO", clave: CLAVE }),
     );
   });
 
@@ -329,7 +400,7 @@ async function probarComandoCrearDueno() {
   console.log("--- npm run usuarios:crear-dueno con un dueno ya cargado ---");
   let temporal: string | null = null;
   if (!(await prisma.usuario.findFirst({ where: { rol: "DUENO" } }))) {
-    const u = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: "dueno.temporal.test", nombre: "Temporal", rol: "DUENO", clave: CLAVE }));
+    const u = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { negocioId, usuario: "dueno.temporal.test", nombre: "Temporal", rol: "DUENO", clave: CLAVE }));
     temporal = u.id;
   }
   try {

@@ -9,6 +9,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { usarNegocioDePrueba } from "../src/lib/negocio";
 import { d } from "../src/lib/money";
 import { ErrorDeNegocio } from "../src/lib/acciones";
 import { esquemaConfiguracion, esquemaMaquina, leerConfiguracion } from "../src/lib/configuracion";
@@ -86,6 +87,7 @@ const maquina = (nombre: string, costoHora: string, notas = "") => esquemaMaquin
 
 async function main() {
   await resolverNegocio();
+  usarNegocioDePrueba(negocioId); // las consultas leen el negocio de la sesion: aca no hay pedido
   await escenario("Guardar configuración (upsert, crea ivaPorDefecto si falta)", async (tx) => {
     await tx.configuracion.deleteMany({ where: { clave: "ivaPorDefecto" } });
     comprobar("sin clave → IVA por defecto", leerConfiguracion(await configDe(tx)).ivaPorDefecto.toString(), "21");

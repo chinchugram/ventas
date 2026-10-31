@@ -690,8 +690,8 @@ async function parteReal() {
     const CLAVE = "clave-de-prueba-123";
     const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `zz-nc-emp-${randomBytes(3).toString("hex")}`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
     const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `zz-nc-due-${randomBytes(3).toString("hex")}`, nombre: "Dueño de prueba", rol: "DUENO", clave: CLAVE }));
-    const tEmp = (await crearSesion(prisma, negocioId, emp.id)).token;
-    const tDue = (await crearSesion(prisma, negocioId, due.id)).token;
+    const tEmp = (await crearSesion(prisma, negocioId, emp.id)).valorCookie;
+    const tDue = (await crearSesion(prisma, negocioId, due.id)).valorCookie;
     const invocar = async (token: string | undefined, datos: unknown) => {
       cookieActual = token;
       try {
