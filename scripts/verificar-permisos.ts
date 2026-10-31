@@ -117,6 +117,7 @@ const PAGINAS_ESPERADAS: Record<string, Accion[]> = {
   "/presupuestos/[id]/editar": ["cargarPresupuesto"],
   "/presupuestos/[id]/imprimir": ["verPresupuestos"],
   "/reportes": ["verReportes", "verCostos", "verMargenes"],
+  "/reportes/margen-real": ["verReportes", "verCostos", "verMargenes", "verMargenReal"],
   "/reportes/stock": ["verReportes", "verCostos"],
   "/reposicion": ["verReposicion"],
   "/ventas": ["verVentas"],
@@ -237,15 +238,20 @@ function main() {
 
   console.log("--- Route handlers ---");
   const handlers = routeHandlers();
-  comprobar("route handlers", lista(handlers.map((h) => h.archivo)), "reportes/export/[reporte]/route.ts");
+  comprobar("route handlers", lista(handlers.map((h) => h.archivo)), lista(["reportes/export/[reporte]/route.ts", "reportes/margen-real/export/route.ts"]));
   for (const h of handlers) {
     comprobar(`${h.archivo}: verifica sesion y permisos`, String(verificaRouteHandler(h.texto)), "true");
     for (const accion of ["exportarCsv", "verReportes", "verCostos", "verMargenes"]) {
       comprobar(`${h.archivo}: exige ${accion}`, String(h.texto.includes(`"${accion}"`)), "true");
     }
     comprobar(`${h.archivo}: 403 con texto, no redireccion`, String(/denegado\(403/.test(h.texto) && !/redirect\s*\(/.test(h.texto)), "true");
-    comprobar(`${h.archivo}: pide sesion y permisos antes de leer el reporte`, String(h.texto.indexOf("usuarioActual()") < h.texto.indexOf("EXPORTACIONES.get(")), "true");
+    // Antes de leer el reporte: antes de buscarlo en el mapa de exportaciones, o antes de llamar a su consulta.
+    const lecturas = ["EXPORTACIONES.get(", "getMargenReal("].map((m) => h.texto.indexOf(m)).filter((i) => i >= 0);
+    comprobar(`${h.archivo}: pide sesion y permisos antes de leer el reporte`, String(lecturas.length > 0 && h.texto.indexOf("usuarioActual()") < Math.min(...lecturas)), "true");
   }
+  // Ola 6: el margen real exige ademas su permiso propio (costos reales y margenes: solo el dueno).
+  const margenReal = handlers.find((h) => h.archivo === "reportes/margen-real/export/route.ts");
+  comprobar("reportes/margen-real/export/route.ts: exige verMargenReal", String(margenReal?.texto.includes('"verMargenReal"') ?? false), "true");
 
   console.log("--- Costos en las listas de precios (ola 7) ---");
   const leerSrc = (...partes: string[]) => readFileSync(join(__dirname, "..", "src", ...partes), "utf8");
