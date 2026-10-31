@@ -236,11 +236,11 @@ async function main() {
   const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-emp`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
   const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-due`, nombre: "Dueno de prueba", rol: "DUENO", clave: CLAVE }));
   const baja = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-baja`, nombre: "Empleado dado de baja", rol: "EMPLEADO", clave: CLAVE }));
-  const tEmp = (await crearSesion(prisma, negocioId, emp.id)).token;
-  const tDue = (await crearSesion(prisma, negocioId, due.id)).token;
-  const tBaja = (await crearSesion(prisma, negocioId, baja.id)).token;
+  const tEmp = (await crearSesion(prisma, negocioId, emp.id)).valorCookie;
+  const tDue = (await crearSesion(prisma, negocioId, due.id)).valorCookie;
+  const tBaja = (await crearSesion(prisma, negocioId, baja.id)).valorCookie;
   await prisma.usuario.update({ where: { id: baja.id }, data: { activo: false } });
-  const tFalso = generarToken();
+  const tFalso = `${negocioId}.${generarToken()}`;
 
   await configurarFiscal();
   const articulo = await prisma.articulo.create({ data: { negocioId, nombre: `${PREFIJO}${MARCA} servicio`, precioVenta: "1210", ivaPct: "21", esServicio: true } });
@@ -445,7 +445,7 @@ async function main() {
   console.log("--- Pantallas ---");
   const estado = await conSesion(tEmp, () => qComprobantes.estadoFacturacionDeVenta(vPerm.id));
   comprobar("estado de la venta facturada", `${estado?.resumen.situacion} puedeEmitir=${estado?.resumen.puedeEmitir}`, "EMITIDA puedeEmitir=false");
-  const estadoSin = await qComprobantes.estadoFacturacionDeVenta(vAnulada.id);
+  const estadoSin = await conSesion(tEmp, () => qComprobantes.estadoFacturacionDeVenta(vAnulada.id));
   comprobar("estado de la venta anulada", String(estadoSin?.resumen.situacion), "VENTA_ANULADA");
   const panelEmitida = texto(await conSesion(tEmp, () => FacturarPanel({ ventaId: vPerm.id })));
   comprobar("panel de una venta facturada: lleva la marca de ambiente SIMULADO", String(panelEmitida.includes('"ambiente":"SIMULADO"')), "true");

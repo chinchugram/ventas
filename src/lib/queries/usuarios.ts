@@ -2,12 +2,15 @@ import { ErrorDeNegocio } from "@/lib/acciones";
 import type { Rol, UsuarioSesion } from "@/lib/auth-pura";
 import { puede } from "@/lib/permisos-pura";
 import { SIN_PERMISO_USUARIOS } from "@/lib/dominio/usuarios";
-import { dbDisponible, prisma } from "@/lib/prisma";
+import { conNegocio } from "@/lib/negocio";
+import { dbDisponible } from "@/lib/prisma";
 
 // Lecturas de la administracion de usuarios. Solo para quien puede
 // `gestionarUsuarios` (se verifica aca tambien, no solo en la pagina). Se eligen
 // los campos a mano: `hashClave` y los datos de sesion no se leen nunca, asi que
-// no pueden viajar al navegador ni por error.
+// no pueden viajar al navegador ni por error. Solo se leen los usuarios del negocio del
+// actor (el de su sesion): `conNegocio(actor.negocioId)` abre el contexto RLS y cada consulta
+// filtra tambien por `negocioId`.
 
 export type UsuarioListado = {
   id: string;
@@ -67,10 +70,13 @@ export async function getUsuarios(actor: UsuarioSesion | null | undefined): Prom
   exigirPermiso(actor);
   if (!(await dbDisponible())) return { esDemo: true, usuarios: [], duenosActivos: 0 };
 
-  const filas = await prisma.usuario.findMany({
-    select: SELECCION,
-    orderBy: [{ activo: "desc" }, { rol: "asc" }, { nombre: "asc" }],
-  });
+  const filas = await conNegocio(actor.negocioId, (tx) =>
+    tx.usuario.findMany({
+      where: { negocioId: actor.negocioId },
+      select: SELECCION,
+      orderBy: [{ activo: "desc" }, { rol: "asc" }, { nombre: "asc" }],
+    }),
+  );
   const usuarios = filas.map(aListado);
   return { esDemo: false, usuarios, duenosActivos: usuarios.filter((u) => u.rol === "DUENO" && u.activo).length };
 }
@@ -85,11 +91,15 @@ export async function getUsuario(actor: UsuarioSesion | null | undefined, id: st
   exigirPermiso(actor);
   if (!(await dbDisponible())) return null;
 
-  const fila = await prisma.usuario.findUnique({ where: { id }, select: SELECCION });
-  if (!fila) return null;
-  const otros =
-    fila.rol === "DUENO" && fila.activo
-      ? await prisma.usuario.count({ where: { rol: "DUENO", activo: true, id: { not: id } } })
-      : 1;
-  return { ...aListado(fila), esUltimoDuenoActivo: otros === 0 };
+  return conNegocio(actor.negocioId, async (tx) => {
+    const fila = await tx.usuario.findFirst({ where: { id, negocioId: actor.negocioId }, select: SELECCION });
+    if (!fila) return null;
+    const otros =
+      fila.rol === "DUENO" && fila.activo
+        ? await tx.usuario.count({
+            where: { negocioId: actor.negocioId, rol: "DUENO", activo: true, id: { not: id } },
+          })
+        : 1;
+    return { ...aListado(fila), esUltimoDuenoActivo: otros === 0 };
+  });
 }

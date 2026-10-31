@@ -70,6 +70,7 @@ const prisma = new PrismaClient({
 });
 
 /** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+const SLUG = "hl-laser";
 let negocioId = "";
 async function resolverNegocio() {
   negocioId = (
@@ -107,11 +108,11 @@ const CLAVE_NUEVA = "otra-clave-distinta-456";
 let hashDeCLAVE = "";
 
 /** Usuario de prueba con un hash ya calculado (scrypt cuesta ~0,3 s: no se repite por cada fixture). */
-async function crear(db: Tx | PrismaClient, usuario: string, rol: Rol, activo = true): Promise<UsuarioSesion> {
+async function crear(db: Tx | PrismaClient, usuario: string, rol: Rol, activo = true, negocio = negocioId): Promise<UsuarioSesion> {
   const u = await db.usuario.create({
-    data: { usuario, nombre: `Prueba ${usuario}`, rol, hashClave: hashDeCLAVE, activo },
+    data: { negocioId: negocio, usuario, nombre: `Prueba ${usuario}`, rol, hashClave: hashDeCLAVE, activo },
   });
-  return { id: u.id, usuario: u.usuario, nombre: u.nombre, rol: u.rol };
+  return { id: u.id, negocioId: negocio, usuario: u.usuario, nombre: u.nombre, rol: u.rol };
 }
 
 /** Deja como unicos duenos activos a `ids` (en una transaccion que se deshace). */
@@ -151,7 +152,7 @@ async function main() {
     comprobar("activo por defecto", String(fila.activo), "true");
     comprobar("la clave se guarda con scrypt (no en claro)", String(fila.hashClave.startsWith("scrypt$") && !fila.hashClave.includes(CLAVE)), "true");
     comprobar("el hash verifica", String(await verificarClave(CLAVE, fila.hashClave)), "true");
-    comprobar("el nuevo usuario puede entrar", String((await iniciarSesion(tx, "LAURA.test44", CLAVE)).ok), "true");
+    comprobar("el nuevo usuario puede entrar", String((await iniciarSesion(tx, SLUG, "LAURA.test44", CLAVE)).ok), "true");
 
     await rechaza("duplicado (otra mayuscula)", "Ya existe un usuario", () =>
       crearUsuarioComoDuenoEnTx(tx, d, { usuario: "LAURA.test44", nombre: "Otra", rol: "EMPLEADO", clave: CLAVE }),
@@ -252,13 +253,13 @@ async function main() {
     const fila = await tx.usuario.findUniqueOrThrow({ where: { id: e.id } });
     comprobar("queda inactivo y no se borra", `${fila.activo}`, "false");
     comprobar("se cerraron sus sesiones", String(await sesiones(tx, e.id)), "0");
-    comprobar("el token viejo no vale", String(await resolverSesion(tx, s1.token)), "null");
-    comprobar("no puede entrar", String((await iniciarSesion(tx, "test44.empleado", CLAVE)).ok), "false");
+    comprobar("el token viejo no vale", String(await resolverSesion(tx, s1.valorCookie)), "null");
+    comprobar("no puede entrar", String((await iniciarSesion(tx, SLUG, "test44.empleado", CLAVE)).ok), "false");
     comprobar("dar de baja otra vez no hace nada", String((await cambiarActivoUsuarioEnTx(tx, d, e.id, false)).cambio), "false");
 
     const alta = await cambiarActivoUsuarioEnTx(tx, d, e.id, true);
     comprobar("la reactivacion cambia", String(alta.cambio), "true");
-    comprobar("vuelve a entrar con su clave de siempre", String((await iniciarSesion(tx, "test44.empleado", CLAVE)).ok), "true");
+    comprobar("vuelve a entrar con su clave de siempre", String((await iniciarSesion(tx, SLUG, "test44.empleado", CLAVE)).ok), "true");
     comprobar("el usuario es el mismo (id)", String((await tx.usuario.findUnique({ where: { id: e.id } }))?.usuario), "test44.empleado");
 
     await rechaza("id inexistente", "no existe", () => cambiarActivoUsuarioEnTx(tx, d, "00000000-0000-4000-8000-000000000000", false));
@@ -272,7 +273,7 @@ async function main() {
 
     await rechaza("el unico dueno se da de baja a si mismo", "último dueño activo", () => cambiarActivoUsuarioEnTx(tx, d, d.id, false));
     comprobar("sigue activo", String((await tx.usuario.findUniqueOrThrow({ where: { id: d.id } })).activo), "true");
-    comprobar("y con su sesion", String((await resolverSesion(tx, s.token))?.usuario.id === d.id), "true");
+    comprobar("y con su sesion", String((await resolverSesion(tx, s.valorCookie))?.usuario.id === d.id), "true");
 
     // Con un segundo dueno la regla pasa a ser "uno mismo no".
     const d2 = await crear(tx, "test44.dueno2", "DUENO");
@@ -295,13 +296,13 @@ async function main() {
 
     comprobar("empleado a dueno", String((await cambiarRolUsuarioEnTx(tx, d, e.id, "DUENO")).cambio), "true");
     comprobar("rol guardado", (await tx.usuario.findUniqueOrThrow({ where: { id: e.id } })).rol, "DUENO");
-    comprobar("sus sesiones se cerraron", String(await resolverSesion(tx, sE.token)), "null");
+    comprobar("sus sesiones se cerraron", String(await resolverSesion(tx, sE.valorCookie)), "null");
     comprobar("mismo rol: sin cambio", String((await cambiarRolUsuarioEnTx(tx, d, e.id, "DUENO")).cambio), "false");
 
     // Ahora hay dos duenos: d degrada a e.
     const sE2 = await crearSesion(tx, negocioId, e.id);
     comprobar("dueno a empleado (hay otro dueno)", String((await cambiarRolUsuarioEnTx(tx, d, e.id, "EMPLEADO")).cambio), "true");
-    comprobar("sesiones cerradas tambien al bajar el rol", String(await resolverSesion(tx, sE2.token)), "null");
+    comprobar("sesiones cerradas tambien al bajar el rol", String(await resolverSesion(tx, sE2.valorCookie)), "null");
 
     await rechaza("el unico dueno no se degrada a si mismo", "último dueño activo", () => cambiarRolUsuarioEnTx(tx, d, d.id, "EMPLEADO"));
     comprobar("sigue siendo dueno", (await tx.usuario.findUniqueOrThrow({ where: { id: d.id } })).rol, "DUENO");
@@ -333,10 +334,10 @@ async function main() {
     const sD = await crearSesion(tx, negocioId, d.id);
 
     const t = new Date();
-    for (let i = 0; i < 5; i++) await verificarCredenciales(tx, "test44.empleado", `mala-${i}-xxxxxxxx`, new Date(t.getTime() + i * 1000));
+    for (let i = 0; i < 5; i++) await verificarCredenciales(tx, negocioId, "test44.empleado", `mala-${i}-xxxxxxxx`, new Date(t.getTime() + i * 1000));
     let fila = await tx.usuario.findUniqueOrThrow({ where: { id: e.id } });
     comprobar("el empleado quedo en pausa por 5 fallos", `${fila.intentosFallidos}/${fila.bloqueadoHasta !== null}`, "5/true");
-    comprobar("en pausa ni la clave correcta entra", String((await verificarCredenciales(tx, "test44.empleado", CLAVE, new Date(t.getTime() + 6000))).ok), "false");
+    comprobar("en pausa ni la clave correcta entra", String((await verificarCredenciales(tx, negocioId, "test44.empleado", CLAVE, new Date(t.getTime() + 6000))).ok), "false");
 
     await rechaza("clave corta", "al menos 10", () => resetearClaveUsuarioEnTx(tx, d, e.id, "corta"));
     await rechaza("clave de solo espacios", "solo espacios", () => resetearClaveUsuarioEnTx(tx, d, e.id, " ".repeat(12)));
@@ -348,10 +349,10 @@ async function main() {
     fila = await tx.usuario.findUniqueOrThrow({ where: { id: e.id } });
     comprobar("se limpian intentos, ultimo fallo y pausa", `${fila.intentosFallidos}/${fila.ultimoFalloEn}/${fila.bloqueadoHasta}`, "0/null/null");
     comprobar("la clave guardada es la nueva", String(await verificarClave(CLAVE_NUEVA, fila.hashClave)), "true");
-    comprobar("la vieja ya no sirve", String((await iniciarSesion(tx, "test44.empleado", CLAVE)).ok), "false");
-    comprobar("la nueva entra enseguida (sin esperar la pausa)", String((await iniciarSesion(tx, "test44.empleado", CLAVE_NUEVA)).ok), "true");
-    comprobar("sus sesiones anteriores se cerraron", String(await resolverSesion(tx, sE.token)), "null");
-    comprobar("las del dueno no", String((await resolverSesion(tx, sD.token))?.usuario.id === d.id), "true");
+    comprobar("la vieja ya no sirve", String((await iniciarSesion(tx, SLUG, "test44.empleado", CLAVE)).ok), "false");
+    comprobar("la nueva entra enseguida (sin esperar la pausa)", String((await iniciarSesion(tx, SLUG, "test44.empleado", CLAVE_NUEVA)).ok), "true");
+    comprobar("sus sesiones anteriores se cerraron", String(await resolverSesion(tx, sE.valorCookie)), "null");
+    comprobar("las del dueno no", String((await resolverSesion(tx, sD.valorCookie))?.usuario.id === d.id), "true");
 
     await rechaza("el dueno no se resetea a si mismo por esta via", "Cambiar mi clave", () => resetearClaveUsuarioEnTx(tx, d, d.id, CLAVE_NUEVA));
     await rechaza("id inexistente", "no existe", () => resetearClaveUsuarioEnTx(tx, d, "00000000-0000-4000-8000-000000000000", CLAVE_NUEVA));
@@ -359,6 +360,46 @@ async function main() {
     const baja = await crear(tx, "test44.baja", "EMPLEADO", false);
     await resetearClaveUsuarioEnTx(tx, d, baja.id, CLAVE_NUEVA);
     comprobar("a un usuario dado de baja tambien se le puede resetear (sigue de baja)", String((await tx.usuario.findUniqueOrThrow({ where: { id: baja.id } })).activo), "false");
+  });
+
+  // ─── Dos negocios ───────────────────────────────────────────────────────────
+  await escenario("El dueno administra SOLO los usuarios de su negocio", async (tx) => {
+    const negocioB = (await tx.negocio.create({ data: { nombre: "Negocio B de prueba", slug: "negocio-b-prueba" }, select: { id: true } })).id;
+    const dA = await crear(tx, "test44.dueno.a", "DUENO");
+    const eA = await crear(tx, "test44.empleado.a", "EMPLEADO");
+    const dB = await crear(tx, "test44.dueno.b", "DUENO", true, negocioB);
+    const eB = await crear(tx, "test44.empleado.b", "EMPLEADO", true, negocioB);
+    const sEA = await crearSesion(tx, negocioId, eA.id);
+
+    // El dueno de B no ve ni toca a los de A, aunque conozca el id.
+    await rechaza("B no da de baja a un usuario de A", "no existe", () => cambiarActivoUsuarioEnTx(tx, dB, eA.id, false));
+    await rechaza("B no le cambia el rol a un usuario de A", "no existe", () => cambiarRolUsuarioEnTx(tx, dB, eA.id, "DUENO"));
+    await rechaza("B no le resetea la clave a un usuario de A", "no existe", () => resetearClaveUsuarioEnTx(tx, dB, eA.id, CLAVE_NUEVA));
+    const filaA = await tx.usuario.findUniqueOrThrow({ where: { id: eA.id } });
+    comprobar("el usuario de A quedo intacto", `${filaA.activo}/${filaA.rol}/${filaA.hashClave === hashDeCLAVE}`, "true/EMPLEADO/true");
+    comprobar("y su sesion sigue", String((await resolverSesion(tx, sEA.valorCookie))?.usuario.id === eA.id), "true");
+
+    // El alta cae en el negocio del actor (el de su sesion) y el nombre puede repetirse en otro negocio.
+    const nuevo = await crearUsuarioComoDuenoEnTx(tx, dB, { usuario: "test44.empleado.a", nombre: "Repetido en B", rol: "EMPLEADO", clave: CLAVE });
+    comprobar("el alta queda en el negocio del dueno", String((await tx.usuario.findUniqueOrThrow({ where: { id: nuevo.id } })).negocioId === negocioB && nuevo.negocioId === negocioB), "true");
+    comprobar("el mismo usuario existe en A y en B", String((await tx.usuario.count({ where: { usuario: "test44.empleado.a" } })) === 2), "true");
+    await rechaza("pero no dos veces en el mismo negocio", "Ya existe un usuario", () =>
+      crearUsuarioComoDuenoEnTx(tx, dB, { usuario: "test44.empleado.a", nombre: "Otra vez", rol: "EMPLEADO", clave: CLAVE }),
+    );
+    comprobar("el nuevo de B entra por B", String((await iniciarSesion(tx, "negocio-b-prueba", "test44.empleado.a", CLAVE)).ok), "true");
+    comprobar("y el de A (otra fila, mismo nombre) sigue entrando por A", String((await iniciarSesion(tx, SLUG, "test44.empleado.a", CLAVE)).ok), "true");
+
+    // El "ultimo dueno" se cuenta por negocio: A tiene otros duenos activos, B no.
+    await crear(tx, "test44.dueno.a2", "DUENO");
+    await rechaza("el dueno de A no toca a uno de B", "no existe", () => cambiarRolUsuarioEnTx(tx, dA, dB.id, "EMPLEADO"));
+    await rechaza("el unico dueno de B es el ultimo (aunque A tenga otros)", "último dueño activo", () =>
+      cambiarActivoUsuarioEnTx(tx, dB, dB.id, false),
+    );
+    comprobar("en A si se puede dar de baja a uno de dos duenos", String((await cambiarActivoUsuarioEnTx(tx, dA, (await tx.usuario.findFirstOrThrow({ where: { usuario: "test44.dueno.a2" } })).id, false)).cambio), "true");
+
+    // Cambiar la clave propia crea la sesion nueva en el negocio del usuario.
+    const nueva = await cambiarClavePropia(tx, eB, { actual: CLAVE, nueva: CLAVE_NUEVA, repetir: CLAVE_NUEVA });
+    comprobar("la sesion nueva es de su negocio", `${nueva.negocioId === negocioB}/${(await resolverSesion(tx, nueva.valorCookie))?.usuario.negocioId === negocioB}`, "true/true");
   });
 
   // ─── Clave propia ───────────────────────────────────────────────────────────
@@ -387,10 +428,10 @@ async function main() {
     fila = await tx.usuario.findUniqueOrThrow({ where: { id: e.id } });
     comprobar("la clave nueva queda guardada", String(await verificarClave(CLAVE_NUEVA, fila.hashClave)), "true");
     comprobar("el contador de fallos vuelve a cero", String(fila.intentosFallidos), "0");
-    comprobar("entra con la nueva", String((await iniciarSesion(tx, "test44.empleado", CLAVE_NUEVA)).ok), "true");
-    comprobar("no entra con la vieja", String((await iniciarSesion(tx, "test44.empleado", CLAVE)).ok), "false");
-    comprobar("ambas sesiones anteriores quedaron invalidas", `${await resolverSesion(tx, s1.token)}/${await resolverSesion(tx, s2.token)}`, "null/null");
-    comprobar("se devuelve una sesion nueva y vale", String((await resolverSesion(tx, nueva.token))?.usuario.id === e.id), "true");
+    comprobar("entra con la nueva", String((await iniciarSesion(tx, SLUG, "test44.empleado", CLAVE_NUEVA)).ok), "true");
+    comprobar("no entra con la vieja", String((await iniciarSesion(tx, SLUG, "test44.empleado", CLAVE)).ok), "false");
+    comprobar("ambas sesiones anteriores quedaron invalidas", `${await resolverSesion(tx, s1.valorCookie)}/${await resolverSesion(tx, s2.valorCookie)}`, "null/null");
+    comprobar("se devuelve una sesion nueva y vale", String((await resolverSesion(tx, nueva.valorCookie))?.usuario.id === e.id), "true");
     comprobar("el token nuevo es otro", String(hashDeToken(nueva.token) !== hashDeToken(s1.token)), "true");
     comprobar("la base guarda solo el hash del token", String((await tx.sesion.findFirst({ where: { tokenHash: hashDeToken(nueva.token) } })) !== null), "true");
   });
@@ -556,8 +597,8 @@ async function probarConcurrencia() {
       comprobar("el intento fallido quedo anotado (no se deshizo)", String((await prisma.usuario.findUniqueOrThrow({ where: { id: e.id } })).intentosFallidos), "1");
       const nueva = await cambiarClavePropia(prisma, e, datos);
       comprobar("con el cliente real tambien cambia", String(await verificarClave(CLAVE_NUEVA, (await prisma.usuario.findUniqueOrThrow({ where: { id: e.id } })).hashClave)), "true");
-      comprobar("queda una sola sesion y es la nueva", `${await prisma.sesion.count({ where: { usuarioId: e.id } })}/${(await resolverSesion(prisma, nueva.token))?.usuario.id === e.id}`, "1/true");
-      comprobar("la sesion vieja ya no vale", String(await resolverSesion(prisma, vieja.token)), "null");
+      comprobar("queda una sola sesion y es la nueva", `${await prisma.sesion.count({ where: { usuarioId: e.id } })}/${(await resolverSesion(prisma, nueva.valorCookie))?.usuario.id === e.id}`, "1/true");
+      comprobar("la sesion vieja ya no vale", String(await resolverSesion(prisma, vieja.valorCookie)), "null");
       await limpiarTemporales();
     }
   } finally {

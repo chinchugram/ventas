@@ -263,14 +263,14 @@ async function main() {
   console.log(`     foto inicial de ${base.size} tablas`);
 
   // Usuarios y sesiones reales.
-  const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-emp`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
-  const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-due`, nombre: "Dueno de prueba", rol: "DUENO", clave: CLAVE }));
-  const baja = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-baja`, nombre: "Empleado dado de baja", rol: "EMPLEADO", clave: CLAVE }));
-  const tEmp = (await crearSesion(prisma, negocioId, emp.id)).token;
-  const tDue = (await crearSesion(prisma, negocioId, due.id)).token;
-  const tBaja = (await crearSesion(prisma, negocioId, baja.id)).token;
+  const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { negocioId, usuario: `${MARCA}-emp`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
+  const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { negocioId, usuario: `${MARCA}-due`, nombre: "Dueno de prueba", rol: "DUENO", clave: CLAVE }));
+  const baja = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { negocioId, usuario: `${MARCA}-baja`, nombre: "Empleado dado de baja", rol: "EMPLEADO", clave: CLAVE }));
+  const tEmp = (await crearSesion(prisma, negocioId, emp.id)).valorCookie;
+  const tDue = (await crearSesion(prisma, negocioId, due.id)).valorCookie;
+  const tBaja = (await crearSesion(prisma, negocioId, baja.id)).valorCookie;
   await prisma.usuario.update({ where: { id: baja.id }, data: { activo: false } });
-  const tFalso = generarToken(); // formato valido, no existe en la base
+  const tFalso = `${negocioId}.${generarToken()}`; // formato valido, no existe en la base
 
   // Fixtures de datos.
   const cliente = await prisma.cliente.create({ data: { negocioId, nombre: `${MARCA} cliente` } });
@@ -647,57 +647,59 @@ async function main() {
     comprobar(`${etiqueta}: sin valores de costo de la base`, hallados.join(",") || "ninguno", "ninguno");
   };
 
-  const ventasEmp = await qVentas.getVentasSinCostos(200);
+  // Las consultas leen el negocio de la SESION (`getNegocioId`): se llaman con la cookie de una sesion real.
+  const enNegocioDe = <T>(fn: () => Promise<T>) => conSesion(tDue, fn);
+  const ventasEmp = await enNegocioDe(() => qVentas.getVentasSinCostos(200));
   comprobar("getVentasSinCostos trae las ventas reales (no la demo)", String(ventasEmp.some((v) => v.id === v1.id)), "true");
   sinClavesDeCosto("getVentasSinCostos", ventasEmp);
   sinValoresDeCosto("getVentasSinCostos", ventasEmp);
-  comprobar("getVentas (dueno) SI trae costo y ganancia", String(claves(await qVentas.getVentas(5)).has("ganancia")), "true");
+  comprobar("getVentas (dueno) SI trae costo y ganancia", String(claves(await enNegocioDe(() => qVentas.getVentas(5))).has("ganancia")), "true");
 
-  const detalle = await qVentas.getVenta(v1.id);
+  const detalle = await enNegocioDe(() => qVentas.getVenta(v1.id));
   sinClavesDeCosto("getVenta (detalle)", detalle);
   sinValoresDeCosto("getVenta (detalle)", detalle);
   comprobar("  el detalle trae items y pagos", `${detalle?.items.length}/${detalle?.pagos.length}`, "1/1");
   const seed = (await prisma.venta.findFirst({ where: { costoTotal: { gt: 0 } }, select: { id: true } }))?.id;
-  if (seed) sinValoresDeCosto("getVenta (venta de la semilla con costo)", await qVentas.getVenta(seed));
+  if (seed) sinValoresDeCosto("getVenta (venta de la semilla con costo)", await enNegocioDe(() => qVentas.getVenta(seed)));
 
-  const materialesEmp = await qMateriales.getMaterialesStock();
+  const materialesEmp = await enNegocioDe(() => qMateriales.getMaterialesStock());
   comprobar("getMaterialesStock trae los materiales reales", String(materialesEmp.some((m) => m.id === material.id)), "true");
   comprobar("  claves exactas", [...claves(materialesEmp)].sort().join(","), "estado,id,nombre,stockActual,stockMinimo,unidad");
   sinValoresDeCosto("getMaterialesStock", materialesEmp);
-  comprobar("getMateriales (dueno) SI trae costo y valorizacion", String(claves(await qMateriales.getMateriales()).has("valorInventario")), "true");
+  comprobar("getMateriales (dueno) SI trae costo y valorizacion", String(claves(await enNegocioDe(() => qMateriales.getMateriales())).has("valorInventario")), "true");
 
-  const repoEmp = await qReposicion.getReposicionSinCostos();
+  const repoEmp = await enNegocioDe(() => qReposicion.getReposicionSinCostos());
   comprobar("getReposicionSinCostos lista el material bajo minimo", String(repoEmp.lineas.some((l) => l.id === materialBajo.id)), "true");
   comprobar("  claves de la linea sin costo", [...claves(repoEmp.lineas)].filter((c) => /costo|total/i.test(c)).join(",") || "ninguna", "ninguna");
   comprobar("  claves de primer nivel", Object.keys(repoEmp).sort().join(","), "conMinimo,factor,lineas");
   sinValoresDeCosto("getReposicionSinCostos", repoEmp);
-  comprobar("getReposicion (dueno) SI trae costo estimado y total", String(claves(await qReposicion.getReposicion()).has("costoEstimado")), "true");
+  comprobar("getReposicion (dueno) SI trae costo estimado y total", String(claves(await enNegocioDe(() => qReposicion.getReposicion())).has("costoEstimado")), "true");
 
-  const articulosEmp = await qCatalogo.getArticulosParaVender();
+  const articulosEmp = await enNegocioDe(() => qCatalogo.getArticulosParaVender());
   comprobar("getArticulosParaVender trae el articulo", String(articulosEmp.some((a) => a.id === articulo.id)), "true");
   comprobar("  claves exactas", [...claves(articulosEmp)].sort().join(","), "descripcion,esServicio,id,ivaPct,nombre,precioVenta");
-  comprobar("getArticulosConMargen (dueno) SI trae receta", String(claves(await qCatalogo.getArticulosConMargen()).has("receta")), "true");
+  comprobar("getArticulosConMargen (dueno) SI trae receta", String(claves(await enNegocioDe(() => qCatalogo.getArticulosConMargen())).has("receta")), "true");
 
-  const movConProveedor = await qCompras.getMovimientos(material.id, 100, false);
-  const movSinProveedor = await qCompras.getMovimientos(material.id, 100, true);
+  const movConProveedor = await enNegocioDe(() => qCompras.getMovimientos(material.id, 100, false));
+  const movSinProveedor = await enNegocioDe(() => qCompras.getMovimientos(material.id, 100, true));
   comprobar("libro de stock (dueno): el motivo de la compra nombra al proveedor", String(texto(movConProveedor).includes(`${MARCA} proveedor`)), "true");
   comprobar("libro de stock (empleado): sin proveedor", String(texto(movSinProveedor).includes(`${MARCA} proveedor`)), "false");
   comprobar("  pero conserva las cantidades", String(movSinProveedor.some((m) => m.tipo === "COMPRA" && m.cantidad.toFixed(0) === "5")), "true");
 
   // ── Ola 7: presupuestos, recordatorios, ventas nuevas y listas sin costos para el empleado ──
   console.log("--- Ola 7: consultas del empleado sin costos ---");
-  const presupuestosEmp = await qPresupuestos.getPresupuestos("todos");
+  const presupuestosEmp = await enNegocioDe(() => qPresupuestos.getPresupuestos("todos"));
   comprobar("getPresupuestos trae los presupuestos reales (no la demo)", String(presupuestosEmp.some((p) => p.id === pBase.id)), "true");
   sinCostos("getPresupuestos", presupuestosEmp);
   sinValoresDeCosto("getPresupuestos", sinIds(presupuestosEmp));
-  const presupuestoEmp = await qPresupuestos.getPresupuesto(pBase.id);
+  const presupuestoEmp = await enNegocioDe(() => qPresupuestos.getPresupuesto(pBase.id));
   comprobar("getPresupuesto trae el detalle", String(presupuestoEmp?.items.length), "1");
   sinCostos("getPresupuesto", presupuestoEmp);
   sinValoresDeCosto("getPresupuesto", sinIds(presupuestoEmp));
-  const articulosPresupuesto = await qPresupuestos.getArticulosParaPresupuesto();
+  const articulosPresupuesto = await enNegocioDe(() => qPresupuestos.getArticulosParaPresupuesto());
   comprobar("getArticulosParaPresupuesto: claves exactas", [...claves(articulosPresupuesto)].sort().join(","), "id,ivaPct,nombre,precioVenta");
   sinValoresDeCosto("getArticulosParaPresupuesto", sinIds(articulosPresupuesto));
-  const recordatorios = await qRecordatorios.getRecordatoriosHoy();
+  const recordatorios = await enNegocioDe(() => qRecordatorios.getRecordatoriosHoy());
   comprobar("getRecordatoriosHoy lista al cliente con saldo", String(recordatorios.some((r) => r.id === clienteConLista.id)), "true");
   sinCostos("getRecordatoriosHoy", recordatorios);
   sinValoresDeCosto("getRecordatoriosHoy", sinIds(recordatorios));
@@ -770,12 +772,39 @@ async function main() {
   // Advertencia de precios por debajo del costo: solo con `verCostos`; sin ese permiso ni se consultan los costos.
   console.log("--- Ola 7: AdvertenciaBajoCosto ---");
   const costosConsultados: string[] = [];
-  const delegado = prisma.articulo as unknown as { findMany: (...args: unknown[]) => unknown };
-  const findManyOriginal = delegado.findMany.bind(delegado);
-  delegado.findMany = (...args: unknown[]) => {
-    costosConsultados.push("articulo.findMany");
-    return findManyOriginal(...args);
-  };
+  // Las consultas corren dentro de `conNegocio` (`prisma.$transaction`): se vigila `articulo.findMany`
+  // del `tx` que reciben, que es por donde pasaria la lectura de recetas y costos.
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  // `prisma` es un Proxy perezoso: se parchea el cliente real, el que guarda `globalThis.prisma`.
+  const clienteReal = (globalThis as unknown as { prisma: object }).prisma;
+  const contenedor = clienteReal as unknown as { $transaction: (...args: any[]) => any };
+  const transaccionOriginal = contenedor.$transaction.bind(clienteReal);
+  contenedor.$transaction = (fn: any, ...resto: any[]) =>
+    typeof fn !== "function"
+      ? transaccionOriginal(fn, ...resto)
+      : transaccionOriginal(
+          (tx: any) =>
+            fn(
+              new Proxy(tx, {
+                get(objetivo, clave) {
+                  const valor = Reflect.get(objetivo, clave, objetivo);
+                  if (clave !== "articulo") return valor;
+                  return new Proxy(valor, {
+                    get(delegado, metodo) {
+                      const f = Reflect.get(delegado, metodo, delegado);
+                      if (metodo !== "findMany") return f;
+                      return (...args: any[]) => {
+                        costosConsultados.push("articulo.findMany");
+                        return f.apply(delegado, args);
+                      };
+                    },
+                  });
+                },
+              }),
+            ),
+          ...resto,
+        );
+  /* eslint-enable @typescript-eslint/no-explicit-any */
   const advertenciaEmp = await conSesion(tEmp, () => AdvertenciaBajoCosto({ listaId: lista.id }));
   comprobar("empleado: AdvertenciaBajoCosto no devuelve nada", String(advertenciaEmp), "null");
   comprobar("  y no consulto articulos ni recetas", String(costosConsultados.length), "0");
@@ -784,7 +813,7 @@ async function main() {
   const advertenciaDue = await conSesion(tDue, () => AdvertenciaBajoCosto({ listaId: lista.id }));
   comprobar("dueno: AdvertenciaBajoCosto avisa (precio 100 contra costo 7777) y SI consulta", `${advertenciaDue !== null}/${costosConsultados.length > 0}`, "true/true");
   comprobar("  y el aviso nombra el costo", String(texto(advertenciaDue).includes("7.777")), "true");
-  delegado.findMany = findManyOriginal as typeof delegado.findMany;
+  contenedor.$transaction = transaccionOriginal;
 
   // ── Limpieza ─────────────────────────────────────────────────────────────────
   console.log("--- Limpieza ---");

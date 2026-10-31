@@ -6,8 +6,20 @@ import { createHash, randomBytes, scrypt, timingSafeEqual, type ScryptOptions } 
 
 export type Rol = "DUENO" | "EMPLEADO";
 
-/** Lo unico que se sabe del usuario de la sesion. Nunca lleva el hash de la clave. */
-export type UsuarioSesion = { id: string; usuario: string; nombre: string; rol: Rol };
+/**
+ * `SUPERADMIN` (F0, VTA-5): sin negocio, solo entra a `/admin/**` y no ve datos de ningun
+ * negocio. Es un rol APARTE de `Rol` (los roles que se asignan dentro de un negocio): todavia
+ * no existe en la base (falta el valor del enum y sesiones sin negocio, ver VTA-17), pero la
+ * tabla de permisos ya lo trata como "nada de datos" y el proxy lo encierra en `/admin/**`.
+ */
+export type RolConSuperadmin = Rol | "SUPERADMIN";
+
+/**
+ * Lo unico que se sabe del usuario de la sesion. Nunca lleva el hash de la clave.
+ * `negocioId` es el negocio de la SESION (sale de la fila de `sesiones`, nunca de
+ * algo que mande el cliente): todo acceso a datos usa ese id (ver `getNegocioId`).
+ */
+export type UsuarioSesion = { id: string; negocioId: string; usuario: string; nombre: string; rol: Rol };
 
 // ─── Claves ───────────────────────────────────────────────────────────────────
 
@@ -122,6 +134,23 @@ export function problemaDeUsuario(usuario: string): string | null {
     : "El usuario debe tener entre 3 y 40 caracteres: letras sin acentos, números, punto, guion o guion bajo.";
 }
 
+// ─── Negocio (slug) ───────────────────────────────────────────────────────────
+// El usuario elige negocio en /login con el slug (decision F0, VTA-5): minusculas,
+// numeros y guiones, 3 a 30 caracteres, unico. Hay slugs reservados.
+
+export const SLUG_PATRON = /^[a-z0-9-]{3,30}$/;
+export const SLUGS_RESERVADOS: readonly string[] = ["admin", "api", "login", "www", "app"];
+
+export function normalizarSlug(slug: string): string {
+  return slug.normalize("NFC").trim().toLowerCase();
+}
+
+/** Forma valida de slug (no dice si existe). Un slug reservado nunca es de un negocio. */
+export function slugValido(slug: string): boolean {
+  const s = normalizarSlug(slug);
+  return SLUG_PATRON.test(s) && !SLUGS_RESERVADOS.includes(s);
+}
+
 // ─── Tokens de sesion ─────────────────────────────────────────────────────────
 // La cookie lleva el token; la base guarda solo su SHA-256. Quien lea la tabla
 // (un respaldo filtrado, por ejemplo) no puede usar las sesiones.
@@ -140,6 +169,31 @@ export function formatoDeTokenValido(token: string | undefined | null): token is
 
 export function hashDeToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+// ─── Valor de la cookie ───────────────────────────────────────────────────────
+// `usuarios` y `sesiones` estan bajo RLS: para leer una sesion hay que declarar
+// primero el negocio. La cookie lleva `<negocioId>.<token>`; el negocioId es solo
+// una PISTA para abrir el contexto. Quien la edite no gana nada: la fila de la
+// sesion solo es visible dentro de SU negocio, asi que con el negocio equivocado
+// el token no se encuentra, y con el token de otro hace falta adivinar 256 bits.
+// El negocio que se usa despues sale siempre de la fila (`sesion.negocioId`).
+
+const UUID_PATRON = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export function armarValorDeCookie(negocioId: string, token: string): string {
+  return `${negocioId}.${token}`;
+}
+
+/** Separa el valor de la cookie; `null` si no tiene la forma esperada (ni se va a la base). */
+export function leerValorDeCookie(valor: string | undefined | null): { negocioId: string; token: string } | null {
+  if (typeof valor !== "string" || valor.length > 100) return null;
+  const punto = valor.indexOf(".");
+  if (punto !== 36) return null;
+  const negocioId = valor.slice(0, punto);
+  const token = valor.slice(punto + 1);
+  if (!UUID_PATRON.test(negocioId) || !formatoDeTokenValido(token)) return null;
+  return { negocioId, token };
 }
 
 // ─── Duracion y renovacion ────────────────────────────────────────────────────
@@ -220,7 +274,8 @@ export function registrarFallo(estado: EstadoFallos, ahora: Date): EstadoFallos 
 
 // ─── Destino despues de entrar ────────────────────────────────────────────────
 
-export function inicioDeRol(rol: Rol): string {
+export function inicioDeRol(rol: RolConSuperadmin): string {
+  if (rol === "SUPERADMIN") return "/admin/negocios";
   return rol === "DUENO" ? "/" : "/ventas/nueva";
 }
 
@@ -247,9 +302,9 @@ export function destinoSeguro(siguiente: string | null | undefined): string | nu
 // ─── Mensajes ─────────────────────────────────────────────────────────────────
 
 /**
- * Unico mensaje de error del login. Es el mismo si el usuario no existe, si la
- * clave esta mal, si el usuario esta dado de baja o si esta en pausa: no revela
+ * Unico mensaje de error del login. Es el mismo si el negocio no existe o esta
+ * inactivo, si el usuario no existe, si la clave esta mal, si el usuario esta dado de baja o si esta en pausa: no revela
  * cual fue.
  */
 export const ERROR_LOGIN =
-  "Usuario o clave incorrectos. Si fallaste varias veces seguidas, esperá unos minutos antes de volver a intentar.";
+  "Negocio, usuario o clave incorrectos. Si fallaste varias veces seguidas, esperá unos minutos antes de volver a intentar.";

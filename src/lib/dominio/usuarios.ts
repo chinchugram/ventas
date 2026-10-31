@@ -1,11 +1,10 @@
-import type { PrismaClient } from "@/generated/prisma/client";
 import { ErrorDeNegocio } from "@/lib/acciones";
 import { hashearClave, problemaDeClave, type Rol, type UsuarioSesion } from "@/lib/auth-pura";
 import { puede } from "@/lib/permisos-pura";
 import {
   cerrarSesionesDeUsuario,
+  conNegocioEn,
   crearSesion,
-  negocioDeUsuario,
   crearUsuarioEnTx,
   verificarCredenciales,
   type Db,
@@ -28,6 +27,10 @@ import type { Tx } from "./tx";
 // - Nadie se da de baja ni se cambia el rol a si mismo: lo hace otro dueno. Y
 //   nadie cambia su propia clave por esta via (la propia pide la actual).
 // - Baja, cambio de rol y cambio de clave cierran las sesiones del usuario.
+// - El dueno administra SOLO a los usuarios de su negocio (`actor.negocioId`, el de la
+//   sesion): cada operacion corre en una transaccion con ese contexto (RLS) y ademas filtra
+//   por `negocioId`, asi que un id de otro negocio es "ese usuario no existe". El que
+//   llama (`src/app/usuarios/actions.ts`) abre la transaccion con `conNegocio(actor.negocioId)`.
 
 export const ROLES: readonly Rol[] = ["DUENO", "EMPLEADO"];
 
@@ -48,16 +51,18 @@ function exigirPermiso(actor: UsuarioSesion | null | undefined): asserts actor i
 
 /**
  * Toda baja o cambio de rol pasa por aca: una a la vez, asi el conteo de duenos activos no se pisa.
- * La clave lleva el negocio de la transaccion (`app.negocio_id`, fijado por `conNegocio`): los
- * duenos de un negocio no frenan la administracion de otro.
+ * La clave lleva el negocio del actor: los duenos de un negocio no frenan la administracion de otro.
  */
-async function bloquearAdministracion(tx: Tx): Promise<void> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('usuarios:' || coalesce(nullif(current_setting('app.negocio_id', true), ''), '-'), 0))`;
+async function bloquearAdministracion(tx: Tx, actor: UsuarioSesion): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('usuarios:' || ${actor.negocioId}, 0))`;
 }
 
 /** Vuelve a leer al actor de la base: la sesion que llego puede ser de un usuario al que recien dieron de baja. */
 async function reconfirmarActor(tx: Tx, actor: UsuarioSesion): Promise<void> {
-  const fila = await tx.usuario.findUnique({ where: { id: actor.id }, select: { rol: true, activo: true } });
+  const fila = await tx.usuario.findFirst({
+    where: { id: actor.id, negocioId: actor.negocioId },
+    select: { rol: true, activo: true },
+  });
   if (!fila || !fila.activo || !puede({ rol: fila.rol }, "gestionarUsuarios")) {
     throw new ErrorDeNegocio(SIN_PERMISO_AHORA);
   }
@@ -66,15 +71,17 @@ async function reconfirmarActor(tx: Tx, actor: UsuarioSesion): Promise<void> {
 const CAMPOS_OBJETIVO = { id: true, usuario: true, nombre: true, rol: true, activo: true } as const;
 type Objetivo = { id: string; usuario: string; nombre: string; rol: Rol; activo: boolean };
 
-async function cargarObjetivo(tx: Tx, id: string): Promise<Objetivo> {
-  const fila = await tx.usuario.findUnique({ where: { id }, select: CAMPOS_OBJETIVO });
+async function cargarObjetivo(tx: Tx, actor: UsuarioSesion, id: string): Promise<Objetivo> {
+  const fila = await tx.usuario.findFirst({ where: { id, negocioId: actor.negocioId }, select: CAMPOS_OBJETIVO });
   if (!fila) throw new ErrorDeNegocio("Ese usuario no existe.");
   return fila;
 }
 
 /** Hay al menos otro dueno activo ademas de `objetivo`. Se llama con el lock tomado. */
-async function exigirOtroDuenoActivo(tx: Tx, objetivo: Objetivo, queSeIntenta: string): Promise<void> {
-  const otros = await tx.usuario.count({ where: { rol: "DUENO", activo: true, id: { not: objetivo.id } } });
+async function exigirOtroDuenoActivo(tx: Tx, actor: UsuarioSesion, objetivo: Objetivo, queSeIntenta: string): Promise<void> {
+  const otros = await tx.usuario.count({
+    where: { negocioId: actor.negocioId, rol: "DUENO", activo: true, id: { not: objetivo.id } },
+  });
   if (otros === 0) {
     throw new ErrorDeNegocio(
       `No se puede ${queSeIntenta} a ${objetivo.nombre}: es el último dueño activo y sin un dueño nadie podría administrar el sistema. ` +
@@ -96,7 +103,13 @@ export async function crearUsuarioComoDuenoEnTx(
   exigirPermiso(actor);
   if (!esRol(datos.rol)) throw new ErrorDeNegocio("Elegí un rol válido: dueño o empleado.");
   await reconfirmarActor(tx, actor);
-  return crearUsuarioEnTx(tx, { usuario: datos.usuario, nombre: datos.nombre, rol: datos.rol, clave: datos.clave });
+  return crearUsuarioEnTx(tx, {
+    negocioId: actor.negocioId,
+    usuario: datos.usuario,
+    nombre: datos.nombre,
+    rol: datos.rol,
+    clave: datos.clave,
+  });
 }
 
 // ─── Baja y reactivacion ──────────────────────────────────────────────────────
@@ -113,19 +126,19 @@ export async function cambiarActivoUsuarioEnTx(
   activo: boolean,
 ): Promise<{ cambio: boolean }> {
   exigirPermiso(actor);
-  await bloquearAdministracion(tx);
+  await bloquearAdministracion(tx, actor);
   await reconfirmarActor(tx, actor);
-  const objetivo = await cargarObjetivo(tx, id);
+  const objetivo = await cargarObjetivo(tx, actor, id);
   if (objetivo.activo === activo) return { cambio: false };
 
   if (!activo) {
-    if (objetivo.rol === "DUENO") await exigirOtroDuenoActivo(tx, objetivo, "dar de baja");
+    if (objetivo.rol === "DUENO") await exigirOtroDuenoActivo(tx, actor, objetivo, "dar de baja");
     if (objetivo.id === actor.id) {
       throw new ErrorDeNegocio("No podés dar de baja tu propio usuario: pedile a otro dueño que lo haga.");
     }
   }
 
-  await tx.usuario.update({ where: { id }, data: { activo } });
+  await tx.usuario.updateMany({ where: { id, negocioId: actor.negocioId }, data: { activo } });
   if (!activo) await cerrarSesionesDeUsuario(tx, id);
   return { cambio: true };
 }
@@ -145,17 +158,17 @@ export async function cambiarRolUsuarioEnTx(
 ): Promise<{ cambio: boolean }> {
   exigirPermiso(actor);
   if (!esRol(rol)) throw new ErrorDeNegocio("Elegí un rol válido: dueño o empleado.");
-  await bloquearAdministracion(tx);
+  await bloquearAdministracion(tx, actor);
   await reconfirmarActor(tx, actor);
-  const objetivo = await cargarObjetivo(tx, id);
+  const objetivo = await cargarObjetivo(tx, actor, id);
   if (objetivo.rol === rol) return { cambio: false };
 
-  if (objetivo.rol === "DUENO" && objetivo.activo) await exigirOtroDuenoActivo(tx, objetivo, "quitarle el rol de dueño");
+  if (objetivo.rol === "DUENO" && objetivo.activo) await exigirOtroDuenoActivo(tx, actor, objetivo, "quitarle el rol de dueño");
   if (objetivo.id === actor.id) {
     throw new ErrorDeNegocio("No podés cambiar tu propio rol: pedile a otro dueño que lo haga.");
   }
 
-  await tx.usuario.update({ where: { id }, data: { rol } });
+  await tx.usuario.updateMany({ where: { id, negocioId: actor.negocioId }, data: { rol } });
   await cerrarSesionesDeUsuario(tx, id);
   return { cambio: true };
 }
@@ -178,13 +191,13 @@ export async function resetearClaveUsuarioEnTx(
   const problema = problemaDeClave(claveNueva);
   if (problema) throw new ErrorDeNegocio(problema);
   await reconfirmarActor(tx, actor);
-  const objetivo = await cargarObjetivo(tx, id);
+  const objetivo = await cargarObjetivo(tx, actor, id);
   if (objetivo.id === actor.id) {
     throw new ErrorDeNegocio("Tu propia clave se cambia desde «Cambiar mi clave»: ahí se pide la clave actual.");
   }
 
-  await tx.usuario.update({
-    where: { id },
+  await tx.usuario.updateMany({
+    where: { id, negocioId: actor.negocioId },
     data: { hashClave: await hashearClave(claveNueva), intentosFallidos: 0, ultimoFalloEn: null, bloqueadoHasta: null },
   });
   await cerrarSesionesDeUsuario(tx, id);
@@ -231,19 +244,18 @@ export async function cambiarClavePropia(
 ): Promise<SesionNueva> {
   validarClavePropia(datos);
 
-  const verificado = await verificarCredenciales(db, usuario.usuario, datos.actual, ahora);
+  const verificado = await verificarCredenciales(db, usuario.negocioId, usuario.usuario, datos.actual, ahora);
   if (!verificado.ok || verificado.usuario.id !== usuario.id) throw new ErrorDeNegocio(ERROR_CLAVE_ACTUAL);
 
   const hashClave = await hashearClave(datos.nueva);
   const escribir = async (tx: Tx): Promise<SesionNueva> => {
     const { count } = await tx.usuario.updateMany({
-      where: { id: usuario.id, activo: true },
+      where: { id: usuario.id, negocioId: usuario.negocioId, activo: true },
       data: { hashClave, intentosFallidos: 0, ultimoFalloEn: null, bloqueadoHasta: null },
     });
     if (count === 0) throw new ErrorDeNegocio("Tu usuario ya no está activo.");
     await cerrarSesionesDeUsuario(tx, usuario.id);
-    return crearSesion(tx, await negocioDeUsuario(tx, usuario.id), usuario.id, ahora);
+    return crearSesion(tx, usuario.negocioId, usuario.id, ahora);
   };
-  const cliente = db as PrismaClient;
-  return typeof cliente.$transaction === "function" ? cliente.$transaction(escribir) : escribir(db as Tx);
+  return conNegocioEn(db, usuario.negocioId, escribir);
 }

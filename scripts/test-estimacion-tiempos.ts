@@ -15,6 +15,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { usarNegocioDePrueba } from "../src/lib/negocio";
 import { d } from "../src/lib/money";
 import { estimarTiempos, getArticulosParaEstimar } from "../src/lib/queries/estimacion-tiempos";
 import { estadoDemo } from "../src/lib/respaldo";
@@ -146,6 +147,7 @@ const dia = (n: number) => `2026-09-${String(n).padStart(2, "0")}`;
 
 async function main() {
   negocioId = (await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } })).id;
+  usarNegocioDePrueba(negocioId); // las consultas leen el negocio de la sesion: aca no hay pedido
   await limpiar();
   const cliente = await prisma.cliente.create({ data: { negocioId, nombre: `${ROTULO} cliente` } });
   creados.clientes.push(cliente.id);
