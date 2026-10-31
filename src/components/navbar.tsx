@@ -14,51 +14,62 @@ type Seccion = {
   icono: NombreIcono;
   /** Permisos que hacen falta para ver la entrada (todos). Los mismos que exige la pagina. */
   acciones: readonly Accion[];
+  /** Frase corta, en palabras de todos los dias, que explica para que sirve la seccion. */
+  ayuda?: string;
 };
 
 // Orden y agrupacion de la navegacion. En el celular, las primeras cuatro viven
 // en la barra inferior y el resto en "Mas": son las que se usan todos los dias.
-const INICIO: Seccion = { href: "/", etiqueta: "Inicio", icono: "inicio", acciones: ["verCostos", "verMargenes"] };
-const VENTAS: Seccion = { href: "/ventas", etiqueta: "Ventas", icono: "ventas", acciones: ["verVentas"] };
-const CLIENTES: Seccion = { href: "/clientes", etiqueta: "Clientes", icono: "clientes", acciones: ["verClientes"] };
+const INICIO: Seccion = { href: "/", etiqueta: "Inicio", icono: "inicio", acciones: ["verCostos", "verMargenes"], ayuda: "Cómo va el mes" };
+const VENTAS: Seccion = { href: "/ventas", etiqueta: "Ventas", icono: "ventas", acciones: ["verVentas"], ayuda: "Todo lo que vendiste" };
+const CLIENTES: Seccion = { href: "/clientes", etiqueta: "Clientes", icono: "clientes", acciones: ["verClientes"], ayuda: "Tus clientes y sus datos" };
 const PRINCIPALES: Seccion[] = [INICIO, VENTAS, CLIENTES];
 // Todas son arreglos de datos planos: cada entrada se filtra con los permisos del usuario antes de
 // pintarse (ver `entradasVisibles`). Ocultar un enlace no protege nada: cada pagina lo vuelve a exigir.
 // Cuelga de /cobranzas pero tiene su propia entrada: "Cobranzas" no debe encenderse en ella.
 const RUTA_RECORDATORIOS = "/cobranzas/hoy";
-const SECUNDARIAS: Seccion[] = [
-  { href: "/catalogo", etiqueta: "Artículos", icono: "articulos", acciones: ["verCostos", "verMargenes"] },
-  { href: "/cortes", etiqueta: "Cortes", icono: "articulos", acciones: ["verCostos"] },
-  { href: "/materiales", etiqueta: "Materiales", icono: "materiales", acciones: ["verStock"] },
-  { href: "/compras", etiqueta: "Compras", icono: "materiales", acciones: ["registrarCompra", "verCostos"] },
-  { href: "/reposicion", etiqueta: "Reposición", icono: "materiales", acciones: ["verReposicion"] },
-  { href: "/produccion", etiqueta: "Producción", icono: "articulos", acciones: ["cargarProduccion"] },
-  { href: "/presupuestos", etiqueta: "Presupuestos", icono: "ventas", acciones: ["verPresupuestos"] },
-  { href: "/comprobantes", etiqueta: "Comprobantes", icono: "comprobantes", acciones: ["verComprobantes"] },
-  { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas", acciones: ["verCobranzas"] },
-  { href: RUTA_RECORDATORIOS, etiqueta: "Recordatorios", icono: "cobranzas", acciones: ["verRecordatorios"] },
-  { href: "/reportes", etiqueta: "Reportes", icono: "reportes", acciones: ["verReportes", "verCostos", "verMargenes"] },
-];
-// Se usan poco: en el celular van al final de "Mas". En escritorio, las listas de precios y la
-// configuracion son iconos junto a "Nueva venta" y "Usuarios" vive en el menu de la cuenta (la barra a 1024 px justo entra).
-// La pagina `/usuarios/mi-clave` la ve cualquier rol; la administracion (`/usuarios`) solo el dueno.
+const PRESUPUESTOS: Seccion = { href: "/presupuestos", etiqueta: "Presupuestos", icono: "ventas", acciones: ["verPresupuestos"], ayuda: "Cotizaciones para tus clientes" };
+const COBRANZAS: Seccion = { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas", acciones: ["verCobranzas"], ayuda: "Quién te debe plata" };
+const RECORDATORIOS: Seccion = { href: RUTA_RECORDATORIOS, etiqueta: "Recordatorios", icono: "cobranzas", acciones: ["verRecordatorios"], ayuda: "A quién llamar hoy" };
+const ARTICULOS: Seccion = { href: "/catalogo", etiqueta: "Artículos", icono: "articulos", acciones: ["verCostos", "verMargenes"], ayuda: "Lo que vendés y sus precios" };
+const CORTES: Seccion = { href: "/cortes", etiqueta: "Cortes", icono: "articulos", acciones: ["verCostos"], ayuda: "Calculá el precio de una medida" };
+const MATERIALES: Seccion = { href: "/materiales", etiqueta: "Materiales", icono: "materiales", acciones: ["verStock"], ayuda: "Lo que hay en stock" };
+const COMPRAS: Seccion = { href: "/compras", etiqueta: "Compras", icono: "materiales", acciones: ["registrarCompra", "verCostos"], ayuda: "Cargá lo que compraste" };
+const REPOSICION: Seccion = { href: "/reposicion", etiqueta: "Reposición", icono: "materiales", acciones: ["verReposicion"], ayuda: "Qué falta comprar" };
+const PRODUCCION: Seccion = { href: "/produccion", etiqueta: "Producción", icono: "articulos", acciones: ["cargarProduccion"], ayuda: "Cargá lo que se usó en cada trabajo" };
+const COMPROBANTES: Seccion = { href: "/comprobantes", etiqueta: "Comprobantes", icono: "comprobantes", acciones: ["verComprobantes"], ayuda: "Facturas y notas de crédito" };
+const REPORTES: Seccion = { href: "/reportes", etiqueta: "Reportes", icono: "reportes", acciones: ["verReportes", "verCostos", "verMargenes"], ayuda: "Cuánto ganaste y qué se vende" };
+// Orden de la hoja "Mas" del celular.
+const SECUNDARIAS: Seccion[] = [PRESUPUESTOS, COBRANZAS, RECORDATORIOS, ARTICULOS, CORTES, MATERIALES, COMPRAS, REPOSICION, PRODUCCION, COMPROBANTES, REPORTES];
+// Se usan poco: en el celular van al final de "Mas". La pagina `/usuarios/mi-clave` la ve cualquier rol;
+// la administracion (`/usuarios`) solo el dueno.
 const MI_CLAVE = "/usuarios/mi-clave";
-const USUARIOS: Seccion = { href: "/usuarios", etiqueta: "Usuarios", icono: "clientes", acciones: ["gestionarUsuarios"] };
+const USUARIOS: Seccion = { href: "/usuarios", etiqueta: "Usuarios", icono: "clientes", acciones: ["gestionarUsuarios"], ayuda: "Quién puede entrar al sistema" };
 const CONFIGURACION: Seccion = {
   href: "/configuracion",
   etiqueta: "Configuración",
   icono: "configuracion",
   acciones: ["configuracion"],
+  ayuda: "Datos del negocio",
 };
 const LISTAS_PRECIOS: Seccion = {
   href: "/listas-precios",
   etiqueta: "Listas de precios",
   icono: "articulos",
   acciones: ["gestionarListasPrecios"],
+  ayuda: "Precios especiales por cliente",
 };
 const ADMINISTRACION: Seccion[] = [LISTAS_PRECIOS, USUARIOS, CONFIGURACION];
-const ICONOS_ESCRITORIO: Seccion[] = [LISTAS_PRECIOS, CONFIGURACION];
-const EN_MENU_USUARIO: Seccion[] = [USUARIOS];
+
+// Escritorio ancho (lg): pocas secciones sueltas y el resto agrupado en menus con nombre, cada
+// entrada con una frase que dice para que sirve. Ningun icono suelto sin texto.
+type Grupo = { etiqueta: string; icono: NombreIcono; entradas: Seccion[] };
+const DIRECTAS_ESCRITORIO: Seccion[] = [INICIO, VENTAS, CLIENTES, PRESUPUESTOS, COBRANZAS];
+const GRUPOS_ESCRITORIO: Grupo[] = [
+  { etiqueta: "Productos", icono: "articulos", entradas: [ARTICULOS, CORTES, PRODUCCION] },
+  { etiqueta: "Stock y compras", icono: "materiales", entradas: [MATERIALES, COMPRAS, REPOSICION] },
+  { etiqueta: "Más", icono: "mas", entradas: [COMPROBANTES, RECORDATORIOS, REPORTES, LISTAS_PRECIOS, USUARIOS, CONFIGURACION] },
+];
 const ACCIONES_NUEVA_VENTA: readonly Accion[] = ["cargarVenta"];
 const ID_HOJA_MAS = "hoja-mas";
 const ID_MENU_USUARIO = "menu-usuario";
@@ -97,12 +108,14 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
   const principales = entradasVisibles(usuario.rol, PRINCIPALES);
   const secundarias = entradasVisibles(usuario.rol, SECUNDARIAS);
   const administracion = entradasVisibles(usuario.rol, ADMINISTRACION);
-  const iconosEscritorio = entradasVisibles(usuario.rol, ICONOS_ESCRITORIO);
-  const enMenuUsuario = entradasVisibles(usuario.rol, EN_MENU_USUARIO);
+  const directas = entradasVisibles(usuario.rol, DIRECTAS_ESCRITORIO);
+  // Un menu sin ninguna entrada permitida para el rol no se muestra.
+  const grupos = GRUPOS_ESCRITORIO.map((g) => ({ ...g, entradas: entradasVisibles(usuario.rol, g.entradas) })).filter(
+    (g) => g.entradas.length > 0,
+  );
   const puedeNuevaVenta = puedeTodo(usuario, ACCIONES_NUEVA_VENTA);
-  // Escritorio ancho (lg): todas las secciones en la barra. Entre md y lg no entran: se muestran
+  // Escritorio ancho (lg): secciones sueltas y menus desplegables. Entre md y lg no entran: se muestran
   // las principales y el resto va en la hoja "Mas", la misma del celular.
-  const enlacesEscritorio = [...principales, ...secundarias];
   const enHojaMas = [...secundarias, ...administracion];
   const columnasBarra = COLUMNAS_BARRA[principales.length + 1 + (puedeNuevaVenta ? 1 : 0)] ?? "grid-cols-5";
   const [masAbierto, setMasAbierto] = useState(false);
@@ -151,8 +164,8 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
     <>
       {/* Encabezado: negro del logo, igual en celular y escritorio. */}
       <header className="sticky top-0 z-40 w-full bg-tinta shadow-md">
-        <div className="mx-auto flex h-14 max-w-5xl items-center xl:max-w-6xl justify-between px-4">
-          <div className="flex min-w-0 items-center gap-3 lg:gap-4">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+          <div className="flex min-w-0 items-center gap-2 lg:gap-3">
             <Link
               href={rutaDeInicio(usuario.rol)}
               className="flex shrink-0 items-center rounded-lg p-1"
@@ -162,35 +175,27 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
               <img src={logo} alt={nombre} className="h-10 w-auto" />
             </Link>
 
-            {/* Desde md: las principales y "Más"; desde lg entran todas las secciones (y desde xl, el
-                encabezado se ensancha para que "Nueva venta" conserve su texto). */}
+            {/* Desde md: las principales y "Más" (hoja); desde lg, las secciones sueltas y los menús
+                desplegables con nombre. */}
             <nav className="hidden min-w-0 items-center gap-1 md:flex" aria-label="Principal">
-              {enlacesEscritorio.map((s) => {
-                const activa = estaActiva(pathname, s.href);
-                // Las secundarias solo caben desde lg; antes se llega a ellas por "Mas".
-                const esSecundaria = !PRINCIPALES.includes(s);
-                return (
-                  <Link
-                    key={s.href}
-                    href={s.href}
-                    aria-current={activa ? "page" : undefined}
-                    className={`${esSecundaria ? "hidden lg:block" : ""} whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
-                      activa
-                        ? "bg-marca text-tinta"
-                        : "text-slate-300 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    {s.etiqueta}
-                  </Link>
-                );
-              })}
+              {principales.map((s) => (
+                <EnlaceBarra key={s.href} seccion={s} activa={estaActiva(pathname, s.href)} />
+              ))}
+              {directas
+                .filter((s) => !PRINCIPALES.includes(s))
+                .map((s) => (
+                  <EnlaceBarra key={s.href} seccion={s} activa={estaActiva(pathname, s.href)} className="hidden lg:block" />
+                ))}
+              {grupos.map((g) => (
+                <MenuDesplegable key={g.etiqueta} grupo={g} pathname={pathname} className="hidden lg:block" alDerecha={g.etiqueta === "Más"} />
+              ))}
               <button
                 type="button"
                 onClick={abrirMas}
                 aria-haspopup="dialog"
                 aria-expanded={masAbierto}
                 aria-controls={ID_HOJA_MAS}
-                className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors lg:hidden ${
+                className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 lg:hidden ${
                   masActivo
                     ? "bg-marca text-tinta"
                     : "text-slate-300 hover:bg-white/10 hover:text-white"
@@ -202,35 +207,17 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
             </nav>
           </div>
 
-          {/* gap-1: con el menu del usuario, en lg las diez secciones justo entran. */}
-          <div className="hidden shrink-0 items-center gap-1 md:flex">
-            <MenuUsuario usuario={usuario} pathname={pathname} enlaces={enMenuUsuario} />
-            {iconosEscritorio.map((s) => {
-              const activa = estaActiva(pathname, s.href);
-              return (
-                <Link
-                  key={s.href}
-                  href={s.href}
-                  aria-label={s.etiqueta}
-                  title={s.etiqueta}
-                  aria-current={activa ? "page" : undefined}
-                  className={`rounded-lg p-3 transition-colors ${
-                    activa ? "bg-marca text-tinta" : "text-slate-300 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  <Icono nombre={s.icono} className="h-5 w-5" />
-                </Link>
-              );
-            })}
+          <div className="hidden shrink-0 items-center gap-2 md:flex">
             {puedeNuevaVenta ? (
               <Link
                 href={NUEVA_VENTA}
-                className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 text-sm font-semibold text-tinta transition-transform hover:brightness-105 active:scale-95 xl:px-4"
+                className="flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 text-sm font-semibold text-tinta transition-transform hover:brightness-105 active:scale-95"
               >
                 <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
-                <span className="sr-only xl:not-sr-only">Nueva venta</span>
+                Nueva venta
               </Link>
             ) : null}
+            <MenuUsuario usuario={usuario} pathname={pathname} />
           </div>
         </div>
       </header>
@@ -281,7 +268,10 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
                     >
                       <Icono nombre={s.icono} className="h-5 w-5" />
                     </span>
-                    {s.etiqueta}
+                    <span className="min-w-0">
+                      <span className="block">{s.etiqueta}</span>
+                      {s.ayuda ? <span className="block text-sm font-normal text-slate-500">{s.ayuda}</span> : null}
+                    </span>
                   </Link>
                 </li>
               );
@@ -353,6 +343,129 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
   );
 }
 
+/** Enlace suelto de la barra de escritorio. */
+function EnlaceBarra({ seccion, activa, className = "" }: { seccion: Seccion; activa: boolean; className?: string }) {
+  return (
+    <Link
+      href={seccion.href}
+      aria-current={activa ? "page" : undefined}
+      className={`${className} whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 ${
+        activa ? "bg-marca text-tinta" : "text-slate-300 hover:bg-white/10 hover:text-white"
+      }`}
+    >
+      {seccion.etiqueta}
+    </Link>
+  );
+}
+
+const FLECHA_ABAJO = "M19.5 8.25l-7.5 7.5-7.5-7.5";
+
+/**
+ * Menu desplegable de la barra de escritorio: un boton con nombre y flecha que abre un panel con las
+ * secciones del grupo, cada una con su icono y una frase que explica para que sirve.
+ * Patron "disclosure": aria-expanded; Escape o un clic afuera lo cierran.
+ */
+function MenuDesplegable({
+  grupo,
+  pathname,
+  className = "",
+  alDerecha = false,
+}: {
+  grupo: Grupo;
+  pathname: string;
+  className?: string;
+  /** El panel se abre hacia la izquierda: para el ultimo menu, que queda pegado al borde. */
+  alDerecha?: boolean;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  const botonRef = useRef<HTMLButtonElement>(null);
+  const idPanel = `menu-${grupo.etiqueta.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+  const activo = grupo.entradas.some((s) => estaActiva(pathname, s.href));
+
+  useEffect(() => {
+    setAbierto(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const alClicFuera = (e: MouseEvent) => {
+      if (!contenedorRef.current?.contains(e.target as Node)) setAbierto(false);
+    };
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setAbierto(false);
+      botonRef.current?.focus();
+    };
+    document.addEventListener("mousedown", alClicFuera);
+    document.addEventListener("keydown", alTeclear);
+    return () => {
+      document.removeEventListener("mousedown", alClicFuera);
+      document.removeEventListener("keydown", alTeclear);
+    };
+  }, [abierto]);
+
+  return (
+    <div ref={contenedorRef} className={`relative ${className}`}>
+      <button
+        ref={botonRef}
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        aria-controls={idPanel}
+        className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 ${
+          activo ? "bg-marca text-tinta" : abierto ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"
+        }`}
+      >
+        {grupo.etiqueta}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          className={`h-3.5 w-3.5 ${abierto ? "rotate-180" : ""}`}
+        >
+          <path d={FLECHA_ABAJO} />
+        </svg>
+      </button>
+      {abierto ? (
+        <ul
+          id={idPanel}
+          className={`absolute top-full ${alDerecha ? "right-0" : "left-0"} z-50 mt-2 w-72 rounded-xl bg-white p-2 text-slate-900 shadow-xl ring-1 ring-slate-200`}
+        >
+          {grupo.entradas.map((s) => {
+            const activa = estaActiva(pathname, s.href);
+            return (
+              <li key={s.href}>
+                <Link
+                  href={s.href}
+                  aria-current={activa ? "page" : undefined}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 ${activa ? "bg-marca-claro" : "hover:bg-slate-100"}`}
+                >
+                  <span
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                      activa ? "bg-marca text-tinta" : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    <Icono nombre={s.icono} className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-slate-900">{s.etiqueta}</span>
+                    {s.ayuda ? <span className="block text-xs text-slate-500">{s.ayuda}</span> : null}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function ItemBarra({ seccion, activa }: { seccion: Seccion; activa: boolean }) {
   return (
     <li>
@@ -418,16 +531,7 @@ function IconoSalir({ className }: { className: string }) {
  * entra el nombre completo) abre un panel con el nombre, el rol y "Cerrar sesion".
  * Patron "disclosure": boton con aria-expanded; Escape o un clic afuera lo cierran.
  */
-function MenuUsuario({
-  usuario,
-  pathname,
-  enlaces,
-}: {
-  usuario: UsuarioNavbar;
-  pathname: string;
-  /** Secciones que el rol puede abrir desde el menu (hoy, "Usuarios" para el dueno). */
-  enlaces: Seccion[];
-}) {
+function MenuUsuario({ usuario, pathname }: { usuario: UsuarioNavbar; pathname: string }) {
   const [abierto, setAbierto] = useState(false);
   const contenedorRef = useRef<HTMLDivElement>(null);
   const botonRef = useRef<HTMLButtonElement>(null);
@@ -464,14 +568,15 @@ function MenuUsuario({
         aria-controls={ID_MENU_USUARIO}
         aria-label={`${usuario.nombre}: cuenta y cerrar sesión`}
         title={usuario.nombre}
-        className="flex h-11 w-11 items-center justify-center rounded-lg transition-colors hover:bg-white/10"
+        className="flex h-11 items-center gap-2 rounded-lg px-1.5 transition-colors hover:bg-white/10"
       >
         <span
           aria-hidden="true"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm font-semibold text-white"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/15 text-sm font-semibold text-white"
         >
           {inicial(usuario.nombre)}
         </span>
+        <span className="hidden max-w-32 truncate text-sm font-medium text-slate-200 2xl:block">{usuario.nombre}</span>
       </button>
       {abierto ? (
         <div
@@ -482,17 +587,6 @@ function MenuUsuario({
             <span className="block truncate font-semibold text-slate-900">{usuario.nombre}</span>
             {ETIQUETA_ROL[usuario.rol]}
           </p>
-          {enlaces.map((s) => (
-            <Link
-              key={s.href}
-              href={s.href}
-              aria-current={estaActiva(pathname, s.href) ? "page" : undefined}
-              className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <Icono nombre={s.icono} className="h-5 w-5" />
-              {s.etiqueta}
-            </Link>
-          ))}
           <Link
             href={MI_CLAVE}
             aria-current={estaActiva(pathname, MI_CLAVE) ? "page" : undefined}
