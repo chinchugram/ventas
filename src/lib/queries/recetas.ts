@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { demoArticulos, demoMateriales } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { ETIQUETA_UNIDAD } from "@/lib/unidades";
@@ -38,18 +38,20 @@ export const getCatalogoCostos = cache(
 );
 
 async function catalogoDesdeBase(materialesExtra: string[], maquinasExtra: string[]): Promise<CatalogoCostos> {
-  const [materiales, maquinas] = await Promise.all([
-    prisma.material.findMany({
-      where: { OR: [{ activo: true }, { id: { in: materialesExtra } }] },
-      orderBy: { nombre: "asc" },
-      select: { id: true, nombre: true, costoUnitario: true, unidad: true, activo: true },
-    }),
-    prisma.maquina.findMany({
-      where: { OR: [{ activo: true }, { id: { in: maquinasExtra } }] },
-      orderBy: { nombre: "asc" },
-      select: { id: true, nombre: true, costoHora: true, activo: true },
-    }),
-  ]);
+  const [materiales, maquinas] = await conNegocio(await negocioActual(), (tx) =>
+    Promise.all([
+      tx.material.findMany({
+        where: { OR: [{ activo: true }, { id: { in: materialesExtra } }] },
+        orderBy: { nombre: "asc" },
+        select: { id: true, nombre: true, costoUnitario: true, unidad: true, activo: true },
+      }),
+      tx.maquina.findMany({
+        where: { OR: [{ activo: true }, { id: { in: maquinasExtra } }] },
+        orderBy: { nombre: "asc" },
+        select: { id: true, nombre: true, costoHora: true, activo: true },
+      }),
+    ]),
+  );
 
   return {
     materiales: materiales.map((m) => ({
@@ -82,10 +84,12 @@ async function editorDesdeBase(id: string): Promise<EditorArticulo | null> {
   // de demostracion: se corta antes.
   if (!PATRON_UUID.test(id)) return null;
 
-  const a = await prisma.articulo.findUnique({
-    where: { id },
-    include: { receta: { include: { componentes: { orderBy: { id: "asc" } } } } },
-  });
+  const a = await conNegocio(await negocioActual(), (tx) =>
+    tx.articulo.findUnique({
+      where: { id },
+      include: { receta: { include: { componentes: { orderBy: { id: "asc" } } } } },
+    }),
+  );
   if (!a) return null;
 
   const componentes = a.receta?.componentes ?? [];
@@ -120,12 +124,14 @@ async function editorDesdeBase(id: string): Promise<EditorArticulo | null> {
 export const getArticulosDeBaja = cache(
   (): Promise<{ id: string; nombre: string }[]> =>
     conRespaldo(
-      () =>
-        prisma.articulo.findMany({
-          where: { activo: false },
-          orderBy: { nombre: "asc" },
-          select: { id: true, nombre: true },
-        }),
+      async () =>
+        conNegocio(await negocioActual(), (tx) =>
+          tx.articulo.findMany({
+            where: { activo: false },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true },
+          }),
+        ),
       () => [],
     ),
 );

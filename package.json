@@ -26,6 +26,7 @@
     "usuarios:crear-dueno": "tsx scripts/crear-dueno.ts",
     "test:negocio": "sh scripts/test-negocio-migracion.sh",
     "test:unicos-negocio": "sh scripts/test-unicos-negocio.sh",
+    "test:facturacion-negocios": "tsx scripts/test-facturacion-negocios.ts",
     "test:rls": "tsx scripts/test-rls.ts",
     "test:costeo": "tsx scripts/verificar-costeo.ts",
     "test:rango-fechas": "tsx scripts/verificar-rango-fechas.ts",

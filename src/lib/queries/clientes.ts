@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { demoClientes, demoVentas } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { aMoneda, CERO, d, type Dinero, sumar } from "@/lib/money";
@@ -28,7 +28,7 @@ export const getClientes = cache(
 );
 
 async function clientesDesdeBase(): Promise<ClienteListado[]> {
-  const clientes = await prisma.cliente.findMany({
+  const clientes = await conNegocio(await negocioActual(), (tx) => tx.cliente.findMany({
     where: { activo: true },
     orderBy: { nombre: "asc" },
     include: {
@@ -42,7 +42,7 @@ async function clientesDesdeBase(): Promise<ClienteListado[]> {
         },
       },
     },
-  });
+  }));
 
   return clientes.map((c) => {
     let facturado = d(0);
@@ -87,12 +87,14 @@ export type ClienteDeBaja = {
 export const getClientesDeBaja = cache(
   (): Promise<ClienteDeBaja[]> =>
     conRespaldo(
-      () =>
-        prisma.cliente.findMany({
-          where: { activo: false },
-          orderBy: { nombre: "asc" },
-          select: { id: true, nombre: true, cuit: true, telefono: true },
-        }),
+      async () =>
+        conNegocio(await negocioActual(), (tx) =>
+          tx.cliente.findMany({
+            where: { activo: false },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true, cuit: true, telefono: true },
+          }),
+        ),
       () => [],
     ),
 );
@@ -168,7 +170,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function fichaDesdeBase(id: string): Promise<FichaCliente | null> {
   // Un id que no es uuid haria fallar la consulta y caer en la demo: es un 404.
   if (!UUID.test(id)) return null;
-  const c = await prisma.cliente.findUnique({
+  const c = await conNegocio(await negocioActual(), (tx) => tx.cliente.findUnique({
     where: { id },
     include: {
       ventas: {
@@ -188,7 +190,7 @@ async function fichaDesdeBase(id: string): Promise<FichaCliente | null> {
         include: { venta: { select: { numero: true, anio: true, estado: true } } },
       },
     },
-  });
+  }));
   if (!c) return null;
 
   const ventas: VentaDeCliente[] = c.ventas.map((v) => {

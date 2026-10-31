@@ -5,6 +5,7 @@ import {
   getDeudas,
   getGananciaPorProducto,
   getResumenPeriodo,
+  negocioDeLaSesion,
   type TopProducto,
 } from "@/lib/queries/dashboard";
 import { getMateriales } from "@/lib/queries/materiales";
@@ -27,14 +28,16 @@ export const dynamic = "force-dynamic";
  * link del reporte de enero por WhatsApp y funciona. Los formularios son GET.
  */
 export default async function ReportesPage({ searchParams }: { searchParams: Promise<ParamsFecha> }) {
-  await requierePermisoPagina("verReportes", "verCostos", "verMargenes");
+  const usuario = await requierePermisoPagina("verReportes", "verCostos", "verMargenes");
+  // El negocio sale de la sesion, nunca de la URL: `searchParams` solo trae el rango de fechas.
+  const negocioId = await negocioDeLaSesion(usuario);
   const rango = parseRangoFechas(await searchParams);
 
   const [resumen, productos, deudas, consumo, materiales] = await Promise.all([
-    getResumenPeriodo(rango),
-    getGananciaPorProducto(rango),
-    getDeudas(),
-    getConsumoMateriales(rango),
+    getResumenPeriodo(negocioId, rango),
+    getGananciaPorProducto(negocioId, rango),
+    getDeudas(negocioId),
+    getConsumoMateriales(negocioId, rango),
     getMateriales(),
   ]);
 

@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { DEMO_CONFIG, demoMateriales } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { d, type Dinero } from "@/lib/money";
@@ -45,11 +45,13 @@ export const getMaterialesStock = cache(
   (): Promise<MaterialStock[]> =>
     conRespaldo(
       async () => {
-        const materiales = await prisma.material.findMany({
-          where: { activo: true },
-          orderBy: { nombre: "asc" },
-          select: { id: true, nombre: true, unidad: true, stockActual: true, stockMinimo: true },
-        });
+        const materiales = await conNegocio(await negocioActual(), (tx) =>
+          tx.material.findMany({
+            where: { activo: true },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true, unidad: true, stockActual: true, stockMinimo: true },
+          }),
+        );
         return materiales.map((m) => ({
           id: m.id,
           nombre: m.nombre,
@@ -89,11 +91,13 @@ const SELECT_LISTADO = {
 } as const;
 
 async function materialesDesdeBase(): Promise<MaterialListado[]> {
-  const materiales = await prisma.material.findMany({
-    where: { activo: true },
-    orderBy: { nombre: "asc" },
-    select: SELECT_LISTADO,
-  });
+  const materiales = await conNegocio(await negocioActual(), (tx) =>
+    tx.material.findMany({
+      where: { activo: true },
+      orderBy: { nombre: "asc" },
+      select: SELECT_LISTADO,
+    }),
+  );
   return materiales.map(aListado);
 }
 
@@ -134,17 +138,19 @@ export const getMaterialesDeBaja = cache(
 );
 
 async function materialesDeBajaDesdeBase(): Promise<MaterialDeBaja[]> {
-  const materiales = await prisma.material.findMany({
-    where: { activo: false },
-    orderBy: { nombre: "asc" },
-    select: {
-      ...SELECT_LISTADO,
-      componentes: {
-        where: { receta: { articulo: { activo: true } } },
-        select: { receta: { select: { articuloId: true } } },
+  const materiales = await conNegocio(await negocioActual(), (tx) =>
+    tx.material.findMany({
+      where: { activo: false },
+      orderBy: { nombre: "asc" },
+      select: {
+        ...SELECT_LISTADO,
+        componentes: {
+          where: { receta: { articulo: { activo: true } } },
+          select: { receta: { select: { articuloId: true } } },
+        },
       },
-    },
-  });
+    }),
+  );
   return materiales.map(({ componentes, ...m }) => ({
     ...aListado(m),
     articulosQueLoUsan: new Set(componentes.map((c) => c.receta.articuloId)).size,
@@ -182,16 +188,19 @@ async function materialParaEditarDesdeBase(id: string): Promise<MaterialParaEdit
   // Un id que no es uuid haria fallar la consulta (y caer al modo demo): es un 404.
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
 
+  const negocioId = await negocioActual();
   const [material, config] = await Promise.all([
-    prisma.material.findUnique({
-      where: { id },
-      include: { _count: { select: { movimientos: true, componentes: true } } },
-    }),
+    conNegocio(negocioId, (tx) =>
+      tx.material.findUnique({
+        where: { id },
+        include: { _count: { select: { movimientos: true, componentes: true } } },
+      }),
+    ),
     getConfig(),
   ]);
   if (!material) return null;
 
-  const articulos = await prisma.articulo.findMany({
+  const articulos = await conNegocio(negocioId, (tx) => tx.articulo.findMany({
     where: { activo: true, receta: { componentes: { some: { materialId: id } } } },
     orderBy: { nombre: "asc" },
     select: {
@@ -217,7 +226,7 @@ async function materialParaEditarDesdeBase(id: string): Promise<MaterialParaEdit
         },
       },
     },
-  });
+  }));
 
   return {
     id: material.id,

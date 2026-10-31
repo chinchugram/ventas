@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { conRespaldo } from "@/lib/respaldo";
 import { d, type Dinero } from "@/lib/money";
 import { demoArticulos } from "@/lib/demo-data";
@@ -31,13 +31,15 @@ export async function getIvaPorDefecto(): Promise<Dinero> {
 export const getArticulosConManoObra = cache(
   (): Promise<number> =>
     conRespaldo(
-      () =>
-        prisma.articulo.count({
-          where: {
-            activo: true,
-            receta: { componentes: { some: { tipo: "MANO_OBRA", costoUnitarioOverride: null } } },
-          },
-        }),
+      async () =>
+        conNegocio(await negocioActual(), (tx) =>
+          tx.articulo.count({
+            where: {
+              activo: true,
+              receta: { componentes: { some: { tipo: "MANO_OBRA", costoUnitarioOverride: null } } },
+            },
+          }),
+        ),
       () =>
         demoArticulos().filter((a) =>
           a.receta.componentes.some((c) => c.tipo === "MANO_OBRA" && !c.costoUnitarioOverride),
@@ -65,18 +67,20 @@ export async function getMaquina(id: string): Promise<MaquinaListada | null> {
 }
 
 async function maquinasDesdeBase(): Promise<MaquinaListada[]> {
-  const [maquinas, usos] = await Promise.all([
-    prisma.maquina.findMany({
-      orderBy: [{ activo: "desc" }, { nombre: "asc" }],
-      select: { id: true, nombre: true, costoHora: true, notas: true, activo: true },
-    }),
-    // Pares (maquina, receta) distintos: una receta que usa la maquina dos veces cuenta una.
-    prisma.recetaComponente.findMany({
-      where: { maquinaId: { not: null }, receta: { articulo: { activo: true } } },
-      distinct: ["maquinaId", "recetaId"],
-      select: { maquinaId: true },
-    }),
-  ]);
+  const [maquinas, usos] = await conNegocio(await negocioActual(), (tx) =>
+    Promise.all([
+      tx.maquina.findMany({
+        orderBy: [{ activo: "desc" }, { nombre: "asc" }],
+        select: { id: true, nombre: true, costoHora: true, notas: true, activo: true },
+      }),
+      // Pares (maquina, receta) distintos: una receta que usa la maquina dos veces cuenta una.
+      tx.recetaComponente.findMany({
+        where: { maquinaId: { not: null }, receta: { articulo: { activo: true } } },
+        distinct: ["maquinaId", "recetaId"],
+        select: { maquinaId: true },
+      }),
+    ]),
+  );
 
   const recetasPorMaquina = new Map<string, number>();
   for (const u of usos) {

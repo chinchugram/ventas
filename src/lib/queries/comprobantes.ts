@@ -1,5 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { conNegocio } from "@/lib/negocio";
+import { negocioUnico } from "@/lib/dominio/auth";
 import { conRespaldo } from "@/lib/respaldo";
 import { hoyArgentina } from "@/lib/acciones";
 import { d, type Dinero } from "@/lib/money";
@@ -22,6 +24,9 @@ import {
 // NUNCA traen costos ni margenes: un comprobante solo tiene precios e impuestos.
 // Sin base (modo demo) no hay comprobantes: el listado viene vacio y la venta
 // no ofrece facturar.
+//
+// Multi-tenant: todo se lee dentro de `conNegocio` (RLS) y filtra por `negocioId`.
+// El negocio sale de `negocioUnico` hasta que la sesion lo traiga (transitorio, VTA-22/VTA-8).
 
 // ─── Listado ──────────────────────────────────────────────────────────────────
 
@@ -53,35 +58,38 @@ const VACIA: PaginaComprobantes = { filas: [], total: 0, pagina: 1, totalPaginas
 export function getComprobantes(filtros: FiltrosComprobantes): Promise<PaginaComprobantes> {
   return conRespaldo(
     async () => {
-      const where = whereDeFiltros(filtros);
-      const total = await prisma.comprobante.count({ where });
-      const pag = paginar(total, filtros.pagina);
-      const filas = await prisma.comprobante.findMany({
-        where,
-        orderBy: [{ fecha: "desc" }, { numero: "desc" }, { creadoEn: "desc" }],
-        skip: pag.skip,
-        take: pag.take,
-        select: {
-          id: true,
-          tipo: true,
-          puntoVenta: true,
-          numero: true,
-          fecha: true,
-          receptorNombre: true,
-          importeTotal: true,
-          estado: true,
-          ambiente: true,
-          creadoEn: true,
-          ventaId: true,
-        },
+      const negocioId = await negocioUnico(prisma);
+      return conNegocio(negocioId, async (tx) => {
+        const where = { ...whereDeFiltros(filtros), negocioId };
+        const total = await tx.comprobante.count({ where });
+        const pag = paginar(total, filtros.pagina);
+        const filas = await tx.comprobante.findMany({
+          where,
+          orderBy: [{ fecha: "desc" }, { numero: "desc" }, { creadoEn: "desc" }],
+          skip: pag.skip,
+          take: pag.take,
+          select: {
+            id: true,
+            tipo: true,
+            puntoVenta: true,
+            numero: true,
+            fecha: true,
+            receptorNombre: true,
+            importeTotal: true,
+            estado: true,
+            ambiente: true,
+            creadoEn: true,
+            ventaId: true,
+          },
+        });
+        return {
+          filas: filas.map((c) => ({ ...c, importeTotal: d(c.importeTotal.toString()) })),
+          total,
+          pagina: pag.pagina,
+          totalPaginas: pag.totalPaginas,
+        };
       });
-      return {
-        filas: filas.map((c) => ({ ...c, importeTotal: d(c.importeTotal.toString()) })),
-        total,
-        pagina: pag.pagina,
-        totalPaginas: pag.totalPaginas,
-      };
-      },
+    },
     () => VACIA,
   );
 }
@@ -106,19 +114,20 @@ export const estadoFacturacionDeVenta = cache(
   (ventaId: string): Promise<FacturacionDeVenta | null> =>
     conRespaldo(
       async () => {
-        const venta = await prisma.venta.findUnique({
-          where: { id: ventaId },
-          select: {
-            estado: true,
-            totalBruto: true,
-            totalIVA: true,
-            cliente: { select: { id: true, nombre: true, cuit: true, dni: true, condicionIva: true, direccion: true } },
-          },
-        });
-        if (!venta) return null;
-        const [comprobantes, configuracion] = await Promise.all([
-          prisma.comprobante.findMany({
-            where: { ventaId },
+        const negocioId = await negocioUnico(prisma);
+        return conNegocio(negocioId, async (tx) => {
+          const venta = await tx.venta.findFirst({
+            where: { id: ventaId, negocioId },
+            select: {
+              estado: true,
+              totalBruto: true,
+              totalIVA: true,
+              cliente: { select: { id: true, nombre: true, cuit: true, dni: true, condicionIva: true, direccion: true } },
+            },
+          });
+          if (!venta) return null;
+          const comprobantes = await tx.comprobante.findMany({
+            where: { negocioId, ventaId },
             orderBy: { creadoEn: "desc" },
             select: {
               id: true,
@@ -133,26 +142,27 @@ export const estadoFacturacionDeVenta = cache(
               comprobanteAsociadoId: true,
               creadoEn: true,
             },
-          }),
-          prisma.configuracion.findMany(),
-        ]);
-        const deVenta: ComprobanteDeVenta[] = comprobantes.map((c) => ({ ...c, importeTotal: d(c.importeTotal.toString()) }));
-        const ventaAnulada = venta.estado === "ANULADA";
-        const seleccion = seleccionarEmisor(entornoDelProceso());
-        return {
-          ventaId,
-          ventaAnulada,
-          clienteId: venta.cliente.id,
-          resumen: derivarFacturacion(deVenta, ventaAnulada),
-          avisos: avisosParaEmitir({
-            emisor: seleccion.ok ? { ok: true } : seleccion,
-            config: Object.fromEntries(configuracion.map((c) => [c.clave, c.valor])),
-            hoy: hoyArgentina(),
-            cliente: venta.cliente,
-            ventaTotal: d(venta.totalBruto.toString()),
-            ventaIva: d(venta.totalIVA.toString()),
-          }),
-        };
+          });
+          // Datos fiscales del negocio (su Configuracion).
+          const configuracion = await tx.configuracion.findMany({ where: { negocioId } });
+          const deVenta: ComprobanteDeVenta[] = comprobantes.map((c) => ({ ...c, importeTotal: d(c.importeTotal.toString()) }));
+          const ventaAnulada = venta.estado === "ANULADA";
+          const seleccion = seleccionarEmisor(entornoDelProceso());
+          return {
+            ventaId,
+            ventaAnulada,
+            clienteId: venta.cliente.id,
+            resumen: derivarFacturacion(deVenta, ventaAnulada),
+            avisos: avisosParaEmitir({
+              emisor: seleccion.ok ? { ok: true } : seleccion,
+              config: Object.fromEntries(configuracion.map((c) => [c.clave, c.valor])),
+              hoy: hoyArgentina(),
+              cliente: venta.cliente,
+              ventaTotal: d(venta.totalBruto.toString()),
+              ventaIva: d(venta.totalIVA.toString()),
+            }),
+          };
+        });
       },
       () => null,
     ),

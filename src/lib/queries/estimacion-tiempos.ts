@@ -1,5 +1,6 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocioActual } from "./stock";
+import type { TxNegocio } from "@/lib/negocio";
 import { conRespaldo } from "@/lib/respaldo";
 import { SIN_BASE } from "@/lib/acciones";
 import { d } from "@/lib/money";
@@ -43,11 +44,13 @@ export const getArticulosParaEstimar = cache(
   (): Promise<ArticuloParaEstimar[]> =>
     conRespaldo(
       () =>
-        prisma.articulo.findMany({
-          where: { activo: true },
-          orderBy: { nombre: "asc" },
-          select: { id: true, nombre: true },
-        }),
+        conNegocioActual((tx) =>
+          tx.articulo.findMany({
+            where: { activo: true },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true },
+          }),
+        ),
       () => [],
     ),
 );
@@ -61,31 +64,36 @@ export async function estimarTiempos(entradas: readonly { articuloId: string; ca
   const validado = validarPedido(entradas);
   if (!validado.ok) return validado;
   return conRespaldo<ResultadoEstimacion>(
-    () => estimarDesdeBase(validado.lineas),
+    () => conNegocioActual((tx) => estimarDesdeBase(tx, validado.lineas)),
     () => ({ ok: false, errores: [SIN_BASE] }),
   );
 }
 
-async function estimarDesdeBase(pedidas: LineaPedida[]): Promise<ResultadoEstimacion> {
+async function estimarDesdeBase(tx: TxNegocio, pedidas: LineaPedida[]): Promise<ResultadoEstimacion> {
   const ids = [...new Set(pedidas.map((l) => l.articuloId))].filter(esIdValido);
-  const articulos = await prisma.articulo.findMany({ where: { id: { in: ids } }, select: { id: true, nombre: true } });
+  const articulos = await tx.articulo.findMany({ where: { id: { in: ids } }, select: { id: true, nombre: true } });
   const nombres = new Map(articulos.map((a) => [a.id, a.nombre]));
 
   const errores = pedidas.flatMap((l, i) => (nombres.has(l.articuloId) ? [] : [`Línea ${i + 1}: el artículo no existe.`]));
   if (errores.length) return { ok: false, errores };
 
   // Un historial por articulo, aunque aparezca en varias lineas.
-  const historiales = new Map(await Promise.all(ids.map(async (id) => [id, await historialDe(id)] as const)));
+  const historiales = new Map<string, TrabajoHistorico[]>();
+  for (const id of ids) historiales.set(id, await historialDe(tx, id));
 
   const lineas = pedidas.map((l) =>
-    estimarLinea({ articuloId: l.articuloId, nombre: nombres.get(l.articuloId)!, cantidad: l.cantidad }, historiales.get(l.articuloId)!, CRITERIO),
+    estimarLinea(
+      { articuloId: l.articuloId, nombre: nombres.get(l.articuloId)!, cantidad: l.cantidad },
+      historiales.get(l.articuloId)!,
+      CRITERIO,
+    ),
   );
   return { ok: true, lineas, total: totalizarPedido(lineas), criterio: CRITERIO };
 }
 
 /** Ultimos N trabajos vigentes del articulo, del mas reciente al mas viejo. */
-async function historialDe(articuloId: string): Promise<TrabajoHistorico[]> {
-  const trabajos = await prisma.trabajoProduccion.findMany({
+async function historialDe(tx: TxNegocio, articuloId: string): Promise<TrabajoHistorico[]> {
+  const trabajos = await tx.trabajoProduccion.findMany({
     where: { anuladoEn: null, ventaItem: { articuloId } },
     orderBy: [{ fecha: "desc" }, { creadoEn: "desc" }, { id: "desc" }],
     take: CRITERIO.n,

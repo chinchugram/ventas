@@ -1,5 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { conNegocio } from "@/lib/negocio";
+import { negocioUnico } from "@/lib/dominio/auth";
 import { demoDeudas } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { hoyArgentina } from "@/lib/acciones";
@@ -47,18 +49,20 @@ export const getRecordatoriosHoy = cache(
 async function recordatoriosDesdeBase(): Promise<RecordatorioHoy[]> {
   const deudas = agruparPorCliente(await getVentasConSaldo());
   const contactos = deudas.length
-    ? await prisma.contactoCobranza.findMany({
-        where: { clienteId: { in: deudas.map((x) => x.clienteId) } },
-        // Del usuario solo el nombre para mostrar: nunca el hash ni datos de sesion.
-        select: {
-          clienteId: true,
-          fecha: true,
-          nota: true,
-          proximoContacto: true,
-          creadoEn: true,
-          usuario: { select: { nombre: true } },
-        },
-      })
+    ? await conNegocio(await negocioUnico(prisma), (tx) =>
+        tx.contactoCobranza.findMany({
+          where: { clienteId: { in: deudas.map((x) => x.clienteId) } },
+          // Del usuario solo el nombre para mostrar: nunca el hash ni datos de sesion.
+          select: {
+            clienteId: true,
+            fecha: true,
+            nota: true,
+            proximoContacto: true,
+            creadoEn: true,
+            usuario: { select: { nombre: true } },
+          },
+        }),
+      )
     : [];
 
   // `recordatoriosDeHoy` devuelve el mismo objeto de contacto que recibe: por eso

@@ -1,5 +1,6 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocioActual } from "./stock";
+import type { TxNegocio } from "@/lib/negocio";
 import { demoCompras, demoMovimientos } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import type { Dinero } from "@/lib/money";
@@ -29,17 +30,16 @@ export type MovimientoListado = {
   registradoPor: string | null;
 };
 
-
 export const getCompras = cache(
   (limite = 50): Promise<CompraListada[]> =>
     conRespaldo(
-      () => comprasDesdeBase(limite),
+      () => conNegocioActual((tx) => comprasDesdeBase(tx, limite)),
       () => demoCompras().slice(0, limite),
     ),
 );
 
-async function comprasDesdeBase(limite: number): Promise<CompraListada[]> {
-  const compras = await prisma.compra.findMany({
+async function comprasDesdeBase(tx: TxNegocio, limite: number): Promise<CompraListada[]> {
+  const compras = await tx.compra.findMany({
     orderBy: [{ fecha: "desc" }, { creadoEn: "desc" }],
     take: limite,
     include: {
@@ -74,7 +74,7 @@ async function comprasDesdeBase(limite: number): Promise<CompraListada[]> {
 export const getMovimientos = cache(
   (materialId: string, limite = 100, sinProveedor = false): Promise<MovimientoListado[]> =>
     conRespaldo(
-      async () => quitarProveedor(await movimientosDesdeBase(materialId, limite), sinProveedor),
+      async () => quitarProveedor(await conNegocioActual((tx) => movimientosDesdeBase(tx, materialId, limite)), sinProveedor),
       () => quitarProveedor(demoMovimientos(materialId).slice(0, limite), sinProveedor),
     ),
 );
@@ -83,8 +83,8 @@ function quitarProveedor(movimientos: MovimientoListado[], quitar: boolean): Mov
   return quitar ? movimientos.map((m) => (m.tipo === "COMPRA" ? { ...m, motivo: null } : m)) : movimientos;
 }
 
-async function movimientosDesdeBase(materialId: string, limite: number): Promise<MovimientoListado[]> {
-  const movimientos = await prisma.movimientoStock.findMany({
+async function movimientosDesdeBase(tx: TxNegocio, materialId: string, limite: number): Promise<MovimientoListado[]> {
+  const movimientos = await tx.movimientoStock.findMany({
     where: { materialId },
     orderBy: { creadoEn: "desc" },
     take: limite,

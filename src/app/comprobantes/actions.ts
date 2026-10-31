@@ -6,7 +6,13 @@ import { dbDisponible, prisma } from "@/lib/prisma";
 import { verificarPermiso } from "@/lib/permisos";
 import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { mensajeDeError, primerError, SIN_BASE } from "@/lib/acciones";
-import { accesoSimulado, emitirFactura as emitirFacturaDeDominio, resolverPendiente } from "@/lib/dominio/comprobantes";
+import {
+  accesoSimuladoDeNegocio,
+  baseDeNegocio,
+  emitirFactura as emitirFacturaDeDominio,
+  resolverPendiente,
+} from "@/lib/dominio/comprobantes";
+import { conNegocio } from "@/lib/negocio";
 import { esFactura } from "@/lib/comprobantes";
 import { entornoDelProceso, obtenerEmisorFiscal } from "@/lib/fiscal";
 import { revalidarVentas } from "@/lib/revalidar";
@@ -15,7 +21,9 @@ import { negocioUnico } from "@/lib/dominio/auth";
 // Acciones de facturacion (tarea 5.5). La logica de emision vive en
 // `src/lib/dominio/comprobantes.ts`; aca solo se verifica permiso y sesion, se
 // elige el emisor (con la guarda contra la emision falsa en produccion), se
-// traducen los errores de negocio y se revalida.
+// traducen los errores de negocio y se revalida. Multi-tenant: todo va por `conNegocio`
+// (o `baseDeNegocio`, que abre cada transaccion con el negocio fijado); el negocio sale
+// de `negocioUnico` hasta que la sesion lo traiga (transitorio, VTA-22/VTA-8).
 
 const esquemaVenta = z.object({ ventaId: z.uuid("Venta inválida") });
 const esquemaComprobante = z.object({ comprobanteId: z.uuid("Comprobante inválido") });
@@ -59,11 +67,11 @@ export async function emitirFactura(datos: z.input<typeof esquemaVenta>): Promis
   if (!sesion.ok) return sesion;
   const usuarioId = idParaGuardar(sesion.usuario);
 
-  const obtenido = obtenerEmisorFiscal(entornoDelProceso(), accesoSimulado(prisma));
-  if (!obtenido.ok) return { ok: false, error: obtenido.error };
-
   try {
-    const c = await emitirFacturaDeDominio(prisma, await negocioUnico(prisma), ventaId, usuarioId, { emisor: obtenido.emisor });
+    const negocioId = await negocioUnico(prisma);
+    const obtenido = obtenerEmisorFiscal(entornoDelProceso(), accesoSimuladoDeNegocio(negocioId));
+    if (!obtenido.ok) return { ok: false, error: obtenido.error };
+    const c = await emitirFacturaDeDominio(baseDeNegocio(negocioId), negocioId, ventaId, usuarioId, { emisor: obtenido.emisor });
     revalidarFacturacion(ventaId, c.id);
     return { ok: true, comprobanteId: c.id, estado: c.estado, mensaje: c.mensaje, advertencias: c.advertencias };
   } catch (error) {
@@ -85,20 +93,22 @@ export async function resolverComprobantePendiente(datos: z.input<typeof esquema
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
   const { comprobanteId } = parsed.data;
 
-  // Resolver una nota de credito pendiente deshace una factura: es del dueño, igual que emitirla.
-  const tipo = (await prisma.comprobante.findUnique({ where: { id: comprobanteId }, select: { tipo: true } }))?.tipo;
-  if (tipo && !esFactura(tipo)) {
-    const permisoNota = await verificarPermiso("emitirNotaCredito");
-    if (!permisoNota.ok) return permisoNota;
-  }
-
-  const obtenido = obtenerEmisorFiscal(entornoDelProceso(), accesoSimulado(prisma));
-  if (!obtenido.ok) return { ok: false, error: obtenido.error };
-
   try {
-    const c = await resolverPendiente(prisma, comprobanteId, obtenido.emisor);
-    const ventaId = (await prisma.comprobante.findUnique({ where: { id: comprobanteId }, select: { ventaId: true } }))?.ventaId;
-    revalidarFacturacion(ventaId, c.id);
+    const negocioId = await negocioUnico(prisma);
+    // Resolver una nota de credito pendiente deshace una factura: es del dueño, igual que emitirla.
+    const previo = await conNegocio(negocioId, (tx) =>
+      tx.comprobante.findFirst({ where: { id: comprobanteId, negocioId }, select: { tipo: true, ventaId: true } }),
+    );
+    if (previo && !esFactura(previo.tipo)) {
+      const permisoNota = await verificarPermiso("emitirNotaCredito");
+      if (!permisoNota.ok) return permisoNota;
+    }
+
+    const obtenido = obtenerEmisorFiscal(entornoDelProceso(), accesoSimuladoDeNegocio(negocioId));
+    if (!obtenido.ok) return { ok: false, error: obtenido.error };
+
+    const c = await resolverPendiente(baseDeNegocio(negocioId), comprobanteId, obtenido.emisor);
+    revalidarFacturacion(previo?.ventaId, c.id);
     return { ok: true, comprobanteId: c.id, estado: c.estado, mensaje: c.mensaje, advertencias: c.advertencias };
   } catch (error) {
     console.error("[resolverComprobantePendiente]", error);

@@ -14,7 +14,7 @@ import {
 import type { ResultadoCae, SolicitudCae } from "@/lib/fiscal/emisor";
 import { d } from "@/lib/money";
 import {
-  claveLockSerie,
+  bloquearSerie,
   registrarResultadoEnTx,
   traducirErrorDeEmision,
   type BaseDeDatos,
@@ -94,11 +94,11 @@ export async function reservarNotaCreditoEnTx(
   { emisor, hoy = hoyArgentina(), facturaId }: OpcionesNotaCredito,
 ): Promise<NotaCreditoReservada> {
   const filas = await tx.$queryRaw<{ id: string }[]>`
-    SELECT id::text AS id FROM "ventas" WHERE id = ${ventaId}::uuid FOR UPDATE`;
+    SELECT id::text AS id FROM "ventas" WHERE id = ${ventaId}::uuid AND "negocioId" = ${negocioId}::uuid FOR UPDATE`;
   if (!filas[0]) throw new ErrorDeNegocio("La venta no existe.");
 
   const factura = await tx.comprobante.findFirst({
-    where: { ventaId, tipo: { in: [...TIPOS_FACTURA] }, estado: { in: ["PENDIENTE", "EMITIDO"] } },
+    where: { negocioId, ventaId, tipo: { in: [...TIPOS_FACTURA] }, estado: { in: ["PENDIENTE", "EMITIDO"] } },
     include: { items: { orderBy: { orden: "asc" } }, alicuotas: { orderBy: { alicuotaPct: "asc" } } },
   });
   if (!factura) {
@@ -115,7 +115,7 @@ export async function reservarNotaCreditoEnTx(
   }
 
   const vigente = await tx.comprobante.findFirst({
-    where: { comprobanteAsociadoId: factura.id, estado: { in: ["PENDIENTE", "EMITIDO"] } },
+    where: { negocioId, comprobanteAsociadoId: factura.id, estado: { in: ["PENDIENTE", "EMITIDO"] } },
     select: { tipo: true, puntoVenta: true, numero: true, estado: true },
   });
   if (vigente) {
@@ -138,10 +138,10 @@ export async function reservarNotaCreditoEnTx(
   const tipo = tipoNotaCredito(facturaTipo);
   const puntoVenta = factura.puntoVenta;
 
-  // Numeracion de la serie de notas de credito: igual que la factura.
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${claveLockSerie(ambiente, puntoVenta, tipo)})`;
+  // Numeracion de la serie de notas de credito DEL NEGOCIO: igual que la factura.
+  await bloquearSerie(tx, negocioId, ambiente, puntoVenta, tipo);
   const pendiente = await tx.comprobante.findFirst({
-    where: { ambiente, puntoVenta, tipo, estado: "PENDIENTE" },
+    where: { negocioId, ambiente, puntoVenta, tipo, estado: "PENDIENTE" },
     select: { numero: true },
   });
   if (pendiente) {
@@ -152,8 +152,8 @@ export async function reservarNotaCreditoEnTx(
   }
   const ultimo = await emisor.ultimoAutorizado(puntoVenta, tipo);
   const local =
-    (await tx.comprobante.aggregate({ where: { ambiente, puntoVenta, tipo, estado: "EMITIDO" }, _max: { numero: true } }))._max
-      .numero ?? 0;
+    (await tx.comprobante.aggregate({ where: { negocioId, ambiente, puntoVenta, tipo, estado: "EMITIDO" }, _max: { numero: true } }))
+      ._max.numero ?? 0;
   if (ultimo !== local) {
     throw new ErrorDeNegocio(
       `El emisor tiene autorizada la ${NOMBRE_TIPO[tipo]} del punto de venta ${puntoVenta} hasta el número ${ultimo}, ` +
@@ -339,10 +339,12 @@ export type FacturaAnulable = { id: string; etiqueta: string };
  */
 export async function facturaAnulableDeVenta(
   db: Pick<PrismaClient, "comprobante">,
+  negocioId: string,
   ventaId: string,
 ): Promise<FacturaAnulable | null> {
   const factura = await db.comprobante.findFirst({
     where: {
+      negocioId,
       ventaId,
       tipo: { in: [...TIPOS_FACTURA] },
       estado: "EMITIDO",

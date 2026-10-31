@@ -150,7 +150,7 @@ async function crearConLineas(
   const anio = hoy.getUTCFullYear();
   // Un solo escritor numera por anio a la vez (lock distinto al de las ventas).
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_PRESUPUESTOS}::bigint + ${anio}::bigint)`;
-  const ultimo = await tx.presupuesto.aggregate({ where: { anio }, _max: { numero: true } });
+  const ultimo = await tx.presupuesto.aggregate({ where: { negocioId, anio }, _max: { numero: true } });
   const numero = (ultimo._max.numero ?? 0) + 1;
 
   const creado = await tx.presupuesto.create({
