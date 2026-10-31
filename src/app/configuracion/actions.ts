@@ -14,6 +14,7 @@ import {
   guardarDatosFiscalesEnTx,
 } from "@/lib/dominio/configuracion";
 import { CLAVES_FISCALES, validarDatosFiscales, type CampoFiscal } from "@/lib/datos-fiscales";
+import { negocioUnico } from "@/lib/dominio/auth";
 
 /**
  * Guarda nombre, costo/hora de mano de obra, IVA y margen objetivo.
@@ -108,7 +109,7 @@ export async function crearMaquina(datos: DatosMaquina): Promise<Resultado> {
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   try {
-    await prisma.$transaction((tx) => crearMaquinaEnTx(tx, parsed.data));
+    await prisma.$transaction(async (tx) => crearMaquinaEnTx(tx, await negocioUnico(tx), parsed.data));
   } catch (error) {
     console.error("[crearMaquina]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar la máquina.") };

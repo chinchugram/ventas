@@ -7,6 +7,7 @@ import { verificarPermiso } from "@/lib/permisos";
 import { mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { validarArticulo, type DatosArticulo } from "@/lib/recetas";
 import { cambiarActivoArticuloEnTx, guardarArticuloEnTx } from "@/lib/dominio/articulos";
+import { negocioUnico } from "@/lib/dominio/auth";
 
 /** Pantallas que muestran costo, precio o margen de los articulos. */
 function revalidarCatalogo(id: string) {
@@ -29,7 +30,7 @@ export async function guardarArticulo(
   if (!validado.ok) return validado;
 
   try {
-    const { id } = await prisma.$transaction((tx) => guardarArticuloEnTx(tx, validado.valor));
+    const { id } = await prisma.$transaction(async (tx) => guardarArticuloEnTx(tx, await negocioUnico(tx), validado.valor));
     revalidarCatalogo(id);
     return { ok: true, id };
   } catch (error) {

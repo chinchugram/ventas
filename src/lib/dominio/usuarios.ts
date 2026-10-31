@@ -5,6 +5,7 @@ import { puede } from "@/lib/permisos-pura";
 import {
   cerrarSesionesDeUsuario,
   crearSesion,
+  negocioDeUsuario,
   crearUsuarioEnTx,
   verificarCredenciales,
   type Db,
@@ -237,7 +238,7 @@ export async function cambiarClavePropia(
     });
     if (count === 0) throw new ErrorDeNegocio("Tu usuario ya no está activo.");
     await cerrarSesionesDeUsuario(tx, usuario.id);
-    return crearSesion(tx, usuario.id, ahora);
+    return crearSesion(tx, await negocioDeUsuario(tx, usuario.id), usuario.id, ahora);
   };
   const cliente = db as PrismaClient;
   return typeof cliente.$transaction === "function" ? cliente.$transaction(escribir) : escribir(db as Tx);

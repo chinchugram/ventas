@@ -57,6 +57,19 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 /** Corre `fn` en una transaccion que siempre se deshace. */
@@ -89,26 +102,28 @@ async function preparar(tx: Tx) {
     create: { clave: "costoHoraManoObra", valor: "1000" },
   });
   const a = await tx.material.create({
-    data: { nombre: "Prueba A", unidad: "M2", stockActual: d(10), costoUnitario: d(100) },
+    data: { negocioId, nombre: "Prueba A", unidad: "M2", stockActual: d(10), costoUnitario: d(100) },
   });
   const b = await tx.material.create({
-    data: { nombre: "Prueba B", unidad: "U", stockActual: d(1), costoUnitario: d(50) },
+    data: { negocioId, nombre: "Prueba B", unidad: "U", stockActual: d(1), costoUnitario: d(50) },
   });
   const baja = await tx.material.create({
-    data: { nombre: "Prueba de baja", unidad: "U", costoUnitario: d(1), activo: false },
+    data: { negocioId, nombre: "Prueba de baja", unidad: "U", costoUnitario: d(1), activo: false },
   });
   const articulo = await tx.articulo.create({
     data: {
+      negocioId,
       nombre: "Artículo de prueba",
       precioVenta: d(1210),
       ivaPct: d(21),
       receta: {
         create: {
+          negocioId,
           componentes: {
             create: [
-              { tipo: "MATERIAL", materialId: a.id, cantidad: d(2) },
-              { tipo: "MATERIAL", materialId: b.id, cantidad: d(1) },
-              { tipo: "MANO_OBRA", cantidad: d("0.5") },
+              { negocioId, tipo: "MATERIAL", materialId: a.id, cantidad: d(2) },
+              { negocioId, tipo: "MATERIAL", materialId: b.id, cantidad: d(1) },
+              { negocioId, tipo: "MANO_OBRA", cantidad: d("0.5") },
             ],
           },
         },
@@ -116,10 +131,10 @@ async function preparar(tx: Tx) {
     },
   });
   const servicio = await tx.articulo.create({
-    data: { nombre: "Servicio de prueba", precioVenta: d(500), esServicio: true },
+    data: { negocioId, nombre: "Servicio de prueba", precioVenta: d(500), esServicio: true },
   });
-  const cliente = await tx.cliente.create({ data: { nombre: "Cliente de prueba" } });
-  const clienteBaja = await tx.cliente.create({ data: { nombre: "Cliente de baja", activo: false } });
+  const cliente = await tx.cliente.create({ data: { negocioId, nombre: "Cliente de prueba" } });
+  const clienteBaja = await tx.cliente.create({ data: { negocioId, nombre: "Cliente de baja", activo: false } });
   return { a, b, baja, articulo, servicio, cliente, clienteBaja };
 }
 
@@ -129,9 +144,10 @@ const stock = async (tx: Tx, id: string) =>
 const hoy = new Date(`${hoyArgentinaISO()}T00:00:00Z`);
 
 async function main() {
+  await resolverNegocio();
   await escenario("Compra: suma stock, actualiza costo y deja movimiento", async (tx) => {
     const { a, baja } = await preparar(tx);
-    const { id } = await registrarCompraEnTx(tx, {
+    const { id } = await registrarCompraEnTx(tx, negocioId, {
       fecha: hoy,
       proveedor: "Proveedor de prueba",
       comprobante: null,
@@ -148,7 +164,7 @@ async function main() {
     comprobar("movimientos", String(movs.length), "1");
     comprobar("movimiento +5 → 15", `${num(movs[0]!.cantidad)} → ${num(movs[0]!.stockResultante)}`, "5 → 15");
 
-    await registrarCompraEnTx(tx, {
+    await registrarCompraEnTx(tx, negocioId, {
       fecha: hoy,
       proveedor: "Otro",
       comprobante: null,
@@ -159,7 +175,7 @@ async function main() {
     comprobar("sin actualizar costo", num((await tx.material.findUniqueOrThrow({ where: { id: a.id } })).costoUnitario), "120.5");
 
     await rechaza("material de baja", "dado de baja", () =>
-      registrarCompraEnTx(tx, {
+      registrarCompraEnTx(tx, negocioId, {
         fecha: hoy,
         proveedor: "X",
         comprobante: null,
@@ -175,7 +191,7 @@ async function main() {
     const anio = hoy.getUTCFullYear();
     const previo = (await tx.venta.aggregate({ where: { anio }, _max: { numero: true } }))._max.numero ?? 0;
 
-    const r = await registrarVentaEnTx(tx, {
+    const r = await registrarVentaEnTx(tx, negocioId, {
       clienteId: cliente.id,
       fecha: hoy,
       observaciones: null,
@@ -209,7 +225,7 @@ async function main() {
     comprobar("snapshot tras subir el material", num(congelado.costoUnitarioSnapshot), "750");
 
     await rechaza("pago mayor al total", "no puede superar", () =>
-      registrarVentaEnTx(tx, {
+      registrarVentaEnTx(tx, negocioId, {
         clienteId: cliente.id,
         fecha: hoy,
         observaciones: null,
@@ -219,7 +235,7 @@ async function main() {
       }),
     );
     await rechaza("cliente de baja", "dado de baja", () =>
-      registrarVentaEnTx(tx, {
+      registrarVentaEnTx(tx, negocioId, {
         clienteId: clienteBaja.id,
         fecha: hoy,
         observaciones: null,
@@ -232,7 +248,7 @@ async function main() {
 
   await escenario("Anulación: devuelve exactamente lo que salió", async (tx) => {
     const { a, b, articulo, cliente } = await preparar(tx);
-    const r = await registrarVentaEnTx(tx, {
+    const r = await registrarVentaEnTx(tx, negocioId, {
       clienteId: cliente.id,
       fecha: hoy,
       observaciones: null,
@@ -245,25 +261,25 @@ async function main() {
 
     // Si la receta cambia despues, igual vuelve lo que realmente salio.
     await tx.recetaComponente.updateMany({ where: { materialId: a.id }, data: { cantidad: d(9) } });
-    await anularVentaEnTx(tx, r.id);
+    await anularVentaEnTx(tx, negocioId, r.id);
     const venta = await tx.venta.findUniqueOrThrow({ where: { id: r.id } });
     comprobar("estado", venta.estado, "ANULADA");
     comprobar("stock A restaurado", await stock(tx, a.id), "10");
     comprobar("stock B restaurado (solo lo descontado)", await stock(tx, b.id), "1");
     const movs = await tx.movimientoStock.findMany({ where: { ventaId: r.id } });
     comprobar("movimientos (2 salidas + 2 devoluciones)", String(movs.length), "4");
-    await rechaza("anular dos veces", "ya estaba anulada", () => anularVentaEnTx(tx, r.id));
+    await rechaza("anular dos veces", "ya estaba anulada", () => anularVentaEnTx(tx, negocioId, r.id));
   });
 
   await escenario("Ajuste por conteo", async (tx) => {
     const { a } = await preparar(tx);
-    const { diferencia } = await ajustarStockEnTx(tx, { materialId: a.id, stockContado: d("8.5"), motivo: "Conteo" });
+    const { diferencia } = await ajustarStockEnTx(tx, negocioId, { materialId: a.id, stockContado: d("8.5"), motivo: "Conteo" });
     comprobar("diferencia", num(diferencia), "-1.5");
     comprobar("stock", await stock(tx, a.id), "8.5");
     const mov = await tx.movimientoStock.findFirstOrThrow({ where: { materialId: a.id, tipo: "AJUSTE" } });
     comprobar("movimiento", `${num(mov.cantidad)} → ${num(mov.stockResultante)}`, "-1.5 → 8.5");
     await rechaza("conteo igual al sistema", "no hay nada que ajustar", () =>
-      ajustarStockEnTx(tx, { materialId: a.id, stockContado: d("8.5"), motivo: "Otra vez" }),
+      ajustarStockEnTx(tx, negocioId, { materialId: a.id, stockContado: d("8.5"), motivo: "Otra vez" }),
     );
   });
 
@@ -283,7 +299,7 @@ async function main() {
     const juntos = (...ids: string[]) => ids.sort().join(",");
 
     // Venta con cobro inicial: la venta, su pago y su movimiento de stock son de Laura.
-    const v = await registrarVentaEnTx(tx, {
+    const v = await registrarVentaEnTx(tx, negocioId, {
       clienteId: cliente.id, fecha: hoy, observaciones: null, entregada: false, usuarioId: laura.id,
       items: [{ articuloId: articulo.id, cantidad: d(1) }],
       pago: { monto: d(100), metodo: "EFECTIVO" },
@@ -294,13 +310,13 @@ async function main() {
     comprobar("movimientos de la venta", (await usuarios({ ventaId: v.id })).join(","), juntos(laura.id, laura.id));
 
     // Cobro posterior a nombre de otra persona.
-    const { id: pagoId } = await registrarPagoEnTx(tx, {
+    const { id: pagoId } = await registrarPagoEnTx(tx, negocioId, {
       ventaId: v.id, fecha: hoy, monto: d(200), metodo: "TRANSFERENCIA", notas: null, usuarioId: dueno.id,
     });
     comprobar("pago posterior.usuarioId", String((await tx.pago.findUniqueOrThrow({ where: { id: pagoId } })).usuarioId), dueno.id);
 
     // Anulacion: la venta conserva a quien la cargo; la reversa es de quien anula.
-    await anularVentaEnTx(tx, v.id, dueno.id);
+    await anularVentaEnTx(tx, negocioId, v.id, dueno.id);
     comprobar("venta anulada sigue siendo de Laura", String((await tx.venta.findUniqueOrThrow({ where: { id: v.id } })).usuarioId), laura.id);
     comprobar(
       "movimientos tras anular (salidas Laura, reversas Dueño)",
@@ -309,7 +325,7 @@ async function main() {
     );
 
     // Compra: cabecera y movimiento.
-    const c = await registrarCompraEnTx(tx, {
+    const c = await registrarCompraEnTx(tx, negocioId, {
       fecha: hoy, proveedor: "Proveedor", comprobante: null, notas: null, actualizarCosto: false, usuarioId: laura.id,
       items: [{ materialId: a.id, cantidad: d(5), costoUnitario: d(100) }],
     });
@@ -317,10 +333,10 @@ async function main() {
     comprobar("movimiento de la compra", (await usuarios({ compraId: c.id })).join(","), laura.id);
 
     // Ajuste y alta de material con stock inicial.
-    await ajustarStockEnTx(tx, { materialId: a.id, stockContado: d(3), motivo: "Conteo", usuarioId: dueno.id });
+    await ajustarStockEnTx(tx, negocioId, { materialId: a.id, stockContado: d(3), motivo: "Conteo", usuarioId: dueno.id });
     const ajuste = await tx.movimientoStock.findFirstOrThrow({ where: { materialId: a.id, tipo: "AJUSTE" } });
     comprobar("ajuste.usuarioId", String(ajuste.usuarioId), dueno.id);
-    const nuevo = await crearMaterialEnTx(tx, {
+    const nuevo = await crearMaterialEnTx(tx, negocioId, {
       nombre: `Trazable ${sufijo}`, unidad: "U", stockInicial: d(4), stockMinimo: d(0),
       costoUnitario: d(1), precioVenta: null, notas: null, usuarioId: laura.id,
     });
@@ -340,18 +356,18 @@ async function main() {
 
   await escenario("Trazabilidad: sin usuario queda NULL (seed, demo, scripts)", async (tx) => {
     const { a, articulo, cliente } = await preparar(tx);
-    const v = await registrarVentaEnTx(tx, {
+    const v = await registrarVentaEnTx(tx, negocioId, {
       clienteId: cliente.id, fecha: hoy, observaciones: null, entregada: false,
       items: [{ articuloId: articulo.id, cantidad: d(1) }],
       pago: { monto: d(100), metodo: "EFECTIVO" },
     });
-    const p = await registrarPagoEnTx(tx, { ventaId: v.id, fecha: hoy, monto: d(10), metodo: "OTRO", notas: null, usuarioId: null });
-    await anularVentaEnTx(tx, v.id);
-    const c = await registrarCompraEnTx(tx, {
+    const p = await registrarPagoEnTx(tx, negocioId, { ventaId: v.id, fecha: hoy, monto: d(10), metodo: "OTRO", notas: null, usuarioId: null });
+    await anularVentaEnTx(tx, negocioId, v.id);
+    const c = await registrarCompraEnTx(tx, negocioId, {
       fecha: hoy, proveedor: "Proveedor", comprobante: null, notas: null, actualizarCosto: false,
       items: [{ materialId: a.id, cantidad: d(5), costoUnitario: d(100) }],
     });
-    await ajustarStockEnTx(tx, { materialId: a.id, stockContado: d(3), motivo: "Conteo" });
+    await ajustarStockEnTx(tx, negocioId, { materialId: a.id, stockContado: d(3), motivo: "Conteo" });
     comprobar("venta", String((await tx.venta.findUniqueOrThrow({ where: { id: v.id } })).usuarioId), "null");
     comprobar("pagos", String((await tx.pago.findMany({ where: { ventaId: v.id } })).map((x) => x.usuarioId)), ",");
     comprobar("pago con null explícito", String((await tx.pago.findUniqueOrThrow({ where: { id: p.id } })).usuarioId), "null");

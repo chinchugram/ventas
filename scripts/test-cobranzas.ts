@@ -43,6 +43,19 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 /** Corre `fn` en una transaccion que siempre se deshace. */
@@ -68,11 +81,11 @@ const hoy = new Date(`${hoyArgentinaISO()}T00:00:00Z`);
 
 /** Un cliente y una venta de $1.000 (un servicio: no toca stock), sin pago inicial. */
 async function ventaDePrueba(tx: Tx, conPagoInicial?: Dinero) {
-  const cliente = await tx.cliente.create({ data: { nombre: "Cliente de cobranzas" } });
+  const cliente = await tx.cliente.create({ data: { negocioId, nombre: "Cliente de cobranzas" } });
   const servicio = await tx.articulo.create({
-    data: { nombre: "Servicio de cobranzas", precioVenta: d(1000), ivaPct: d(0), esServicio: true },
+    data: { negocioId, nombre: "Servicio de cobranzas", precioVenta: d(1000), ivaPct: d(0), esServicio: true },
   });
-  const venta = await registrarVentaEnTx(tx, {
+  const venta = await registrarVentaEnTx(tx, negocioId, {
     clienteId: cliente.id,
     fecha: hoy,
     observaciones: null,
@@ -97,29 +110,30 @@ const pago = (ventaId: string, monto: string, notas: string | null = null) => ({
 });
 
 async function main() {
+  await resolverNegocio();
   await escenario("Pagos parciales hasta saldar", async (tx) => {
     const { cliente, venta } = await ventaDePrueba(tx, d(200));
     comprobar("total", num(venta.totalBruto), "1000.00");
     comprobar("saldo tras el pago inicial", await saldo(tx, venta.id), "800.00");
 
-    const r1 = await registrarPagoEnTx(tx, pago(venta.id, "300", "Seña"));
+    const r1 = await registrarPagoEnTx(tx, negocioId, pago(venta.id, "300", "Seña"));
     comprobar("saldo devuelto", num(r1.saldo), "500.00");
     comprobar("saldo recalculado", await saldo(tx, venta.id), "500.00");
     const creado = await tx.pago.findUniqueOrThrow({ where: { id: r1.id } });
     comprobar("cliente sale de la venta", creado.clienteId, cliente.id);
     comprobar("método y notas", `${creado.metodo} ${creado.notas}`, "TRANSFERENCIA Seña");
 
-    await rechaza("más que el saldo", "supera el saldo", () => registrarPagoEnTx(tx, pago(venta.id, "500.02")));
+    await rechaza("más que el saldo", "supera el saldo", () => registrarPagoEnTx(tx, negocioId, pago(venta.id, "500.02")));
     // Tolerancia de 1 centavo, como al crear la venta.
-    await registrarPagoEnTx(tx, pago(venta.id, "500.01"));
+    await registrarPagoEnTx(tx, negocioId, pago(venta.id, "500.01"));
     comprobar("saldada", await saldo(tx, venta.id), "0.00");
-    await rechaza("venta saldada", "ya está saldada", () => registrarPagoEnTx(tx, pago(venta.id, "1")));
+    await rechaza("venta saldada", "ya está saldada", () => registrarPagoEnTx(tx, negocioId, pago(venta.id, "1")));
     comprobar("pagos", String(await tx.pago.count({ where: { ventaId: venta.id } })), "3");
   });
 
   await escenario("Anular un pago: vuelve el saldo, el pago queda", async (tx) => {
     const { venta } = await ventaDePrueba(tx);
-    const { id } = await registrarPagoEnTx(tx, pago(venta.id, "1000"));
+    const { id } = await registrarPagoEnTx(tx, negocioId, pago(venta.id, "1000"));
     comprobar("saldada", await saldo(tx, venta.id), "0.00");
 
     await rechaza("motivo vacío", "motivo", () => anularPagoEnTx(tx, id, "   "));
@@ -135,14 +149,14 @@ async function main() {
     );
 
     // Con el pago anulado se puede volver a cobrar el total.
-    await registrarPagoEnTx(tx, pago(venta.id, "1000"));
+    await registrarPagoEnTx(tx, negocioId, pago(venta.id, "1000"));
     comprobar("saldada de nuevo", await saldo(tx, venta.id), "0.00");
   });
 
   await escenario("Venta anulada: no admite pagos ni entrega", async (tx) => {
     const { venta } = await ventaDePrueba(tx, d(400));
-    await anularVentaEnTx(tx, venta.id);
-    await rechaza("pago sobre anulada", "anulada", () => registrarPagoEnTx(tx, pago(venta.id, "1")));
+    await anularVentaEnTx(tx, negocioId, venta.id);
+    await rechaza("pago sobre anulada", "anulada", () => registrarPagoEnTx(tx, negocioId, pago(venta.id, "1")));
     await rechaza("entregar anulada", "anulada", () => marcarEntregadaEnTx(tx, venta.id));
     // Su pago se conserva (se muestra pero no cuenta) y se puede anular igual.
     const inicial = await tx.pago.findFirstOrThrow({ where: { ventaId: venta.id } });
@@ -150,7 +164,7 @@ async function main() {
     await anularPagoEnTx(tx, inicial.id, "Se devolvió la plata");
     comprobar("anulado", String((await tx.pago.findUniqueOrThrow({ where: { id: inicial.id } })).anuladoEn !== null), "true");
     await rechaza("venta inexistente", "no existe", () =>
-      registrarPagoEnTx(tx, pago("00000000-0000-4000-8000-000000000000", "1")),
+      registrarPagoEnTx(tx, negocioId, pago("00000000-0000-4000-8000-000000000000", "1")),
     );
   });
 
@@ -161,13 +175,13 @@ async function main() {
     comprobar("entregar no cobra", await saldo(tx, venta.id), "1000.00");
     await rechaza("entregar dos veces", "ya estaba entregada", () => marcarEntregadaEnTx(tx, venta.id));
     // Una venta entregada se sigue cobrando.
-    await registrarPagoEnTx(tx, pago(venta.id, "250"));
+    await registrarPagoEnTx(tx, negocioId, pago(venta.id, "250"));
     comprobar("cobro sobre entregada", await saldo(tx, venta.id), "750.00");
   });
 
   await escenario("La base rechaza anular sin motivo", async (tx) => {
     const { venta } = await ventaDePrueba(tx);
-    const { id } = await registrarPagoEnTx(tx, pago(venta.id, "10"));
+    const { id } = await registrarPagoEnTx(tx, negocioId, pago(venta.id, "10"));
     // SAVEPOINT: el error de la base no aborta la transaccion del escenario.
     await tx.$executeRaw`SAVEPOINT sin_motivo`;
     let rechazo = "aceptó";
@@ -197,7 +211,7 @@ async function cobrosSimultaneos() {
     const intentos = await Promise.allSettled(
       [0, 1].map(() =>
         prisma.$transaction(async (tx) => {
-          const r = await registrarPagoEnTx(tx, pago(venta.id, "600"));
+          const r = await registrarPagoEnTx(tx, negocioId, pago(venta.id, "600"));
           // Demora con el bloqueo tomado, para que el otro cobro llegue a esperar.
           await tx.$executeRaw`SELECT pg_sleep(0.3)`;
           return r;

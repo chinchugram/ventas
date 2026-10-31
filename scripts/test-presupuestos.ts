@@ -57,6 +57,19 @@ function nuevoCliente() {
 }
 const prisma = nuevoCliente();
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 async function escenario(titulo: string, fn: (tx: Tx) => Promise<void>) {
@@ -103,27 +116,29 @@ type Prueba = Awaited<ReturnType<typeof preparar>>;
  */
 async function preparar(tx: Tx, prefijo = "Prueba presupuestos") {
   const material = await tx.material.create({
-    data: { nombre: `${prefijo} material`, unidad: "U", stockActual: d(100), costoUnitario: d(100) },
+    data: { negocioId, nombre: `${prefijo} material`, unidad: "U", stockActual: d(100), costoUnitario: d(100) },
   });
   const x = await tx.articulo.create({
     data: {
+      negocioId,
       nombre: `${prefijo} X`,
       precioVenta: d(1210),
       ivaPct: d(21),
-      receta: { create: { componentes: { create: [{ tipo: "MATERIAL", materialId: material.id, cantidad: d(2) }] } } },
+      receta: { create: { negocioId, componentes: { create: [{ negocioId, tipo: "MATERIAL", materialId: material.id, cantidad: d(2) }] } } },
     },
   });
-  const y = await tx.articulo.create({ data: { nombre: `${prefijo} Y`, precioVenta: d(500), esServicio: true } });
-  const z = await tx.articulo.create({ data: { nombre: `${prefijo} Z`, precioVenta: d(1000), esServicio: true } });
+  const y = await tx.articulo.create({ data: { negocioId, nombre: `${prefijo} Y`, precioVenta: d(500), esServicio: true } });
+  const z = await tx.articulo.create({ data: { negocioId, nombre: `${prefijo} Z`, precioVenta: d(1000), esServicio: true } });
   const lista = await tx.listaPrecio.create({
     data: {
+      negocioId,
       nombre: `${prefijo} mayoristas ${Math.random().toString(36).slice(2)}`,
       descuentoPct: d(10),
-      items: { create: [{ articuloId: x.id, precio: d(800) }] },
+      items: { create: [{ negocioId, articuloId: x.id, precio: d(800) }] },
     },
   });
-  const conLista = await tx.cliente.create({ data: { nombre: `${prefijo} con lista`, telefono: "351 455-6677", listaPrecioId: lista.id } });
-  const sinLista = await tx.cliente.create({ data: { nombre: `${prefijo} sin lista` } });
+  const conLista = await tx.cliente.create({ data: { negocioId, nombre: `${prefijo} con lista`, telefono: "351 455-6677", listaPrecioId: lista.id } });
+  const sinLista = await tx.cliente.create({ data: { negocioId, nombre: `${prefijo} sin lista` } });
   return { material, x, y, z, lista, conLista, sinLista };
 }
 
@@ -155,6 +170,7 @@ async function usuarioDePrueba(tx: Tx, nombre: string) {
 async function presupuestoBase(tx: Tx, prueba: Prueba, hoy = HOY) {
   const { id } = await crearPresupuestoEnTx(
     tx,
+    negocioId,
     datos(prueba.conLista.id, [
       { articuloId: prueba.x.id, cantidad: 2 },
       { articuloId: prueba.y.id, cantidad: 1 },
@@ -165,12 +181,14 @@ async function presupuestoBase(tx: Tx, prueba: Prueba, hoy = HOY) {
 }
 
 async function main() {
+  await resolverNegocio();
   const antes = await contarTodo(prisma);
 
   await escenario("Alta: precios congelados con la lista del cliente", async (tx) => {
     const t = await preparar(tx);
     const r = await crearPresupuestoEnTx(
       tx,
+      negocioId,
       datos(t.conLista.id, [
         { articuloId: t.x.id, cantidad: 2 },
         { articuloId: t.y.id, cantidad: "1.5" },
@@ -192,7 +210,7 @@ async function main() {
     comprobar("total = 2×800 + 1,5×450 + 3×900", num(total), "4975");
     comprobar("observaciones", String(p.observaciones), "Entrega en 5 días");
 
-    const sin = await crearPresupuestoEnTx(tx, datos(t.sinLista.id, [{ articuloId: t.x.id, cantidad: 1 }]), HOY);
+    const sin = await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, [{ articuloId: t.x.id, cantidad: 1 }]), HOY);
     comprobar("sin lista: catálogo", num((await leer(tx, sin.id)).linea(t.x.id).precioUnitario), "1210");
 
     comprobar("numeración correlativa", `${sin.numero - r.numero}`, "1");
@@ -200,6 +218,7 @@ async function main() {
 
     const repetido = await crearPresupuestoEnTx(
       tx,
+      negocioId,
       datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }, { articuloId: t.y.id, cantidad: 2 }]),
       HOY,
     );
@@ -208,29 +227,29 @@ async function main() {
     comprobar("artículo repetido: suma cantidades", num(rep.linea(t.y.id).cantidad), "3");
 
     // Numeración por año: otro año arranca de 1.
-    const otroAnio = await crearPresupuestoEnTx(tx, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), f("2098-03-01"));
+    const otroAnio = await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), f("2098-03-01"));
     comprobar("otro año arranca en 1", `${otroAnio.numero}/${otroAnio.anio}`, "1/2098");
   });
 
   await escenario("Alta: validaciones", async (tx) => {
     const t = await preparar(tx);
     const base = [{ articuloId: t.y.id, cantidad: 1 }];
-    await rechaza("sin artículos", "al menos un artículo", () => crearPresupuestoEnTx(tx, datos(t.sinLista.id, []), HOY));
-    await rechaza("cantidad 0", "mayor a 0", () => crearPresupuestoEnTx(tx, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 0 }]), HOY));
-    await rechaza("cantidad con 4 decimales", "3 decimales", () => crearPresupuestoEnTx(tx, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: "1.2345" }]), HOY));
-    await rechaza("validez 0", "validez", () => crearPresupuestoEnTx(tx, datos(t.sinLista.id, base, { validezDias: 0 }), HOY));
-    await rechaza("validez enorme", "validez", () => crearPresupuestoEnTx(tx, datos(t.sinLista.id, base, { validezDias: 366 }), HOY));
-    await rechaza("validez decimal", "validez", () => crearPresupuestoEnTx(tx, datos(t.sinLista.id, base, { validezDias: 1.5 }), HOY));
+    await rechaza("sin artículos", "al menos un artículo", () => crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, []), HOY));
+    await rechaza("cantidad 0", "mayor a 0", () => crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 0 }]), HOY));
+    await rechaza("cantidad con 4 decimales", "3 decimales", () => crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: "1.2345" }]), HOY));
+    await rechaza("validez 0", "validez", () => crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, base, { validezDias: 0 }), HOY));
+    await rechaza("validez enorme", "validez", () => crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, base, { validezDias: 366 }), HOY));
+    await rechaza("validez decimal", "validez", () => crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, base, { validezDias: 1.5 }), HOY));
     await rechaza("cliente inexistente", "cliente", () =>
-      crearPresupuestoEnTx(tx, datos("00000000-0000-4000-8000-0000000000aa", base), HOY),
+      crearPresupuestoEnTx(tx, negocioId, datos("00000000-0000-4000-8000-0000000000aa", base), HOY),
     );
     await tx.cliente.update({ where: { id: t.sinLista.id }, data: { activo: false } });
-    await rechaza("cliente de baja", "dado de baja", () => crearPresupuestoEnTx(tx, datos(t.sinLista.id, base), HOY));
+    await rechaza("cliente de baja", "dado de baja", () => crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, base), HOY));
     await tx.cliente.update({ where: { id: t.sinLista.id }, data: { activo: true } });
     await tx.articulo.update({ where: { id: t.y.id }, data: { activo: false } });
-    await rechaza("artículo de baja", "dado de baja", () => crearPresupuestoEnTx(tx, datos(t.sinLista.id, base), HOY));
+    await rechaza("artículo de baja", "dado de baja", () => crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, base), HOY));
     await rechaza("artículo inexistente", "artículo", () =>
-      crearPresupuestoEnTx(tx, datos(t.sinLista.id, [{ articuloId: "00000000-0000-4000-8000-0000000000bb", cantidad: 1 }]), HOY),
+      crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, [{ articuloId: "00000000-0000-4000-8000-0000000000bb", cantidad: 1 }]), HOY),
     );
   });
 
@@ -238,7 +257,7 @@ async function main() {
     const t = await preparar(tx);
     const id = await presupuestoBase(tx, t);
     const venta = await tx.venta.create({
-      data: { numero: 9_000_001, anio: 2097, clienteId: t.conLista.id, fecha: f("2097-01-01") },
+      data: { negocioId, numero: 9_000_001, anio: 2097, clienteId: t.conLista.id, fecha: f("2097-01-01") },
     });
     await violaLaBase(tx, "validezDias = 0", () => tx.presupuesto.update({ where: { id }, data: { validezDias: 0 } }));
     await violaLaBase(tx, "validezDias negativa", () => tx.presupuesto.update({ where: { id }, data: { validezDias: -3 } }));
@@ -248,7 +267,7 @@ async function main() {
     await violaLaBase(tx, "número 0", () => tx.presupuesto.update({ where: { id }, data: { numero: 0 } }));
     await violaLaBase(tx, "(año, número) repetido", async () => {
       const p = await tx.presupuesto.findUniqueOrThrow({ where: { id } });
-      await tx.presupuesto.create({ data: { numero: p.numero, anio: p.anio, clienteId: p.clienteId, fecha: HOY } });
+      await tx.presupuesto.create({ data: { negocioId, numero: p.numero, anio: p.anio, clienteId: p.clienteId, fecha: HOY } });
     });
     const item = (await tx.presupuestoItem.findFirstOrThrow({ where: { presupuestoId: id } })).id;
     await violaLaBase(tx, "cantidad 0", () => tx.presupuestoItem.update({ where: { id: item }, data: { cantidad: d(0) } }));
@@ -276,6 +295,7 @@ async function main() {
 
     await editarPresupuestoEnTx(
       tx,
+      negocioId,
       id,
       datos(
         t.conLista.id,
@@ -298,10 +318,11 @@ async function main() {
     comprobar("total = 5×800 + 1×450 + 1×900", num(e.total), num(d(4000).plus(450).plus(900)));
 
     // Quitar una línea y volver a agregarla: como ya no estaba al guardar de nuevo, vuelve a resolverse.
-    await editarPresupuestoEnTx(tx, id, datos(t.conLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), HOY);
+    await editarPresupuestoEnTx(tx, negocioId, id, datos(t.conLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), HOY);
     comprobar("se quitaron las demás líneas", String((await leer(tx, id)).p.items.length), "1");
     await editarPresupuestoEnTx(
       tx,
+      negocioId,
       id,
       datos(t.conLista.id, [{ articuloId: t.y.id, cantidad: 1 }, { articuloId: t.x.id, cantidad: 1 }]),
       HOY,
@@ -311,33 +332,33 @@ async function main() {
     comprobar("Y sigue congelada (450)", num(e.linea(t.y.id).precioUnitario), "450");
 
     // Cambiar el cliente reprecia todo, incluso lo que ya estaba.
-    await editarPresupuestoEnTx(tx, id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }, { articuloId: t.x.id, cantidad: 1 }]), HOY);
+    await editarPresupuestoEnTx(tx, negocioId, id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }, { articuloId: t.x.id, cantidad: 1 }]), HOY);
     e = await leer(tx, id);
     comprobar("otro cliente: Y a catálogo de hoy", num(e.linea(t.y.id).precioUnitario), "600");
     comprobar("otro cliente: X a catálogo de hoy", num(e.linea(t.x.id).precioUnitario), "2000");
     comprobar("otro cliente: descripción actual", e.linea(t.x.id).descripcion, "Prueba presupuestos X renombrado");
     comprobar("el cliente quedó cambiado", String(e.p.clienteId === t.sinLista.id), "true");
 
-    await rechaza("sin artículos", "al menos un artículo", () => editarPresupuestoEnTx(tx, id, datos(t.sinLista.id, []), HOY));
-    await rechaza("validez inválida", "validez", () => editarPresupuestoEnTx(tx, id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }], { validezDias: 0 }), HOY));
+    await rechaza("sin artículos", "al menos un artículo", () => editarPresupuestoEnTx(tx, negocioId, id, datos(t.sinLista.id, []), HOY));
+    await rechaza("validez inválida", "validez", () => editarPresupuestoEnTx(tx, negocioId, id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }], { validezDias: 0 }), HOY));
     await rechaza("presupuesto inexistente", "no existe", () =>
-      editarPresupuestoEnTx(tx, "00000000-0000-4000-8000-0000000000dd", datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), HOY),
+      editarPresupuestoEnTx(tx, negocioId, "00000000-0000-4000-8000-0000000000dd", datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), HOY),
     );
     // Una validez tan corta que lo dejaría vencido no se acepta.
-    const viejo = await crearPresupuestoEnTx(tx, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), dia(HOY, -10));
+    const viejo = await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), dia(HOY, -10));
     await rechaza("validez que lo dejaría vencido", "vencido", () =>
-      editarPresupuestoEnTx(tx, viejo.id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }], { validezDias: 5 }), HOY),
+      editarPresupuestoEnTx(tx, negocioId, viejo.id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }], { validezDias: 5 }), HOY),
     );
-    await editarPresupuestoEnTx(tx, viejo.id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }], { validezDias: 10 }), HOY);
+    await editarPresupuestoEnTx(tx, negocioId, viejo.id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }], { validezDias: 10 }), HOY);
     comprobar("validez justo hasta hoy: se acepta", String((await leer(tx, viejo.id)).p.validezDias), "10");
 
     // Una línea cuyo artículo se dio de baja después hay que quitarla para poder guardar.
-    await editarPresupuestoEnTx(tx, id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }, { articuloId: t.z.id, cantidad: 1 }]), HOY);
+    await editarPresupuestoEnTx(tx, negocioId, id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }, { articuloId: t.z.id, cantidad: 1 }]), HOY);
     await tx.articulo.update({ where: { id: t.z.id }, data: { activo: false } });
     await rechaza("línea cuyo artículo se dio de baja", "Quitalos", () =>
-      editarPresupuestoEnTx(tx, id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 2 }, { articuloId: t.z.id, cantidad: 1 }]), HOY),
+      editarPresupuestoEnTx(tx, negocioId, id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 2 }, { articuloId: t.z.id, cantidad: 1 }]), HOY),
     );
-    await editarPresupuestoEnTx(tx, id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 2 }]), HOY);
+    await editarPresupuestoEnTx(tx, negocioId, id, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 2 }]), HOY);
     comprobar("quitándola, guarda", num((await leer(tx, id)).linea(t.y.id).cantidad), "2");
   });
 
@@ -345,16 +366,16 @@ async function main() {
     const t = await preparar(tx);
     const items = [{ articuloId: t.y.id, cantidad: 1 }];
 
-    const vencido = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), AYER_LEJANO)).id;
-    await rechaza("vencido", "venció", () => editarPresupuestoEnTx(tx, vencido, datos(t.sinLista.id, items), HOY));
+    const vencido = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items), AYER_LEJANO)).id;
+    await rechaza("vencido", "venció", () => editarPresupuestoEnTx(tx, negocioId, vencido, datos(t.sinLista.id, items), HOY));
 
-    const anulado = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY)).id;
+    const anulado = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items), HOY)).id;
     await anularPresupuestoEnTx(tx, anulado);
-    await rechaza("anulado", "anulado", () => editarPresupuestoEnTx(tx, anulado, datos(t.sinLista.id, items), HOY));
+    await rechaza("anulado", "anulado", () => editarPresupuestoEnTx(tx, negocioId, anulado, datos(t.sinLista.id, items), HOY));
 
-    const convertido = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY)).id;
-    await convertirPresupuestoEnTx(tx, convertido, HOY);
-    await rechaza("convertido", "ya se convirtió", () => editarPresupuestoEnTx(tx, convertido, datos(t.sinLista.id, items), HOY));
+    const convertido = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items), HOY)).id;
+    await convertirPresupuestoEnTx(tx, negocioId, convertido, HOY);
+    await rechaza("convertido", "ya se convirtió", () => editarPresupuestoEnTx(tx, negocioId, convertido, datos(t.sinLista.id, items), HOY));
     comprobar("el vencido quedó intacto", String((await leer(tx, vencido)).p.items.length), "1");
   });
 
@@ -366,17 +387,17 @@ async function main() {
     comprobar("estado ANULADO", a.p.estado, "ANULADO");
     comprobar("la fila y sus líneas siguen", String(a.p.items.length), "2");
     await rechaza("anular dos veces", "ya estaba anulado", () => anularPresupuestoEnTx(tx, id));
-    await rechaza("convertir un anulado", "anulado", () => convertirPresupuestoEnTx(tx, id, HOY));
+    await rechaza("convertir un anulado", "anulado", () => convertirPresupuestoEnTx(tx, negocioId, id, HOY));
     await rechaza("anular uno inexistente", "no existe", () => anularPresupuestoEnTx(tx, "00000000-0000-4000-8000-0000000000ee"));
 
     // Un vencido sí se puede anular.
-    const vencido = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), AYER_LEJANO)).id;
+    const vencido = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), AYER_LEJANO)).id;
     await anularPresupuestoEnTx(tx, vencido);
     comprobar("vencido anulable", (await leer(tx, vencido)).p.estado, "ANULADO");
 
     // Uno convertido no: hay que anular la venta.
-    const conv = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), HOY)).id;
-    await convertirPresupuestoEnTx(tx, conv, HOY);
+    const conv = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), HOY)).id;
+    await convertirPresupuestoEnTx(tx, negocioId, conv, HOY);
     await rechaza("anular un convertido", "anulá la venta", () => anularPresupuestoEnTx(tx, conv));
   });
 
@@ -384,6 +405,7 @@ async function main() {
     const t = await preparar(tx);
     const origen = await crearPresupuestoEnTx(
       tx,
+      negocioId,
       datos(t.conLista.id, [{ articuloId: t.x.id, cantidad: 2 }, { articuloId: t.y.id, cantidad: 1 }], { validezDias: 20, observaciones: "Obs" }),
       AYER_LEJANO,
     );
@@ -391,7 +413,7 @@ async function main() {
     await tx.listaPrecioItem.updateMany({ where: { listaPrecioId: t.lista.id, articuloId: t.x.id }, data: { precio: d(950) } });
     await tx.articulo.update({ where: { id: t.y.id }, data: { precioVenta: d(700) } });
 
-    const copia = await duplicarPresupuestoEnTx(tx, origen.id, HOY);
+    const copia = await duplicarPresupuestoEnTx(tx, negocioId, origen.id, HOY);
     const c = await leer(tx, copia.id);
     comprobar("estado ABIERTO", c.p.estado, "ABIERTO");
     comprobar("número y fecha nuevos", String(copia.numero !== origen.numero && c.p.fecha.getTime() === HOY.getTime()), "true");
@@ -408,15 +430,15 @@ async function main() {
 
     // Se puede duplicar un anulado o un convertido.
     await anularPresupuestoEnTx(tx, origen.id);
-    const deAnulado = await duplicarPresupuestoEnTx(tx, origen.id, HOY);
+    const deAnulado = await duplicarPresupuestoEnTx(tx, negocioId, origen.id, HOY);
     comprobar("duplicar un anulado", (await leer(tx, deAnulado.id)).p.estado, "ABIERTO");
 
-    await rechaza("duplicar inexistente", "no existe", () => duplicarPresupuestoEnTx(tx, "00000000-0000-4000-8000-0000000000ff", HOY));
+    await rechaza("duplicar inexistente", "no existe", () => duplicarPresupuestoEnTx(tx, negocioId, "00000000-0000-4000-8000-0000000000ff", HOY));
     await tx.cliente.update({ where: { id: t.conLista.id }, data: { activo: false } });
-    await rechaza("duplicar con el cliente de baja", "dado de baja", () => duplicarPresupuestoEnTx(tx, origen.id, HOY));
+    await rechaza("duplicar con el cliente de baja", "dado de baja", () => duplicarPresupuestoEnTx(tx, negocioId, origen.id, HOY));
     await tx.cliente.update({ where: { id: t.conLista.id }, data: { activo: true } });
     await tx.articulo.update({ where: { id: t.x.id }, data: { activo: false } });
-    await rechaza("duplicar con un artículo de baja", "Quitalos", () => duplicarPresupuestoEnTx(tx, origen.id, HOY));
+    await rechaza("duplicar con un artículo de baja", "Quitalos", () => duplicarPresupuestoEnTx(tx, negocioId, origen.id, HOY));
   });
 
   await escenario("Conversión: precios congelados, sin pago y no entregada", async (tx) => {
@@ -431,7 +453,7 @@ async function main() {
     await tx.listaPrecio.update({ where: { id: t.lista.id }, data: { descuentoPct: d(50) } });
     await tx.listaPrecioItem.updateMany({ where: { listaPrecioId: t.lista.id }, data: { precio: d(1) } });
 
-    const r = await convertirPresupuestoEnTx(tx, id, HOY);
+    const r = await convertirPresupuestoEnTx(tx, negocioId, id, HOY);
     const venta = await tx.venta.findUniqueOrThrow({ where: { id: r.ventaId }, include: { items: true, pagos: true } });
     comprobar("total de la venta = total del presupuesto", num(venta.totalBruto), num(antesTotal));
     comprobar("precio X congelado", num(venta.items.find((i) => i.articuloId === t.x.id)!.precioUnitario), "800");
@@ -458,7 +480,7 @@ async function main() {
     const t = await preparar(tx);
     await tx.material.update({ where: { id: t.material.id }, data: { stockActual: d(1) } }); // necesita 4
     const id = await presupuestoBase(tx, t);
-    const r = await convertirPresupuestoEnTx(tx, id, HOY);
+    const r = await convertirPresupuestoEnTx(tx, negocioId, id, HOY);
     comprobar("convirtió", (await leer(tx, id)).p.estado, "CONVERTIDO");
     comprobar("advierte la falta de stock", String(r.advertencias.length === 1 && r.advertencias[0]!.includes("faltaron")), "true");
     comprobar("stock en 0", num((await tx.material.findUniqueOrThrow({ where: { id: t.material.id } })).stockActual), "0");
@@ -468,7 +490,7 @@ async function main() {
     const t = await preparar(tx);
     const id = await presupuestoBase(tx, t);
     await tx.articulo.update({ where: { id: t.x.id }, data: { ivaPct: d("10.5") } });
-    const r = await convertirPresupuestoEnTx(tx, id, HOY);
+    const r = await convertirPresupuestoEnTx(tx, negocioId, id, HOY);
     comprobar("advierte el cambio de IVA", String(r.advertencias.some((a) => a.includes("IVA cambió"))), "true");
     comprobar("el total sigue igual", num(r.totalBruto), "2050");
   });
@@ -478,36 +500,36 @@ async function main() {
     const items = [{ articuloId: t.y.id, cantidad: 1 }];
     const contarVentas = () => tx.venta.count({ where: { clienteId: { in: [t.conLista.id, t.sinLista.id] } } });
 
-    const vencido = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), AYER_LEJANO)).id;
-    await rechaza("vencido", "duplicalo", () => convertirPresupuestoEnTx(tx, vencido, HOY));
+    const vencido = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items), AYER_LEJANO)).id;
+    await rechaza("vencido", "duplicalo", () => convertirPresupuestoEnTx(tx, negocioId, vencido, HOY));
     comprobar("vencido sigue ABIERTO y sin venta", `${(await leer(tx, vencido)).p.estado} ${(await leer(tx, vencido)).p.ventaId}`, "ABIERTO null");
 
     // Justo en el último día válido todavía se convierte; un día después no.
-    const justo = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items, { validezDias: 10 }), dia(HOY, -10))).id;
-    const unDiaTarde = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items, { validezDias: 9 }), dia(HOY, -10))).id;
-    await rechaza("un día después del último día válido", "venció", () => convertirPresupuestoEnTx(tx, unDiaTarde, HOY));
-    await convertirPresupuestoEnTx(tx, justo, HOY);
+    const justo = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items, { validezDias: 10 }), dia(HOY, -10))).id;
+    const unDiaTarde = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items, { validezDias: 9 }), dia(HOY, -10))).id;
+    await rechaza("un día después del último día válido", "venció", () => convertirPresupuestoEnTx(tx, negocioId, unDiaTarde, HOY));
+    await convertirPresupuestoEnTx(tx, negocioId, justo, HOY);
     comprobar("el último día válido sí convierte", (await leer(tx, justo)).p.estado, "CONVERTIDO");
 
-    const anulado = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY)).id;
+    const anulado = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items), HOY)).id;
     await anularPresupuestoEnTx(tx, anulado);
-    await rechaza("anulado", "anulado", () => convertirPresupuestoEnTx(tx, anulado, HOY));
+    await rechaza("anulado", "anulado", () => convertirPresupuestoEnTx(tx, negocioId, anulado, HOY));
 
     const antesDoble = await contarVentas();
-    await rechaza("ya convertido", "ya se convirtió", () => convertirPresupuestoEnTx(tx, justo, HOY));
+    await rechaza("ya convertido", "ya se convirtió", () => convertirPresupuestoEnTx(tx, negocioId, justo, HOY));
     comprobar("convertir de nuevo no crea otra venta", String((await contarVentas()) - antesDoble), "0");
 
-    const deBaja = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY)).id;
+    const deBaja = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items), HOY)).id;
     await tx.cliente.update({ where: { id: t.sinLista.id }, data: { activo: false } });
-    await rechaza("cliente dado de baja", "dado de baja", () => convertirPresupuestoEnTx(tx, deBaja, HOY));
+    await rechaza("cliente dado de baja", "dado de baja", () => convertirPresupuestoEnTx(tx, negocioId, deBaja, HOY));
     comprobar("el presupuesto sigue ABIERTO", (await leer(tx, deBaja)).p.estado, "ABIERTO");
     await tx.cliente.update({ where: { id: t.sinLista.id }, data: { activo: true } });
 
-    const sinArticulo = (await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY)).id;
+    const sinArticulo = (await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items), HOY)).id;
     await tx.articulo.update({ where: { id: t.y.id }, data: { activo: false } });
-    await rechaza("artículo dado de baja", "dado de baja", () => convertirPresupuestoEnTx(tx, sinArticulo, HOY));
+    await rechaza("artículo dado de baja", "dado de baja", () => convertirPresupuestoEnTx(tx, negocioId, sinArticulo, HOY));
 
-    await rechaza("presupuesto inexistente", "no existe", () => convertirPresupuestoEnTx(tx, "00000000-0000-4000-8000-000000000011", HOY));
+    await rechaza("presupuesto inexistente", "no existe", () => convertirPresupuestoEnTx(tx, negocioId, "00000000-0000-4000-8000-000000000011", HOY));
   });
 
   await escenario("Trazabilidad (8.2): quién creó, duplicó y convirtió", async (tx) => {
@@ -518,31 +540,31 @@ async function main() {
     const items = [{ articuloId: t.x.id, cantidad: 2 }, { articuloId: t.y.id, cantidad: 1 }];
     const creador = async (id: string) => (await tx.presupuesto.findUniqueOrThrow({ where: { id } })).usuarioId;
 
-    const r = await crearPresupuestoEnTx(tx, datos(t.conLista.id, items), HOY, ana.id);
+    const r = await crearPresupuestoEnTx(tx, negocioId, datos(t.conLista.id, items), HOY, ana.id);
     comprobar("crear guarda el usuario", String((await creador(r.id)) === ana.id), "true");
     const leido = await tx.presupuesto.findUniqueOrThrow({ where: { id: r.id }, include: { usuario: { select: { nombre: true } } } });
     comprobar("se lee el nombre para mostrar", String(leido.usuario?.nombre), "Ana de prueba");
 
-    const sinUsuario = await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY, null);
+    const sinUsuario = await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items), HOY, null);
     comprobar("con null queda NULL", String(await creador(sinUsuario.id)), "null");
-    const omitido = await crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY);
+    const omitido = await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items), HOY);
     comprobar("sin pasar usuario queda NULL", String(await creador(omitido.id)), "null");
 
     // El creador se fija al crear: editar (con el mismo flujo de siempre) no lo cambia.
-    await editarPresupuestoEnTx(tx, r.id, datos(t.conLista.id, [{ articuloId: t.x.id, cantidad: 3 }]), HOY);
+    await editarPresupuestoEnTx(tx, negocioId, r.id, datos(t.conLista.id, [{ articuloId: t.x.id, cantidad: 3 }]), HOY);
     comprobar("editar no cambia quién lo creó", String((await creador(r.id)) === ana.id), "true");
     await anularPresupuestoEnTx(tx, sinUsuario.id);
     comprobar("anular no le inventa un creador", String(await creador(sinUsuario.id)), "null");
 
     // El duplicado queda a nombre de quien duplica, el original no cambia.
-    const copia = await duplicarPresupuestoEnTx(tx, r.id, HOY, beto.id);
+    const copia = await duplicarPresupuestoEnTx(tx, negocioId, r.id, HOY, beto.id);
     comprobar("duplicar: a nombre de quien duplica", String((await creador(copia.id)) === beto.id), "true");
     comprobar("duplicar: el original sigue de su creador", String((await creador(r.id)) === ana.id), "true");
-    const copiaSin = await duplicarPresupuestoEnTx(tx, r.id, HOY, null);
+    const copiaSin = await duplicarPresupuestoEnTx(tx, negocioId, r.id, HOY, null);
     comprobar("duplicar sin usuario: NULL (no hereda el del original)", String(await creador(copiaSin.id)), "null");
 
     // Convertir: la venta, su movimiento de stock y el presupuesto, cada cual con su dato.
-    const conv = await convertirPresupuestoEnTx(tx, r.id, HOY, carla.id);
+    const conv = await convertirPresupuestoEnTx(tx, negocioId, r.id, HOY, carla.id);
     const venta = await tx.venta.findUniqueOrThrow({ where: { id: conv.ventaId }, include: { usuario: { select: { nombre: true } } } });
     const movimientos = await tx.movimientoStock.findMany({ where: { ventaId: conv.ventaId } });
     comprobar("convertir: la venta queda a nombre de quien convierte", String(venta.usuarioId === carla.id), "true");
@@ -551,12 +573,12 @@ async function main() {
     comprobar("convertir: los movimientos también", String(movimientos.every((m) => m.usuarioId === carla.id)), "true");
     comprobar("convertir: el presupuesto conserva a su creador", String((await creador(r.id)) === ana.id), "true");
 
-    const conv2 = await convertirPresupuestoEnTx(tx, copiaSin.id, HOY);
+    const conv2 = await convertirPresupuestoEnTx(tx, negocioId, copiaSin.id, HOY);
     comprobar("convertir sin usuario: la venta queda NULL", String((await tx.venta.findUniqueOrThrow({ where: { id: conv2.ventaId } })).usuarioId), "null");
 
     // La base: FK y RESTRICT (cada violacion en su savepoint).
     await violaLaBase(tx, "FK: un usuario inexistente se rechaza", () =>
-      crearPresupuestoEnTx(tx, datos(t.sinLista.id, items), HOY, "00000000-0000-4000-8000-0000000000dd"),
+      crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, items), HOY, "00000000-0000-4000-8000-0000000000dd"),
     );
     await violaLaBase(tx, "RESTRICT: no se borra un usuario con presupuestos", () => tx.usuario.delete({ where: { id: ana.id } }));
     comprobar("el usuario sigue ahí", String((await tx.usuario.count({ where: { id: ana.id } })) === 1), "true");
@@ -604,7 +626,7 @@ async function lockDistinto() {
       prisma
         .$transaction(async (tx) => {
           const t = await preparar(tx);
-          await crearPresupuestoEnTx(tx, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), HOY);
+          await crearPresupuestoEnTx(tx, negocioId, datos(t.sinLista.id, [{ articuloId: t.y.id, cantidad: 1 }]), HOY);
           throw new Deshacer();
         })
         .catch((e) => (e instanceof Deshacer ? "creado" : `error ${e}`)),
@@ -661,21 +683,22 @@ async function concurrencia() {
     await limpiarConcurrencia(); // restos de una corrida interrumpida
 
     const material = await prisma.material.create({
-      data: { nombre: `${PREFIJO} material`, unidad: "U", stockActual: d(1000), costoUnitario: d(10) },
+      data: { negocioId, nombre: `${PREFIJO} material`, unidad: "U", stockActual: d(1000), costoUnitario: d(10) },
     });
     const articulo = await prisma.articulo.create({
       data: {
+        negocioId,
         nombre: `${PREFIJO} X`,
         precioVenta: d(1000),
-        receta: { create: { componentes: { create: [{ tipo: "MATERIAL", materialId: material.id, cantidad: d(2) }] } } },
+        receta: { create: { negocioId, componentes: { create: [{ negocioId, tipo: "MATERIAL", materialId: material.id, cantidad: d(2) }] } } },
       },
     });
-    const cliente = await prisma.cliente.create({ data: { nombre: `${PREFIJO} cliente` } });
+    const cliente = await prisma.cliente.create({ data: { negocioId, nombre: `${PREFIJO} cliente` } });
     const nuevo = (cantidad: number) =>
-      prisma.$transaction((tx) => crearPresupuestoEnTx(tx, datos(cliente.id, [{ articuloId: articulo.id, cantidad }]), ANIO_FICTICIO));
+      prisma.$transaction((tx) => crearPresupuestoEnTx(tx, negocioId, datos(cliente.id, [{ articuloId: articulo.id, cantidad }]), ANIO_FICTICIO));
 
     // 1. Seis altas simultaneas: numeros 1..6 sin repetir ni dejar huecos.
-    const altas = await Promise.all([1, 2, 3, 4, 5, 6].map((n) => (n % 2 ? a : b).$transaction((tx) => crearPresupuestoEnTx(tx, datos(cliente.id, [{ articuloId: articulo.id, cantidad: n }]), ANIO_FICTICIO))));
+    const altas = await Promise.all([1, 2, 3, 4, 5, 6].map((n) => (n % 2 ? a : b).$transaction((tx) => crearPresupuestoEnTx(tx, negocioId, datos(cliente.id, [{ articuloId: articulo.id, cantidad: n }]), ANIO_FICTICIO))));
     comprobar("altas simultáneas: numeración sin repetidos ni huecos", altas.map((x) => x.numero).sort((p, q) => p - q).join(","), "1,2,3,4,5,6");
 
     // 2. Dos conversiones simultaneas (varias rondas): una sola venta, la otra recibe un error claro.
@@ -683,10 +706,10 @@ async function concurrencia() {
       const { id } = await nuevo(3);
       const stockAntes = (await prisma.material.findUniqueOrThrow({ where: { id: material.id } })).stockActual;
       const resultados = await Promise.allSettled([
-        a.$transaction((tx) => convertirPresupuestoEnTx(tx, id, ANIO_FICTICIO), { timeout: 30_000 }),
-        b.$transaction((tx) => convertirPresupuestoEnTx(tx, id, ANIO_FICTICIO), { timeout: 30_000 }),
-        a.$transaction((tx) => convertirPresupuestoEnTx(tx, id, ANIO_FICTICIO), { timeout: 30_000 }),
-        b.$transaction((tx) => convertirPresupuestoEnTx(tx, id, ANIO_FICTICIO), { timeout: 30_000 }),
+        a.$transaction((tx) => convertirPresupuestoEnTx(tx, negocioId, id, ANIO_FICTICIO), { timeout: 30_000 }),
+        b.$transaction((tx) => convertirPresupuestoEnTx(tx, negocioId, id, ANIO_FICTICIO), { timeout: 30_000 }),
+        a.$transaction((tx) => convertirPresupuestoEnTx(tx, negocioId, id, ANIO_FICTICIO), { timeout: 30_000 }),
+        b.$transaction((tx) => convertirPresupuestoEnTx(tx, negocioId, id, ANIO_FICTICIO), { timeout: 30_000 }),
       ]);
       const ok = resultados.filter((r) => r.status === "fulfilled");
       const fallidas = resultados.filter((r): r is PromiseRejectedResult => r.status === "rejected");
@@ -710,9 +733,9 @@ async function concurrencia() {
     // 3. Convertir y editar a la vez: gane quien gane, la venta tiene el total del presupuesto final.
     for (const ronda of [1, 2, 3]) {
       const { id } = await nuevo(2);
-      const convertir = () => a.$transaction((tx) => convertirPresupuestoEnTx(tx, id, ANIO_FICTICIO), { timeout: 30_000 });
+      const convertir = () => a.$transaction((tx) => convertirPresupuestoEnTx(tx, negocioId, id, ANIO_FICTICIO), { timeout: 30_000 });
       const editar = () =>
-        b.$transaction((tx) => editarPresupuestoEnTx(tx, id, datos(cliente.id, [{ articuloId: articulo.id, cantidad: 7 }]), ANIO_FICTICIO), { timeout: 30_000 });
+        b.$transaction((tx) => editarPresupuestoEnTx(tx, negocioId, id, datos(cliente.id, [{ articuloId: articulo.id, cantidad: 7 }]), ANIO_FICTICIO), { timeout: 30_000 });
       // Se alterna quien sale primero.
       const [conv, edit] =
         ronda % 2 === 1

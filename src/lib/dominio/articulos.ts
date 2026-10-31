@@ -16,7 +16,7 @@ const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  * maquina exista y este activo, y que no haya otro articulo activo con el mismo
  * nombre (en la venta se elige por nombre: dos iguales serian una trampa).
  */
-export async function guardarArticuloEnTx(tx: Tx, a: ArticuloValidado): Promise<{ id: string }> {
+export async function guardarArticuloEnTx(tx: Tx, negocioId: string, a: ArticuloValidado): Promise<{ id: string }> {
   if (a.id) {
     const existente = await tx.articulo.findUnique({ where: { id: a.id }, select: { id: true } });
     if (!existente) throw new ErrorDeNegocio("El artículo no existe.");
@@ -35,6 +35,7 @@ export async function guardarArticuloEnTx(tx: Tx, a: ArticuloValidado): Promise<
   await controlarComponentes(tx, a);
 
   const datos = {
+    negocioId,
     nombre: a.nombre,
     descripcion: a.descripcion,
     precioVenta: a.precioVenta,
@@ -53,14 +54,14 @@ export async function guardarArticuloEnTx(tx: Tx, a: ArticuloValidado): Promise<
   // queda "sin receta", que es lo mismo pero sin una fila de mas.
   if (a.componentes.length > 0) {
     const recetaId =
-      receta?.id ?? (await tx.receta.create({ data: { articuloId: articulo.id }, select: { id: true } })).id;
+      receta?.id ?? (await tx.receta.create({ data: { negocioId, articuloId: articulo.id }, select: { id: true } })).id;
     // Los componentes se leen `orderBy: { id: "asc" }` (editor, catalogo,
     // venta). Con uuid al azar el orden que cargo el usuario se perderia: se
     // generan los ids, se ordenan y se asignan en el orden de las lineas.
     // Postgres compara uuid byte a byte, igual que el texto hexadecimal.
     const ids = a.componentes.map(() => randomUUID()).sort();
     await tx.recetaComponente.createMany({
-      data: a.componentes.map((c, i) => ({ id: ids[i]!, recetaId, ...c })),
+      data: a.componentes.map((c, i) => ({ id: ids[i]!, negocioId, recetaId, ...c })),
     });
   }
 

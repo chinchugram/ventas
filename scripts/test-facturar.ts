@@ -60,6 +60,19 @@ modulo._load = function (this: unknown, request: string, ...resto: unknown[]) {
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { prisma } = require("../src/lib/prisma") as typeof import("../src/lib/prisma");
+
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
 const { COOKIE_SESION } = require("../src/lib/auth") as typeof import("../src/lib/auth");
 const { crearSesion, crearUsuarioEnTx } = require("../src/lib/dominio/auth") as typeof import("../src/lib/dominio/auth");
 const { registrarVentaEnTx, anularVentaEnTx } = require("../src/lib/dominio/ventas") as typeof import("../src/lib/dominio/ventas");
@@ -207,6 +220,7 @@ async function configurarFiscal(valores: Partial<Record<keyof typeof CLAVES_FISC
 }
 
 async function main() {
+  await resolverNegocio();
   const { dbDisponible } = require("../src/lib/prisma") as typeof import("../src/lib/prisma"); // eslint-disable-line @typescript-eslint/no-require-imports
   if (!(await dbDisponible())) {
     console.error("No hay base de datos: esta prueba necesita Postgres (DATABASE_URL).");
@@ -222,18 +236,18 @@ async function main() {
   const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-emp`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
   const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-due`, nombre: "Dueno de prueba", rol: "DUENO", clave: CLAVE }));
   const baja = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-baja`, nombre: "Empleado dado de baja", rol: "EMPLEADO", clave: CLAVE }));
-  const tEmp = (await crearSesion(prisma, emp.id)).token;
-  const tDue = (await crearSesion(prisma, due.id)).token;
-  const tBaja = (await crearSesion(prisma, baja.id)).token;
+  const tEmp = (await crearSesion(prisma, negocioId, emp.id)).token;
+  const tDue = (await crearSesion(prisma, negocioId, due.id)).token;
+  const tBaja = (await crearSesion(prisma, negocioId, baja.id)).token;
   await prisma.usuario.update({ where: { id: baja.id }, data: { activo: false } });
   const tFalso = generarToken();
 
   await configurarFiscal();
-  const articulo = await prisma.articulo.create({ data: { nombre: `${PREFIJO}${MARCA} servicio`, precioVenta: "1210", ivaPct: "21", esServicio: true } });
-  const cliente = await prisma.cliente.create({ data: { nombre: `${PREFIJO}${MARCA} cliente`, direccion: "Mostrador" } });
+  const articulo = await prisma.articulo.create({ data: { negocioId, nombre: `${PREFIJO}${MARCA} servicio`, precioVenta: "1210", ivaPct: "21", esServicio: true } });
+  const cliente = await prisma.cliente.create({ data: { negocioId, nombre: `${PREFIJO}${MARCA} cliente`, direccion: "Mostrador" } });
   const nuevaVenta = () =>
     prisma.$transaction((tx) =>
-      registrarVentaEnTx(tx, { clienteId: cliente.id, fecha: FECHA_VENTA, observaciones: MARCA, entregada: false, items: [{ articuloId: articulo.id, cantidad: d("1") }], pago: null }),
+      registrarVentaEnTx(tx, negocioId, { clienteId: cliente.id, fecha: FECHA_VENTA, observaciones: MARCA, entregada: false, items: [{ articuloId: articulo.id, cantidad: d("1") }], pago: null }),
     );
   const comprobantesDe = (ventaId: string) => prisma.comprobante.findMany({ where: { ventaId }, orderBy: { creadoEn: "asc" } });
   const vigentes = (ventaId: string) => prisma.comprobante.count({ where: { ventaId, estado: { in: ["PENDIENTE", "EMITIDO"] } } });
@@ -287,7 +301,7 @@ async function main() {
   // ── Venta anulada ───────────────────────────────────────────────────────────
   console.log("--- Venta anulada ---");
   const vAnulada = await nuevaVenta();
-  await prisma.$transaction((tx) => anularVentaEnTx(tx, vAnulada.id));
+  await prisma.$transaction((tx) => anularVentaEnTx(tx, negocioId, vAnulada.id));
   const rAn = await invocar(tEmp, comprobantesA.emitirFactura, { ventaId: vAnulada.id });
   comprobar("venta anulada: no se factura", `${rAn.ok} ${rAn.error}`, "false No se factura una venta anulada.");
   comprobar("venta anulada: sin comprobantes", String((await comprobantesDe(vAnulada.id)).length), "0");
@@ -379,7 +393,7 @@ async function main() {
   // ── Reintento tras un rechazo ───────────────────────────────────────────────
   console.log("--- Reintento tras un rechazo ---");
   const vRech = await nuevaVenta();
-  const rechazo = await emitirDeDominio(prisma, vRech.id, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { rechazar: () => ["[10016] prueba de rechazo"] }) });
+  const rechazo = await emitirDeDominio(prisma, negocioId, vRech.id, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { rechazar: () => ["[10016] prueba de rechazo"] }) });
   comprobar("preparación: la factura quedó RECHAZADA", rechazo.estado, "RECHAZADO");
   const panelRech = texto(await conSesion(tEmp, () => FacturarPanel({ ventaId: vRech.id })));
   comprobar("panel: muestra las observaciones del rechazo y ofrece reintentar", `${panelRech.includes("prueba de rechazo")} ${panelRech.includes('"reintento":true')} ${panelRech.includes('"visible":true')}`, "true true true");
@@ -392,7 +406,7 @@ async function main() {
   // ── Resolver un PENDIENTE ───────────────────────────────────────────────────
   console.log("--- Resolver un PENDIENTE ---");
   const vPend = await nuevaVenta();
-  const cortado = await emitirDeDominio(prisma, vPend.id, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { cortar: () => true }) });
+  const cortado = await emitirDeDominio(prisma, negocioId, vPend.id, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { cortar: () => true }) });
   comprobar("preparación: la factura quedó PENDIENTE", cortado.estado, "PENDIENTE");
   const vOtra = await nuevaVenta();
   const rBloq = await invocar(tEmp, comprobantesA.emitirFactura, { ventaId: vOtra.id });

@@ -80,12 +80,12 @@ async function verificarLista(tx: Tx, listaPrecioId: string | null | undefined, 
   if (!lista.activo) throw new ErrorDeNegocio("La lista de precios está dada de baja.");
 }
 
-export async function crearClienteEnTx(tx: Tx, datos: DatosCliente): Promise<{ id: string }> {
+export async function crearClienteEnTx(tx: Tx, negocioId: string, datos: DatosCliente): Promise<{ id: string }> {
   const cuit = cuitParaGuardar(datos.cuit);
   await verificarCuitLibre(tx, cuit);
   await verificarLista(tx, datos.listaPrecioId);
   const creado = await tx.cliente.create({
-    data: { ...datos, nombre: datos.nombre.trim(), cuit, dni: dniParaGuardar(datos.dni) },
+    data: { ...datos, negocioId, nombre: datos.nombre.trim(), cuit, dni: dniParaGuardar(datos.dni) },
     select: { id: true },
   });
   return creado;

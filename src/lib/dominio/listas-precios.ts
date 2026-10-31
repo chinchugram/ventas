@@ -82,12 +82,12 @@ function verificarDescuento(descuentoPct: Dinero) {
 }
 
 /** `usuarioId` es quien la crea (null = sin usuario): queda fijo, editar no lo cambia. */
-export async function crearListaEnTx(tx: Tx, datos: DatosLista, usuarioId?: string | null): Promise<{ id: string }> {
+export async function crearListaEnTx(tx: Tx, negocioId: string, datos: DatosLista, usuarioId?: string | null): Promise<{ id: string }> {
   const nombre = datos.nombre.trim();
   verificarDescuento(datos.descuentoPct);
   await verificarNombreLibre(tx, nombre);
   return tx.listaPrecio.create({
-    data: { nombre, descuentoPct: datos.descuentoPct, usuarioId: usuarioId ?? null },
+    data: { negocioId, nombre, descuentoPct: datos.descuentoPct, usuarioId: usuarioId ?? null },
     select: { id: true },
   });
 }
@@ -112,7 +112,7 @@ export async function cambiarActivoListaEnTx(tx: Tx, id: string, activo: boolean
 }
 
 /** Alta o edicion del precio especifico de un articulo en una lista (uno por par). */
-export async function guardarPrecioListaEnTx(tx: Tx, listaId: string, articuloId: string, precio: Dinero): Promise<void> {
+export async function guardarPrecioListaEnTx(tx: Tx, negocioId: string, listaId: string, articuloId: string, precio: Dinero): Promise<void> {
   if (precio.lt(0)) throw new ErrorDeNegocio("El precio no puede ser negativo.");
   const lista = await tx.listaPrecio.findUnique({ where: { id: listaId }, select: { id: true } });
   if (!lista) throw new ErrorDeNegocio("La lista no existe.");
@@ -120,7 +120,7 @@ export async function guardarPrecioListaEnTx(tx: Tx, listaId: string, articuloId
   if (!articulo) throw new ErrorDeNegocio("El artículo no existe o está dado de baja.");
   await tx.listaPrecioItem.upsert({
     where: { listaPrecioId_articuloId: { listaPrecioId: listaId, articuloId } },
-    create: { listaPrecioId: listaId, articuloId, precio },
+    create: { negocioId, listaPrecioId: listaId, articuloId, precio },
     update: { precio },
   });
 }

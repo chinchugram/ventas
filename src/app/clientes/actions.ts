@@ -9,6 +9,7 @@ import type { UsuarioSesion } from "@/lib/auth";
 import { mensajeDeError, primerError, SIN_BASE, textoOpcional, type Resultado } from "@/lib/acciones";
 import { CONDICIONES_IVA_CLIENTE, cambiarActivoClienteEnTx, crearClienteEnTx, editarClienteEnTx } from "@/lib/dominio/clientes";
 import { normalizarDni } from "@/lib/comprobantes";
+import { negocioUnico } from "@/lib/dominio/auth";
 
 export type { Resultado } from "@/lib/acciones";
 
@@ -63,7 +64,7 @@ export async function crearCliente(datos: DatosCliente): Promise<{ ok: true; id:
 
   let id: string;
   try {
-    ({ id } = await prisma.$transaction((tx) => crearClienteEnTx(tx, parsed.data)));
+    ({ id } = await prisma.$transaction(async (tx) => crearClienteEnTx(tx, await negocioUnico(tx), parsed.data)));
   } catch (error) {
     if (esCuitDuplicado(error)) return { ok: false, error: "Ya hay un cliente con ese CUIT." };
     console.error("[crearCliente]", error);

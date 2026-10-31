@@ -71,6 +71,19 @@ modulo._load = function (this: unknown, request: string, ...resto: unknown[]) {
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { prisma } = require("../src/lib/prisma") as typeof import("../src/lib/prisma");
+
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
 const { COOKIE_SESION } = require("../src/lib/auth") as typeof import("../src/lib/auth");
 const { crearSesion, crearUsuarioEnTx } = require("../src/lib/dominio/auth") as typeof import("../src/lib/dominio/auth");
 const { registrarVentaEnTx } = require("../src/lib/dominio/ventas") as typeof import("../src/lib/dominio/ventas");
@@ -237,6 +250,7 @@ const PERMISO = "No tenés permiso";
 const SIN_SESION = "Tu sesión terminó";
 
 async function main() {
+  await resolverNegocio();
   const { dbDisponible } = require("../src/lib/prisma") as typeof import("../src/lib/prisma");
   if (!(await dbDisponible())) {
     console.error("No hay base de datos: esta prueba necesita Postgres (DATABASE_URL).");
@@ -252,33 +266,33 @@ async function main() {
   const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-emp`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
   const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-due`, nombre: "Dueno de prueba", rol: "DUENO", clave: CLAVE }));
   const baja = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-baja`, nombre: "Empleado dado de baja", rol: "EMPLEADO", clave: CLAVE }));
-  const tEmp = (await crearSesion(prisma, emp.id)).token;
-  const tDue = (await crearSesion(prisma, due.id)).token;
-  const tBaja = (await crearSesion(prisma, baja.id)).token;
+  const tEmp = (await crearSesion(prisma, negocioId, emp.id)).token;
+  const tDue = (await crearSesion(prisma, negocioId, due.id)).token;
+  const tBaja = (await crearSesion(prisma, negocioId, baja.id)).token;
   await prisma.usuario.update({ where: { id: baja.id }, data: { activo: false } });
   const tFalso = generarToken(); // formato valido, no existe en la base
 
   // Fixtures de datos.
-  const cliente = await prisma.cliente.create({ data: { nombre: `${MARCA} cliente` } });
+  const cliente = await prisma.cliente.create({ data: { negocioId, nombre: `${MARCA} cliente` } });
   const articulo = await prisma.articulo.create({
-    data: { nombre: `${MARCA} servicio`, precioVenta: "1000", ivaPct: "21", esServicio: true },
+    data: { negocioId, nombre: `${MARCA} servicio`, precioVenta: "1000", ivaPct: "21", esServicio: true },
   });
   const material = await prisma.material.create({
-    data: { nombre: `${MARCA} material`, unidad: "U", stockActual: "10", stockMinimo: "1", costoUnitario: "7777", precioVenta: "8888" },
+    data: { negocioId, nombre: `${MARCA} material`, unidad: "U", stockActual: "10", stockMinimo: "1", costoUnitario: "7777", precioVenta: "8888" },
   });
   const materialBajo = await prisma.material.create({
-    data: { nombre: `${MARCA} material bajo`, unidad: "U", stockActual: "0", stockMinimo: "5", costoUnitario: "6543" },
+    data: { negocioId, nombre: `${MARCA} material bajo`, unidad: "U", stockActual: "0", stockMinimo: "5", costoUnitario: "6543" },
   });
-  const maquina = await prisma.maquina.create({ data: { nombre: `${MARCA} maquina`, costoHora: "4321" } });
+  const maquina = await prisma.maquina.create({ data: { negocioId, nombre: `${MARCA} maquina`, costoHora: "4321" } });
   const crearVenta = (entregada: boolean) =>
     prisma.$transaction((tx) =>
-      registrarVentaEnTx(tx, { clienteId: cliente.id, fecha: hoyArgentina(), observaciones: MARCA, entregada, items: [{ articuloId: articulo.id, cantidad: d("2") }], pago: null }),
+      registrarVentaEnTx(tx, negocioId, { clienteId: cliente.id, fecha: hoyArgentina(), observaciones: MARCA, entregada, items: [{ articuloId: articulo.id, cantidad: d("2") }], pago: null }),
     );
   const v1 = await crearVenta(false); // el empleado la cobra y la entrega
   const v2 = await crearVenta(false); // prohibido anularla
   const v3 = await crearVenta(true); // con un pago que no puede anular
   const pagoV3 = await prisma.$transaction((tx) =>
-    registrarPagoEnTx(tx, { ventaId: v3.id, monto: d("500"), metodo: "EFECTIVO", fecha: hoyArgentina(), notas: null }),
+    registrarPagoEnTx(tx, negocioId, { ventaId: v3.id, monto: d("500"), metodo: "EFECTIVO", fecha: hoyArgentina(), notas: null }),
   );
   const hoy = hoyArgentinaISO();
   comprobar("fixtures creados", String(Boolean(cliente.id && articulo.id && material.id && maquina.id && v1.id && v2.id && v3.id && pagoV3.id)), "true");
@@ -287,24 +301,26 @@ async function main() {
   // un cliente con lista asignada y presupuestos.
   const articuloReceta = await prisma.articulo.create({
     data: {
+      negocioId,
       nombre: `${MARCA} con receta`,
       precioVenta: "20000",
       ivaPct: "21",
-      receta: { create: { componentes: { create: [{ tipo: "MATERIAL", materialId: material.id, cantidad: "1" }] } } },
+      receta: { create: { negocioId, componentes: { create: [{ negocioId, tipo: "MATERIAL", materialId: material.id, cantidad: "1" }] } } },
     },
   });
   const lista = await prisma.listaPrecio.create({
     data: {
+      negocioId,
       nombre: `${MARCA} lista`,
       descuentoPct: "10",
-      items: { create: [{ articuloId: articuloReceta.id, precio: "100" }, { articuloId: articulo.id, precio: "900" }] },
+      items: { create: [{ negocioId, articuloId: articuloReceta.id, precio: "100" }, { negocioId, articuloId: articulo.id, precio: "900" }] },
     },
   });
-  const listaOtra = await prisma.listaPrecio.create({ data: { nombre: `${MARCA} lista otra`, descuentoPct: "5" } });
-  const clienteConLista = await prisma.cliente.create({ data: { nombre: `${MARCA} cliente con lista`, listaPrecioId: lista.id } });
+  const listaOtra = await prisma.listaPrecio.create({ data: { negocioId, nombre: `${MARCA} lista otra`, descuentoPct: "5" } });
+  const clienteConLista = await prisma.cliente.create({ data: { negocioId, nombre: `${MARCA} cliente con lista`, listaPrecioId: lista.id } });
   const presupuestoNuevo = (clienteId: string) =>
     prisma.$transaction((tx) =>
-      crearPresupuestoEnTx(tx, { clienteId, validezDias: 15, observaciones: null, items: [{ articuloId: articulo.id, cantidad: d("1") }] }, hoyArgentina()),
+      crearPresupuestoEnTx(tx, negocioId, { clienteId, validezDias: 15, observaciones: null, items: [{ articuloId: articulo.id, cantidad: d("1") }] }, hoyArgentina()),
     );
   const pBase = await presupuestoNuevo(cliente.id); // lo usan los intentos sin permiso
   comprobar("fixtures de la ola 7 creados", String(Boolean(articuloReceta.id && lista.id && listaOtra.id && clienteConLista.id && pBase.id)), "true");

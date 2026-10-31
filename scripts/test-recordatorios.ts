@@ -55,6 +55,19 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 /** Corre `fn` en una transaccion que siempre se deshace. */
@@ -91,13 +104,14 @@ async function usuarioDePrueba(tx: Tx, nombre: string) {
 }
 
 async function clienteDePrueba(tx: Tx, nombre = "Cliente de recordatorios", telefono: string | null = "351 455-6677") {
-  return tx.cliente.create({ data: { nombre, telefono } });
+  return tx.cliente.create({ data: { negocioId, nombre, telefono } });
 }
 
 async function main() {
+  await resolverNegocio();
   await escenario("Registrar un contacto", async (tx) => {
     const c = await clienteDePrueba(tx);
-    const { id } = await registrarContactoEnTx(tx, {
+    const { id } = await registrarContactoEnTx(tx, negocioId, {
       clienteId: c.id,
       fecha: hoy,
       nota: "  No atendió, probar a la tarde  ",
@@ -110,10 +124,10 @@ async function main() {
     comprobar("próximo contacto", iso(guardado.proximoContacto), iso(dia(2)));
     comprobar("creadoEn se completa solo", String(guardado.creadoEn instanceof Date), "true");
 
-    const sin = await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "Prometió pagar", proximoContacto: null });
+    const sin = await registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "Prometió pagar", proximoContacto: null });
     comprobar("próximo contacto opcional", String((await tx.contactoCobranza.findUniqueOrThrow({ where: { id: sin.id } })).proximoContacto), "null");
 
-    const mismoDia = await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "Hoy mismo", proximoContacto: hoy });
+    const mismoDia = await registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "Hoy mismo", proximoContacto: hoy });
     comprobar("próximo contacto el mismo día se acepta", iso((await tx.contactoCobranza.findUniqueOrThrow({ where: { id: mismoDia.id } })).proximoContacto), hoyISO);
 
     comprobar("tres contactos del cliente", String(await tx.contactoCobranza.count({ where: { clienteId: c.id } })), "3");
@@ -121,79 +135,79 @@ async function main() {
 
   await escenario("El dominio rechaza lo inválido con mensaje claro", async (tx) => {
     const c = await clienteDePrueba(tx);
-    await rechaza("nota vacía", "nota", () => registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "", proximoContacto: null }));
-    await rechaza("nota de solo espacios", "nota", () => registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "   ", proximoContacto: null }));
-    await rechaza("nota demasiado larga", "500", () => registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "x".repeat(501), proximoContacto: null }));
+    await rechaza("nota vacía", "nota", () => registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "", proximoContacto: null }));
+    await rechaza("nota de solo espacios", "nota", () => registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "   ", proximoContacto: null }));
+    await rechaza("nota demasiado larga", "500", () => registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "x".repeat(501), proximoContacto: null }));
     await rechaza("próximo contacto anterior al contacto", "pasada", () =>
-      registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "ok", proximoContacto: dia(-1) }),
+      registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "ok", proximoContacto: dia(-1) }),
     );
     await rechaza("cliente inexistente", "no existe", () =>
-      registrarContactoEnTx(tx, { clienteId: "00000000-0000-0000-0000-000000000000", fecha: hoy, nota: "ok", proximoContacto: null }),
+      registrarContactoEnTx(tx, negocioId, { clienteId: "00000000-0000-0000-0000-000000000000", fecha: hoy, nota: "ok", proximoContacto: null }),
     );
     comprobar("no quedó nada guardado", String(await tx.contactoCobranza.count({ where: { clienteId: c.id } })), "0");
   });
 
   await escenario("Un cliente dado de baja admite constancia de un contacto", async (tx) => {
-    const c = await tx.cliente.create({ data: { nombre: "De baja", activo: false } });
-    await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "Avisó que cerró", proximoContacto: null });
+    const c = await tx.cliente.create({ data: { negocioId, nombre: "De baja", activo: false } });
+    await registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "Avisó que cerró", proximoContacto: null });
     comprobar("guardado", String(await tx.contactoCobranza.count({ where: { clienteId: c.id } })), "1");
   });
 
   await escenario("CHECK: próximo contacto >= fecha del contacto", async (tx) => {
     const c = await clienteDePrueba(tx);
     await violaRestriccion("la base rechaza un próximo contacto anterior", "contactos_cobranza_proximo_check", () =>
-      tx.contactoCobranza.create({ data: { clienteId: c.id, fecha: hoy, nota: "x", proximoContacto: dia(-1) } }),
+      tx.contactoCobranza.create({ data: { negocioId, clienteId: c.id, fecha: hoy, nota: "x", proximoContacto: dia(-1) } }),
     );
   });
 
   await escenario("CHECK: la nota no puede estar vacía", async (tx) => {
     const c = await clienteDePrueba(tx);
     await violaRestriccion("la base rechaza una nota en blanco", "contactos_cobranza_nota_check", () =>
-      tx.contactoCobranza.create({ data: { clienteId: c.id, fecha: hoy, nota: "   " } }),
+      tx.contactoCobranza.create({ data: { negocioId, clienteId: c.id, fecha: hoy, nota: "   " } }),
     );
   });
 
   await escenario("CHECK: la nota tiene un máximo", async (tx) => {
     const c = await clienteDePrueba(tx);
     await violaRestriccion("la base rechaza 501 caracteres", "contactos_cobranza_nota_check", () =>
-      tx.contactoCobranza.create({ data: { clienteId: c.id, fecha: hoy, nota: "x".repeat(501) } }),
+      tx.contactoCobranza.create({ data: { negocioId, clienteId: c.id, fecha: hoy, nota: "x".repeat(501) } }),
     );
   });
 
   await escenario("FK: el cliente tiene que existir", async (tx) => {
     await violaRestriccion("la base rechaza un cliente inexistente", "contactos_cobranza_clienteId_fkey", () =>
-      tx.contactoCobranza.create({ data: { clienteId: "00000000-0000-0000-0000-000000000000", fecha: hoy, nota: "x" } }),
+      tx.contactoCobranza.create({ data: { negocioId, clienteId: "00000000-0000-0000-0000-000000000000", fecha: hoy, nota: "x" } }),
     );
   });
 
   await escenario("Trazabilidad (8.2): quién registró el contacto", async (tx) => {
     const c = await clienteDePrueba(tx);
     const ana = await usuarioDePrueba(tx, "Ana de prueba");
-    const { id } = await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "Con usuario", proximoContacto: null, usuarioId: ana.id });
+    const { id } = await registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "Con usuario", proximoContacto: null, usuarioId: ana.id });
     const guardado = await tx.contactoCobranza.findUniqueOrThrow({ where: { id }, include: { usuario: { select: { nombre: true } } } });
     comprobar("guarda el usuario", String(guardado.usuarioId === ana.id), "true");
     comprobar("se lee el nombre para mostrar", String(guardado.usuario?.nombre), "Ana de prueba");
 
-    const sin = await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "Sin usuario", proximoContacto: null, usuarioId: null });
+    const sin = await registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "Sin usuario", proximoContacto: null, usuarioId: null });
     comprobar("con null queda NULL", String((await tx.contactoCobranza.findUniqueOrThrow({ where: { id: sin.id } })).usuarioId), "null");
-    const omitido = await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "Omitido", proximoContacto: null });
+    const omitido = await registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "Omitido", proximoContacto: null });
     comprobar("sin pasar usuario queda NULL", String((await tx.contactoCobranza.findUniqueOrThrow({ where: { id: omitido.id } })).usuarioId), "null");
 
     await violaRestriccion("FK: un usuario inexistente se rechaza", "contactos_cobranza_usuarioId_fkey", () =>
-      tx.contactoCobranza.create({ data: { clienteId: c.id, fecha: hoy, nota: "x", usuarioId: "00000000-0000-0000-0000-000000000000" } }),
+      tx.contactoCobranza.create({ data: { negocioId, clienteId: c.id, fecha: hoy, nota: "x", usuarioId: "00000000-0000-0000-0000-000000000000" } }),
     );
   });
 
   await escenario("Un usuario con contactos no se puede borrar (RESTRICT)", async (tx) => {
     const c = await clienteDePrueba(tx);
     const ana = await usuarioDePrueba(tx, "Ana de prueba");
-    await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "x", proximoContacto: null, usuarioId: ana.id });
+    await registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "x", proximoContacto: null, usuarioId: ana.id });
     await violaRestriccion("ON DELETE RESTRICT", "contactos_cobranza_usuarioId_fkey", () => tx.usuario.delete({ where: { id: ana.id } }));
   });
 
   await escenario("Un cliente con contactos no se puede borrar (hay historial)", async (tx) => {
     const c = await clienteDePrueba(tx);
-    await registrarContactoEnTx(tx, { clienteId: c.id, fecha: hoy, nota: "x", proximoContacto: null });
+    await registrarContactoEnTx(tx, negocioId, { clienteId: c.id, fecha: hoy, nota: "x", proximoContacto: null });
     await violaRestriccion("ON DELETE RESTRICT", "contactos_cobranza_clienteId_fkey", () => tx.cliente.delete({ where: { id: c.id } }));
   });
 
@@ -217,7 +231,7 @@ async function consultaDePuntaAPunta() {
   try {
     const ids = await prisma.$transaction(async (tx) => {
       const servicio = await tx.articulo.create({
-        data: { nombre: `${rotulo} servicio`, precioVenta: d(1000), ivaPct: d(0), esServicio: true },
+        data: { negocioId, nombre: `${rotulo} servicio`, precioVenta: d(1000), ivaPct: d(0), esServicio: true },
       });
       creados.articulo = servicio.id;
       const autor = await usuarioDePrueba(tx, `${rotulo} autor`);
@@ -225,9 +239,9 @@ async function consultaDePuntaAPunta() {
 
       /** Cliente con una venta de $1.000 de hace `dias` dias, y un pago opcional. */
       async function conDeuda(clave: string, dias: number, pago?: string, telefono: string | null = "351 455-6677") {
-        const cliente = await tx.cliente.create({ data: { nombre: `${rotulo} ${clave}`, telefono } });
+        const cliente = await tx.cliente.create({ data: { negocioId, nombre: `${rotulo} ${clave}`, telefono } });
         creados.clientes.push(cliente.id);
-        const venta = await registrarVentaEnTx(tx, {
+        const venta = await registrarVentaEnTx(tx, negocioId, {
           clienteId: cliente.id,
           fecha: dia(-dias),
           observaciones: null,
@@ -250,13 +264,13 @@ async function consultaDePuntaAPunta() {
       await tx.venta.update({ where: { id: anulada.venta.id }, data: { estado: "ANULADA" } });
 
       // Un pago anulado no cuenta: el saldo vuelve a ser el total.
-      const pagoParcial = await registrarPagoEnTx(tx, { ventaId: pagoAnulado.venta.id, fecha: hoy, monto: d(600), metodo: "EFECTIVO", notas: null });
+      const pagoParcial = await registrarPagoEnTx(tx, negocioId, { ventaId: pagoAnulado.venta.id, fecha: hoy, monto: d(600), metodo: "EFECTIVO", notas: null });
       await anularPagoEnTx(tx, pagoParcial.id, "Error de carga");
 
-      await registrarContactoEnTx(tx, { clienteId: prometio.cliente.id, fecha: dia(-1), nota: "Pagará el viernes", proximoContacto: dia(3) });
-      await registrarContactoEnTx(tx, { clienteId: llamadoHoy.cliente.id, fecha: hoy, nota: "No atendió", proximoContacto: null });
-      await registrarContactoEnTx(tx, { clienteId: promesaVencida.cliente.id, fecha: dia(-9), nota: "Dijo que pagaba el lunes", proximoContacto: dia(-2) });
-      await registrarContactoEnTx(tx, { clienteId: promesaVencida.cliente.id, fecha: dia(-8), nota: "(segunda nota)", proximoContacto: dia(-2), usuarioId: autor.id });
+      await registrarContactoEnTx(tx, negocioId, { clienteId: prometio.cliente.id, fecha: dia(-1), nota: "Pagará el viernes", proximoContacto: dia(3) });
+      await registrarContactoEnTx(tx, negocioId, { clienteId: llamadoHoy.cliente.id, fecha: hoy, nota: "No atendió", proximoContacto: null });
+      await registrarContactoEnTx(tx, negocioId, { clienteId: promesaVencida.cliente.id, fecha: dia(-9), nota: "Dijo que pagaba el lunes", proximoContacto: dia(-2) });
+      await registrarContactoEnTx(tx, negocioId, { clienteId: promesaVencida.cliente.id, fecha: dia(-8), nota: "(segunda nota)", proximoContacto: dia(-2), usuarioId: autor.id });
 
       return {
         vieja: vieja.cliente.id,
@@ -307,7 +321,7 @@ async function consultaDePuntaAPunta() {
 
     // Un contacto cargado ahora saca al cliente de la lista de hoy.
     await prisma.$transaction((tx) =>
-      registrarContactoEnTx(tx, { clienteId: ids.vieja, fecha: hoy, nota: "Llamé: pide una semana", proximoContacto: dia(7) }),
+      registrarContactoEnTx(tx, negocioId, { clienteId: ids.vieja, fecha: hoy, nota: "Llamé: pide una semana", proximoContacto: dia(7) }),
     );
     const despues = (await getRecordatoriosHoy()).filter((r) => r.nombre.startsWith(rotulo));
     comprobar("tras llamar a 'vieja' ya no figura", despues.map(nombre).join(","), "pago-anulado,promesa-vencida,reciente");

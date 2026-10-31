@@ -8,6 +8,7 @@ import { decimalPositivo, hoyArgentina, mensajeDeError, primerError, SIN_BASE, t
 import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
 import { registrarVentaEnTx } from "@/lib/dominio/ventas";
 import { revalidarVentas } from "@/lib/revalidar";
+import { negocioUnico } from "@/lib/dominio/auth";
 
 export type ResultadoVenta =
   | { ok: true; id: string; numero: number; anio: number; advertencias: string[] }
@@ -47,8 +48,8 @@ export async function registrarVenta(datos: DatosVenta): Promise<ResultadoVenta>
   if (!sesion.ok) return sesion;
   const usuarioId = idParaGuardar(sesion.usuario);
   try {
-    const { id, numero, anio, advertencias } = await prisma.$transaction((tx) =>
-      registrarVentaEnTx(tx, {
+    const { id, numero, anio, advertencias } = await prisma.$transaction(async (tx) =>
+      registrarVentaEnTx(tx, await negocioUnico(tx), {
         ...resto,
         fecha: hoyArgentina(),
         usuarioId,

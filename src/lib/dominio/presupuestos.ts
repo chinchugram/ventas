@@ -136,6 +136,7 @@ async function numeroDeVenta(tx: Tx, ventaId: string | null): Promise<string | n
 
 async function crearConLineas(
   tx: Tx,
+  negocioId: string,
   datos: {
     clienteId: string;
     validezDias: number;
@@ -154,6 +155,7 @@ async function crearConLineas(
 
   const creado = await tx.presupuesto.create({
     data: {
+      negocioId,
       numero,
       anio,
       clienteId: datos.clienteId,
@@ -162,7 +164,7 @@ async function crearConLineas(
       observaciones: datos.observaciones,
       duplicadoDeId: datos.duplicadoDeId,
       usuarioId: datos.usuarioId,
-      items: { create: lineas },
+      items: { create: lineas.map((l) => ({ negocioId, ...l })) },
     },
     select: { id: true },
   });
@@ -176,6 +178,7 @@ async function crearConLineas(
  */
 export async function crearPresupuestoEnTx(
   tx: Tx,
+  negocioId: string,
   datos: DatosPresupuesto,
   hoy: Date,
   usuarioId?: string | null,
@@ -183,7 +186,7 @@ export async function crearPresupuestoEnTx(
   verificarValidez(datos.validezDias);
   await verificarCliente(tx, datos.clienteId);
   const lineas = await armarLineas(tx, datos.clienteId, datos.items);
-  return crearConLineas(tx, { ...datos, duplicadoDeId: null, usuarioId: usuarioId ?? null }, lineas, hoy);
+  return crearConLineas(tx, negocioId, { ...datos, duplicadoDeId: null, usuarioId: usuarioId ?? null }, lineas, hoy);
 }
 
 /**
@@ -193,7 +196,7 @@ export async function crearPresupuestoEnTx(
  * resuelven; si cambia el cliente se reprecia todo. Toma el lock de fila: no
  * puede editarse mientras otro lo convierte.
  */
-export async function editarPresupuestoEnTx(tx: Tx, id: string, datos: DatosPresupuesto, hoy: Date): Promise<void> {
+export async function editarPresupuestoEnTx(tx: Tx, negocioId: string, id: string, datos: DatosPresupuesto, hoy: Date): Promise<void> {
   const actual = await bloquearPresupuesto(tx, id);
   const ventaNumero = await numeroDeVenta(tx, actual.ventaId);
   const motivo = motivoNoAbierto({ ...actual, ventaNumero }, hoy, "editar");
@@ -221,7 +224,7 @@ export async function editarPresupuestoEnTx(tx: Tx, id: string, datos: DatosPres
       clienteId: datos.clienteId,
       validezDias: datos.validezDias,
       observaciones: datos.observaciones,
-      items: { create: lineas },
+      items: { create: lineas.map((l) => ({ negocioId, ...l })) },
     },
   });
 }
@@ -246,6 +249,7 @@ export async function anularPresupuestoEnTx(tx: Tx, id: string): Promise<void> {
  */
 export async function duplicarPresupuestoEnTx(
   tx: Tx,
+  negocioId: string,
   id: string,
   hoy: Date,
   usuarioId?: string | null,
@@ -270,6 +274,7 @@ export async function duplicarPresupuestoEnTx(
   );
   return crearConLineas(
     tx,
+    negocioId,
     {
       clienteId: origen.clienteId,
       validezDias: origen.validezDias,
@@ -311,6 +316,7 @@ export type PresupuestoConvertido = {
  */
 export async function convertirPresupuestoEnTx(
   tx: Tx,
+  negocioId: string,
   id: string,
   hoy: Date,
   usuarioId?: string | null,
@@ -324,7 +330,7 @@ export async function convertirPresupuestoEnTx(
   if (items.length === 0) throw new ErrorDeNegocio("El presupuesto no tiene artículos.");
 
   const nro = numeroPresupuesto(actual.numero, actual.anio);
-  const venta = await registrarVentaEnTx(tx, {
+  const venta = await registrarVentaEnTx(tx, negocioId, {
     clienteId: actual.clienteId,
     fecha: hoy,
     observaciones: `Presupuesto N° ${nro}${actual.observaciones ? ` — ${actual.observaciones}` : ""}`,

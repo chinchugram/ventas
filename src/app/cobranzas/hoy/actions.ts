@@ -17,6 +17,7 @@ import {
 } from "@/lib/acciones";
 import { registrarContactoEnTx } from "@/lib/dominio/recordatorios";
 import { validarProximoContacto } from "@/lib/recordatorios-cobranza";
+import { negocioUnico } from "@/lib/dominio/auth";
 
 export type { Resultado } from "@/lib/acciones";
 
@@ -52,8 +53,8 @@ export async function registrarContacto(datos: DatosContacto): Promise<Resultado
   const usuarioId = idParaGuardar(permiso.usuario);
 
   try {
-    await prisma.$transaction((tx) =>
-      registrarContactoEnTx(tx, {
+    await prisma.$transaction(async (tx) =>
+      registrarContactoEnTx(tx, await negocioUnico(tx), {
         clienteId,
         fecha: hoyArgentina(),
         nota,

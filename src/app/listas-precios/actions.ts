@@ -15,6 +15,7 @@ import {
   guardarPrecioListaEnTx,
   quitarPrecioListaEnTx,
 } from "@/lib/dominio/listas-precios";
+import { negocioUnico } from "@/lib/dominio/auth";
 
 export type { Resultado } from "@/lib/acciones";
 
@@ -66,8 +67,8 @@ export async function crearLista(datos: DatosLista): Promise<{ ok: true; id: str
 
   let id: string;
   try {
-    ({ id } = await prisma.$transaction((tx) =>
-      crearListaEnTx(tx, { nombre: parsed.data.nombre, descuentoPct: d(parsed.data.descuentoPct) }, usuarioId),
+    ({ id } = await prisma.$transaction(async (tx) =>
+      crearListaEnTx(tx, await negocioUnico(tx), { nombre: parsed.data.nombre, descuentoPct: d(parsed.data.descuentoPct) }, usuarioId),
     ));
   } catch (error) {
     if (esNombreDuplicado(error)) return { ok: false, error: "Ya hay una lista con ese nombre." };
@@ -131,7 +132,7 @@ export async function guardarPrecioLista(datos: DatosPrecioLista): Promise<Resul
 
   const { listaId, articuloId, precio } = parsed.data;
   try {
-    await prisma.$transaction((tx) => guardarPrecioListaEnTx(tx, listaId, articuloId, d(precio)));
+    await prisma.$transaction(async (tx) => guardarPrecioListaEnTx(tx, await negocioUnico(tx), listaId, articuloId, d(precio)));
   } catch (error) {
     console.error("[guardarPrecioLista]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar el precio.") };

@@ -46,6 +46,19 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 async function escenario(titulo: string, fn: (tx: Tx) => Promise<void>) {
@@ -72,6 +85,7 @@ const configDe = async (tx: Tx) =>
 const maquina = (nombre: string, costoHora: string, notas = "") => esquemaMaquina.parse({ nombre, costoHora, notas });
 
 async function main() {
+  await resolverNegocio();
   await escenario("Guardar configuración (upsert, crea ivaPorDefecto si falta)", async (tx) => {
     await tx.configuracion.deleteMany({ where: { clave: "ivaPorDefecto" } });
     comprobar("sin clave → IVA por defecto", leerConfiguracion(await configDe(tx)).ivaPorDefecto.toString(), "21");
@@ -95,9 +109,10 @@ async function main() {
   await escenario("El costo/hora cambia el costo de las recetas con mano de obra", async (tx) => {
     const articulo = await tx.articulo.create({
       data: {
+        negocioId,
         nombre: "Artículo con mano de obra",
         precioVenta: d(10000),
-        receta: { create: { componentes: { create: [{ tipo: "MANO_OBRA", cantidad: d("0.5") }] } } },
+        receta: { create: { negocioId, componentes: { create: [{ negocioId, tipo: "MANO_OBRA", cantidad: d("0.5") }] } } },
       },
       include: { receta: { include: { componentes: { include: { material: true, maquina: true } } } } },
     });
@@ -108,14 +123,14 @@ async function main() {
   });
 
   await escenario("Alta y edición de máquina", async (tx) => {
-    const { id } = await crearMaquinaEnTx(tx, maquina("Fresadora de prueba", "1234,5", "Prueba"));
+    const { id } = await crearMaquinaEnTx(tx, negocioId, maquina("Fresadora de prueba", "1234,5", "Prueba"));
     const creada = await tx.maquina.findUniqueOrThrow({ where: { id } });
     comprobar("costo/hora", creada.costoHora.toString(), "1234.5");
     comprobar("notas", String(creada.notas), "Prueba");
     comprobar("activa", String(creada.activo), "true");
 
     await rechaza("nombre repetido (sin mayúsculas)", "Ya hay una máquina", () =>
-      crearMaquinaEnTx(tx, maquina("FRESADORA DE PRUEBA", "1")),
+      crearMaquinaEnTx(tx, negocioId, maquina("FRESADORA DE PRUEBA", "1")),
     );
 
     await editarMaquinaEnTx(tx, id, maquina("Fresadora de prueba 2", "2000"));
@@ -134,18 +149,20 @@ async function main() {
   });
 
   await escenario("Baja lógica y reactivación (nunca se borra)", async (tx) => {
-    const { id } = await crearMaquinaEnTx(tx, maquina("Láser de prueba", "5000"));
+    const { id } = await crearMaquinaEnTx(tx, negocioId, maquina("Láser de prueba", "5000"));
     for (const nombre of ["Uno", "Dos"]) {
       await tx.articulo.create({
         data: {
+          negocioId,
           nombre: `Artículo ${nombre}`,
           precioVenta: d(1000),
           receta: {
             create: {
+              negocioId,
               componentes: {
                 create: [
-                  { tipo: "MAQUINA", maquinaId: id, cantidad: d("0.1") },
-                  { tipo: "MAQUINA", maquinaId: id, cantidad: d("0.2") },
+                  { negocioId, tipo: "MAQUINA", maquinaId: id, cantidad: d("0.1") },
+                  { negocioId, tipo: "MAQUINA", maquinaId: id, cantidad: d("0.2") },
                 ],
               },
             },
@@ -161,7 +178,7 @@ async function main() {
     comprobar("sigue en recetas", String(await tx.recetaComponente.count({ where: { maquinaId: id } })), "4");
 
     await rechaza("alta con el nombre de una de baja", "reactivala", () =>
-      crearMaquinaEnTx(tx, maquina("láser de prueba", "1")),
+      crearMaquinaEnTx(tx, negocioId, maquina("láser de prueba", "1")),
     );
 
     await cambiarActivoMaquinaEnTx(tx, id, true);
