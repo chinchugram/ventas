@@ -24,6 +24,7 @@ import { revalidarVentas } from "@/lib/revalidar";
 import { accesoSimulado } from "@/lib/dominio/comprobantes";
 import { emitirNotaCredito as emitirNotaCreditoDeVenta } from "@/lib/dominio/notas-credito";
 import { entornoDelProceso, obtenerEmisorFiscal } from "@/lib/fiscal";
+import { negocioUnico } from "@/lib/dominio/auth";
 
 /** Todo lo que muestra el saldo o el estado de una venta. */
 function revalidarCobranza(ventaId: string) {
@@ -48,7 +49,7 @@ export async function anularVenta(datos: z.input<typeof esquema>): Promise<Resul
   const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
-    await prisma.$transaction((tx) => anularVentaEnTx(tx, ventaId, usuarioId));
+    await prisma.$transaction(async (tx) => anularVentaEnTx(tx, await negocioUnico(tx), ventaId, usuarioId));
   } catch (error) {
     console.error("[anularVenta]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo anular la venta.") };
@@ -88,8 +89,8 @@ export async function registrarPago(datos: DatosPago): Promise<Resultado> {
   const usuarioId = idParaGuardar(sesion.usuario);
 
   try {
-    await prisma.$transaction((tx) =>
-      registrarPagoEnTx(tx, { ventaId, monto: d(monto), metodo, fecha: fechaDesdeISO(fecha), notas, usuarioId }),
+    await prisma.$transaction(async (tx) =>
+      registrarPagoEnTx(tx, await negocioUnico(tx), { ventaId, monto: d(monto), metodo, fecha: fechaDesdeISO(fecha), notas, usuarioId }),
     );
   } catch (error) {
     console.error("[registrarPago]", error);
@@ -181,7 +182,7 @@ export async function emitirNotaCredito(datos: z.input<typeof esquemaNotaCredito
 
   let procesado;
   try {
-    procesado = await emitirNotaCreditoDeVenta(prisma, ventaId, usuarioId, { emisor: emisor.emisor, facturaId: comprobanteId });
+    procesado = await emitirNotaCreditoDeVenta(prisma, await negocioUnico(prisma), ventaId, usuarioId, { emisor: emisor.emisor, facturaId: comprobanteId });
   } catch (error) {
     console.error("[emitirNotaCredito]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo emitir la nota de crédito.") };

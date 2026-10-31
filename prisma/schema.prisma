@@ -60,8 +60,53 @@ enum CondicionIva {
   EXENTO
 }
 
+/// Negocio (tenant): dueno de todos los datos. Baja logica (`activo = false`):
+/// nunca se borra. `negocioId` esta en todas las tablas de datos (tambien en las
+/// hijas, para que RLS no necesite joins). `Configuracion` tiene clave (negocioId, clave).
+model Negocio {
+  id            String   @id @default(uuid()) @db.Uuid
+  nombre        String
+  /// Identificador corto y unico ("hl-laser").
+  slug          String   @unique
+  logoUrl       String?
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  clientes          Cliente[]
+  materiales        Material[]
+  maquinas          Maquina[]
+  articulos         Articulo[]
+  listasPrecios     ListaPrecio[]
+  listaPrecioItems  ListaPrecioItem[]
+  recetas           Receta[]
+  recetaComponentes RecetaComponente[]
+  ventas            Venta[]
+  ventaItems        VentaItem[]
+  pagos             Pago[]
+  compras           Compra[]
+  compraItems       CompraItem[]
+  movimientos       MovimientoStock[]
+  contactosCobranza ContactoCobranza[]
+  presupuestos      Presupuesto[]
+  presupuestoItems  PresupuestoItem[]
+  usuarios          Usuario[]
+  sesiones          Sesion[]
+  comprobantes      Comprobante[]
+  comprobanteItems  ComprobanteItem[]
+  comprobanteIva    ComprobanteIva[]
+  configuracion     Configuracion[]
+  trabajosProduccion TrabajoProduccion[]
+  trabajoTiempos     TrabajoTiempo[]
+  trabajoConsumos    TrabajoConsumo[]
+
+  @@map("negocios")
+}
+
 model Cliente {
   id         String   @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   nombre     String
   cuit       String?
   telefono   String?
@@ -84,15 +129,19 @@ model Cliente {
   presupuestos Presupuesto[]
 
   contactosCobranza ContactoCobranza[]
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([activo])
   @@index([nombre])
   @@index([listaPrecioId])
+  @@index([negocioId])
   @@map("clientes")
 }
 
 model Material {
   id            String        @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   nombre        String
   unidad        UnidadMedida
   stockActual   Decimal       @default(0) @db.Decimal(14, 3)
@@ -107,15 +156,19 @@ model Material {
   componentes RecetaComponente[]
   compraItems CompraItem[]
   movimientos MovimientoStock[]
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
   consumosProduccion TrabajoConsumo[]
 
   @@index([activo])
   @@index([nombre])
+  @@index([negocioId])
   @@map("materiales")
 }
 
 model Maquina {
   id            String   @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   nombre        String
   costoHora     Decimal  @default(0) @db.Decimal(14, 2)
   notas         String?
@@ -124,14 +177,18 @@ model Maquina {
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
   componentes RecetaComponente[]
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
   tiemposProduccion TrabajoTiempo[]
 
   @@index([activo])
+  @@index([negocioId])
   @@map("maquinas")
 }
 
 model Articulo {
   id          String   @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   nombre      String
   descripcion String?
   precioVenta Decimal  @db.Decimal(14, 4)
@@ -145,9 +202,11 @@ model Articulo {
   ventaItems VentaItem[]
   presupuestoItems PresupuestoItem[]
   preciosDeLista ListaPrecioItem[]
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([activo])
   @@index([nombre])
+  @@index([negocioId])
   @@map("articulos")
 }
 
@@ -156,7 +215,9 @@ model Articulo {
 /// CHECK en la migracion: descuento entre 0 y 100.
 model ListaPrecio {
   id           String   @id @default(uuid()) @db.Uuid
-  nombre       String   @unique
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
+  nombre       String
   /// Porcentaje (0-100) que se descuenta del precio de catalogo.
   descuentoPct Decimal  @default(0) @db.Decimal(5, 2)
   activo       Boolean  @default(true)
@@ -168,9 +229,12 @@ model ListaPrecio {
   usuario  Usuario?          @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
   items    ListaPrecioItem[]
   clientes Cliente[]
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
+  @@unique([negocioId, nombre])
   @@index([activo])
   @@index([usuarioId])
+  @@index([negocioId])
   @@map("listas_precios")
 }
 
@@ -178,6 +242,8 @@ model ListaPrecio {
 /// que `Articulo.precioVenta`. CHECK en la migracion: precio >= 0.
 model ListaPrecioItem {
   id            String   @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   listaPrecioId String   @db.Uuid
   articuloId    String   @db.Uuid
   precio        Decimal  @db.Decimal(14, 4)
@@ -186,14 +252,18 @@ model ListaPrecioItem {
 
   listaPrecio ListaPrecio @relation(fields: [listaPrecioId], references: [id], onDelete: Cascade)
   articulo    Articulo    @relation(fields: [articuloId], references: [id])
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@unique([listaPrecioId, articuloId])
   @@index([articuloId])
+  @@index([negocioId])
   @@map("lista_precio_items")
 }
 
 model Receta {
   id         String   @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   articuloId String   @unique @db.Uuid
   notas      String?
   creadoEn   DateTime @default(now()) @db.Timestamptz(3)
@@ -201,12 +271,16 @@ model Receta {
 
   articulo    Articulo            @relation(fields: [articuloId], references: [id], onDelete: Cascade)
   componentes RecetaComponente[]
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
+  @@index([negocioId])
   @@map("recetas")
 }
 
 model RecetaComponente {
   id                   String         @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   recetaId             String         @db.Uuid
   tipo                 TipoComponente
   materialId           String?        @db.Uuid
@@ -218,15 +292,19 @@ model RecetaComponente {
   receta   Receta   @relation(fields: [recetaId], references: [id], onDelete: Cascade)
   material Material? @relation(fields: [materialId], references: [id])
   maquina  Maquina?  @relation(fields: [maquinaId], references: [id])
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([recetaId])
   @@index([materialId])
   @@index([maquinaId])
+  @@index([negocioId])
   @@map("receta_componentes")
 }
 
 model Venta {
   id          String      @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   numero      Int
   anio        Int
   clienteId   String      @db.Uuid
@@ -254,17 +332,22 @@ model Venta {
   presupuesto Presupuesto?
   /// Facturas y notas de credito de la venta (ola 5). Una sola factura vigente.
   comprobantes Comprobante[]
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
-  @@unique([anio, numero])
+  @@unique([negocioId, anio, numero])
   @@index([usuarioId])
   @@index([fecha])
   @@index([clienteId])
   @@index([estado])
+  @@index([negocioId, fecha])
+  @@index([negocioId, estado])
   @@map("ventas")
 }
 
 model VentaItem {
   id         String   @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   ventaId    String   @db.Uuid
   articuloId String   @db.Uuid
   descripcion String
@@ -280,16 +363,20 @@ model VentaItem {
 
   venta    Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
   articulo Articulo @relation(fields: [articuloId], references: [id])
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
   /// Trabajos de produccion de esta linea (ola 6). Vigente hay uno solo; los anulados quedan de historial.
   trabajos TrabajoProduccion[]
 
   @@index([ventaId])
   @@index([articuloId])
+  @@index([negocioId])
   @@map("venta_items")
 }
 
 model Pago {
   id        String     @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   ventaId   String     @db.Uuid
   clienteId String     @db.Uuid
   fecha     DateTime   @db.Date
@@ -311,25 +398,35 @@ model Pago {
   venta   Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
   cliente Cliente  @relation(fields: [clienteId], references: [id])
   usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([ventaId])
   @@index([ventaId, monto])
   @@index([clienteId])
   @@index([fecha])
   @@index([usuarioId])
+  @@index([negocioId, fecha])
+  @@index([negocioId, ventaId])
   @@map("pagos")
 }
 
 model Configuracion {
-  clave String   @id
-  valor String
+  /// Negocio dueno de la clave (multi-tenant): cada negocio tiene su propia configuracion.
+  negocioId String @db.Uuid
+  clave     String
+  valor     String
 
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
+
+  @@id([negocioId, clave])
   @@map("configuracion")
 }
 
 /// Entrada de mercaderia: lo que se compro, a quien y a que costo.
 model Compra {
   id          String   @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   fecha       DateTime @db.Date
   proveedor   String
   comprobante String?
@@ -344,14 +441,18 @@ model Compra {
   usuario     Usuario?     @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
   items       CompraItem[]
   movimientos MovimientoStock[]
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([fecha])
   @@index([usuarioId])
+  @@index([negocioId])
   @@map("compras")
 }
 
 model CompraItem {
   id            String  @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   compraId      String  @db.Uuid
   materialId    String  @db.Uuid
   cantidad      Decimal @db.Decimal(14, 3)
@@ -360,9 +461,11 @@ model CompraItem {
 
   compra   Compra   @relation(fields: [compraId], references: [id], onDelete: Cascade)
   material Material @relation(fields: [materialId], references: [id])
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([compraId])
   @@index([materialId])
+  @@index([negocioId])
   @@map("compra_items")
 }
 
@@ -371,6 +474,8 @@ model CompraItem {
 /// del movimiento, para poder reconstruir la historia sin recalcular.
 model MovimientoStock {
   id              String         @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   materialId      String         @db.Uuid
   tipo            TipoMovimiento
   cantidad        Decimal        @db.Decimal(14, 3)
@@ -386,11 +491,13 @@ model MovimientoStock {
   compra   Compra?  @relation(fields: [compraId], references: [id])
   venta    Venta?   @relation(fields: [ventaId], references: [id])
   usuario  Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([materialId, creadoEn])
   @@index([compraId])
   @@index([ventaId])
   @@index([usuarioId])
+  @@index([negocioId, materialId, creadoEn])
   @@map("movimientos_stock")
 }
 
@@ -400,6 +507,8 @@ model MovimientoStock {
 /// `usuarioId` es quien lo registró (NULL = histórico, de antes de los usuarios).
 model ContactoCobranza {
   id              String    @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   clienteId       String    @db.Uuid
   fecha           DateTime  @db.Date
   nota            String
@@ -410,9 +519,11 @@ model ContactoCobranza {
 
   cliente Cliente  @relation(fields: [clienteId], references: [id])
   usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([clienteId, fecha])
   @@index([usuarioId])
+  @@index([negocioId])
   @@map("contactos_cobranza")
 }
 
@@ -425,6 +536,8 @@ model ContactoCobranza {
 /// (estado = CONVERTIDO) <=> (ventaId no nulo).
 model Presupuesto {
   id            String            @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   numero        Int
   anio          Int
   clienteId     String            @db.Uuid
@@ -448,13 +561,15 @@ model Presupuesto {
   duplicadoDe Presupuesto?      @relation("Duplicado", fields: [duplicadoDeId], references: [id], onDelete: Restrict)
   duplicados  Presupuesto[]     @relation("Duplicado")
   items       PresupuestoItem[]
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
-  @@unique([anio, numero])
+  @@unique([negocioId, anio, numero])
   @@index([clienteId])
   @@index([estado])
   @@index([fecha])
   @@index([duplicadoDeId])
   @@index([usuarioId])
+  @@index([negocioId])
   @@map("presupuestos")
 }
 
@@ -463,6 +578,8 @@ model Presupuesto {
 /// cantidad > 0, precioUnitario >= 0 y ivaPct entre 0 y 100.
 model PresupuestoItem {
   id             String  @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   presupuestoId  String  @db.Uuid
   articuloId     String  @db.Uuid
   descripcion    String
@@ -472,9 +589,11 @@ model PresupuestoItem {
 
   presupuesto Presupuesto @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
   articulo    Articulo    @relation(fields: [articuloId], references: [id])
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([presupuestoId])
   @@index([articuloId])
+  @@index([negocioId])
   @@map("presupuesto_items")
 }
 
@@ -491,8 +610,11 @@ enum Rol {
 /// hash con formato scrypt, contador de fallos no negativo.
 model Usuario {
   id        String  @id @default(uuid()) @db.Uuid
-  /// Nombre para entrar, en minusculas. Unico.
-  usuario   String  @unique
+  /// Negocio dueno de la fila. NULL solo para el futuro SUPERADMIN (sin negocio); hoy todos tienen.
+  negocioId String? @db.Uuid
+  /// Nombre para entrar, en minusculas. Unico por negocio (y entre los que no tienen negocio:
+  /// indice parcial `usuarios_usuario_key`, solo en SQL).
+  usuario   String
   /// Nombre para mostrar ("Laura", "Mostrador").
   nombre    String
   rol       Rol
@@ -521,9 +643,12 @@ model Usuario {
   listasPrecios     ListaPrecio[]
   // Trazabilidad (ola 5): quien emitio cada comprobante.
   comprobantes      Comprobante[]
+  negocio Negocio? @relation(fields: [negocioId], references: [id], onDelete: Restrict)
   // Trazabilidad (ola 6): quien cargo cada trabajo de produccion.
   trabajosProduccion TrabajoProduccion[]
 
+  @@unique([negocioId, usuario])
+  @@index([negocioId])
   @@map("usuarios")
 }
 
@@ -531,6 +656,8 @@ model Usuario {
 /// SHA-256. Cerrar sesion borra la fila; una fila vencida no vale aunque exista.
 model Sesion {
   id         String   @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   tokenHash  String   @unique
   usuarioId  String   @db.Uuid
   creadaEn   DateTime @default(now()) @db.Timestamptz(3)
@@ -539,9 +666,11 @@ model Sesion {
   expiraEn   DateTime @db.Timestamptz(3)
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([usuarioId])
   @@index([expiraEn])
+  @@index([negocioId])
   @@map("sesiones")
 }
 
@@ -587,6 +716,8 @@ enum EstadoComprobante {
 /// triggers que vuelven inmutable lo fiscal.
 model Comprobante {
   id          String            @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   ambiente    AmbienteFiscal
   tipo        TipoComprobante
   /// Codigo ARCA del tipo (1, 3, 6, 8, 11, 13). CHECK: coherente con `tipo`.
@@ -642,12 +773,15 @@ model Comprobante {
   notasDeCredito      Comprobante[]     @relation("NotaDeCredito")
   items               ComprobanteItem[]
   alicuotas           ComprobanteIva[]
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([ventaId])
   @@index([comprobanteAsociadoId])
   @@index([usuarioId])
   @@index([fecha])
   @@index([estado])
+  @@index([negocioId, fecha])
+  @@index([negocioId, estado])
   @@map("comprobantes")
 }
 
@@ -656,6 +790,8 @@ model Comprobante {
 /// bruto = neto + IVA. Inmutable (trigger).
 model ComprobanteItem {
   id             String  @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   comprobanteId  String  @db.Uuid
   /// Orden de la linea en el comprobante (1, 2, ...).
   orden          Int
@@ -668,8 +804,10 @@ model ComprobanteItem {
   subtotalBruto  Decimal @db.Decimal(14, 2)
 
   comprobante Comprobante @relation(fields: [comprobanteId], references: [id], onDelete: Cascade)
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@unique([comprobanteId, orden])
+  @@index([negocioId])
   @@map("comprobante_items")
 }
 
@@ -678,6 +816,8 @@ model ComprobanteItem {
 /// la suma de las bases es el neto del comprobante y la de los importes, su IVA.
 model ComprobanteIva {
   id            String  @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
+  negocioId String @db.Uuid
   comprobanteId String  @db.Uuid
   alicuotaPct   Decimal @db.Decimal(5, 2)
   /// Codigo ARCA de la alicuota: 3 (0%), 9 (2,5%), 8 (5%), 4 (10,5%), 5 (21%), 6 (27%).
@@ -686,8 +826,10 @@ model ComprobanteIva {
   importe       Decimal @db.Decimal(14, 2)
 
   comprobante Comprobante @relation(fields: [comprobanteId], references: [id], onDelete: Cascade)
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@unique([comprobanteId, alicuotaPct])
+  @@index([negocioId])
   @@map("comprobante_iva")
 }
 
@@ -704,7 +846,9 @@ model ComprobanteIva {
 /// CHECK en la migracion: minutos >= 0, costo >= 0 y (anuladoEn nulo) <=> (motivoAnulacion nulo).
 model TrabajoProduccion {
   id                        String   @id @default(uuid()) @db.Uuid
-  ventaItemId               String   @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant).
+  negocioId                 String   @db.Uuid
+  ventaItemId              String   @db.Uuid
   fecha                     DateTime @db.Date
   /// Minutos de mano de obra del trabajo (las maquinas van en `tiempos`).
   minutosManoObra           Decimal  @default(0) @db.Decimal(10, 2)
@@ -722,11 +866,13 @@ model TrabajoProduccion {
   creadoEn      DateTime @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
+  negocio   Negocio          @relation(fields: [negocioId], references: [id], onDelete: Restrict)
   ventaItem VentaItem        @relation(fields: [ventaItemId], references: [id], onDelete: Restrict)
   usuario   Usuario?         @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
   tiempos   TrabajoTiempo[]
   consumos  TrabajoConsumo[]
 
+  @@index([negocioId])
   @@index([ventaItemId])
   @@index([fecha])
   @@index([usuarioId])
@@ -736,16 +882,20 @@ model TrabajoProduccion {
 /// Minutos de una maquina en un trabajo. Una fila por maquina y trabajo.
 model TrabajoTiempo {
   id                String  @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant).
+  negocioId         String  @db.Uuid
   trabajoId         String  @db.Uuid
   maquinaId         String  @db.Uuid
   minutos           Decimal @db.Decimal(10, 2)
   /// `Maquina.costoHora` vigente al cargarlo.
   costoHoraSnapshot Decimal @default(0) @db.Decimal(14, 2)
 
+  negocio Negocio           @relation(fields: [negocioId], references: [id], onDelete: Restrict)
   trabajo TrabajoProduccion @relation(fields: [trabajoId], references: [id], onDelete: Restrict)
   maquina Maquina           @relation(fields: [maquinaId], references: [id], onDelete: Restrict)
 
   @@unique([trabajoId, maquinaId])
+  @@index([negocioId])
   @@index([maquinaId])
   @@map("trabajo_tiempos")
 }
@@ -755,16 +905,20 @@ model TrabajoTiempo {
 /// (movimiento `AJUSTE` explicito y confirmado).
 model TrabajoConsumo {
   id                    String  @id @default(uuid()) @db.Uuid
+  /// Negocio dueno de la fila (multi-tenant).
+  negocioId             String  @db.Uuid
   trabajoId             String  @db.Uuid
   materialId            String  @db.Uuid
   cantidad              Decimal @db.Decimal(14, 3)
   /// `Material.costoUnitario` vigente al cargarlo.
   costoUnitarioSnapshot Decimal @default(0) @db.Decimal(14, 4)
 
+  negocio  Negocio           @relation(fields: [negocioId], references: [id], onDelete: Restrict)
   trabajo  TrabajoProduccion @relation(fields: [trabajoId], references: [id], onDelete: Restrict)
   material Material          @relation(fields: [materialId], references: [id], onDelete: Restrict)
 
   @@unique([trabajoId, materialId])
+  @@index([negocioId])
   @@index([materialId])
   @@map("trabajo_consumos")
 }

@@ -44,11 +44,12 @@ async function verificarNombreLibre(tx: Tx, nombre: string, excepto?: string) {
  * inicial" en la misma transaccion: el libro de movimientos tiene que cuadrar
  * con el stock desde el primer dia.
  */
-export async function crearMaterialEnTx(tx: Tx, m: MaterialNuevo): Promise<{ id: string }> {
+export async function crearMaterialEnTx(tx: Tx, negocioId: string, m: MaterialNuevo): Promise<{ id: string }> {
   await verificarNombreLibre(tx, m.nombre);
 
   const creado = await tx.material.create({
     data: {
+      negocioId,
       nombre: m.nombre,
       unidad: m.unidad,
       stockActual: m.stockInicial,
@@ -63,6 +64,7 @@ export async function crearMaterialEnTx(tx: Tx, m: MaterialNuevo): Promise<{ id:
   if (m.stockInicial.gt(0)) {
     await tx.movimientoStock.create({
       data: {
+        negocioId,
         materialId: creado.id,
         tipo: "AJUSTE",
         cantidad: m.stockInicial,

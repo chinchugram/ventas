@@ -47,7 +47,7 @@ export type PagoNuevo = {
  * Registra un cobro sobre una venta existente. El cliente sale de la venta
  * (nunca de afuera) y el monto no puede pasar el saldo que queda.
  */
-export async function registrarPagoEnTx(tx: Tx, pago: PagoNuevo): Promise<{ id: string; saldo: Dinero }> {
+export async function registrarPagoEnTx(tx: Tx, negocioId: string, pago: PagoNuevo): Promise<{ id: string; saldo: Dinero }> {
   const venta = await bloquearVenta(tx, pago.ventaId);
   if (venta.estado === "ANULADA") throw new ErrorDeNegocio("La venta está anulada: no admite pagos.");
 
@@ -57,6 +57,7 @@ export async function registrarPagoEnTx(tx: Tx, pago: PagoNuevo): Promise<{ id: 
 
   const creado = await tx.pago.create({
     data: {
+      negocioId,
       ventaId: venta.id,
       clienteId: venta.clienteId,
       fecha: pago.fecha,

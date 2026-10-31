@@ -52,7 +52,7 @@ export type VentaRegistrada = {
  * desactualizado y el pedido ya esta hecho. Se descuenta lo que hay, se deja
  * constancia en el movimiento y se devuelve una advertencia.
  */
-export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<VentaRegistrada> {
+export async function registrarVentaEnTx(tx: Tx, negocioId: string, venta: VentaNueva): Promise<VentaRegistrada> {
   const { clienteId, fecha, entregada, pago, momento } = venta;
   const usuarioId = venta.usuarioId ?? null;
   const anio = fecha.getUTCFullYear();
@@ -131,6 +131,7 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
 
   const creada = await tx.venta.create({
     data: {
+      negocioId,
       numero,
       anio,
       clienteId,
@@ -142,13 +143,13 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
       totalBruto: totales.totalBruto,
       costoTotal: totales.costoTotal,
       usuarioId,
-      items: { create: items },
+      items: { create: items.map((i) => ({ negocioId, ...i })) },
     },
   });
 
   if (pago) {
     await tx.pago.create({
-      data: { ventaId: creada.id, clienteId, fecha, monto: pago.monto, metodo: pago.metodo, usuarioId },
+      data: { negocioId, ventaId: creada.id, clienteId, fecha, monto: pago.monto, metodo: pago.metodo, usuarioId },
     });
   }
 
@@ -178,6 +179,7 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
     });
     await tx.movimientoStock.create({
       data: {
+        negocioId,
         materialId,
         tipo: "VENTA",
         cantidad: descontar.neg(),
@@ -205,7 +207,7 @@ export async function registrarVentaEnTx(tx: Tx, venta: VentaNueva): Promise<Ven
  * nota de credito EMITIDA anule esa factura (la base tambien lo impone; aca se
  * verifica antes para dar un mensaje claro).
  */
-export async function anularVentaEnTx(tx: Tx, ventaId: string, usuarioId?: string | null): Promise<void> {
+export async function anularVentaEnTx(tx: Tx, negocioId: string, ventaId: string, usuarioId?: string | null): Promise<void> {
   const filas = await tx.$queryRaw<{ estado: string; numero: number; anio: number }[]>`
     SELECT estado::text AS estado, numero, anio FROM "ventas" WHERE id = ${ventaId}::uuid FOR UPDATE`;
   const venta = filas[0];
@@ -250,6 +252,7 @@ export async function anularVentaEnTx(tx: Tx, ventaId: string, usuarioId?: strin
     });
     await tx.movimientoStock.create({
       data: {
+        negocioId,
         materialId: salida.materialId,
         tipo: "VENTA",
         cantidad: salida.cantidad.neg(),

@@ -25,7 +25,7 @@ export type CompraNueva = {
  * ultimo precio pagado), que es lo que cuesta reponerlo hoy. Las recetas se
  * recalculan solas; las ventas ya hechas conservan su costo congelado.
  */
-export async function registrarCompraEnTx(tx: Tx, compra: CompraNueva): Promise<{ id: string }> {
+export async function registrarCompraEnTx(tx: Tx, negocioId: string, compra: CompraNueva): Promise<{ id: string }> {
   const { items, actualizarCosto, momento } = compra;
   const usuarioId = compra.usuarioId ?? null;
   if (items.length === 0) throw new ErrorDeNegocio("Agregá al menos un material");
@@ -37,6 +37,7 @@ export async function registrarCompraEnTx(tx: Tx, compra: CompraNueva): Promise<
   const lineas = items.map((l) => ({ ...l, costoUnitario: aCosto(l.costoUnitario) }));
   const creada = await tx.compra.create({
     data: {
+      negocioId,
       fecha: compra.fecha,
       proveedor: compra.proveedor,
       comprobante: compra.comprobante,
@@ -45,6 +46,7 @@ export async function registrarCompraEnTx(tx: Tx, compra: CompraNueva): Promise<
       usuarioId,
       items: {
         create: lineas.map((l) => ({
+          negocioId,
           materialId: l.materialId,
           cantidad: l.cantidad,
           costoUnitario: l.costoUnitario,
@@ -65,6 +67,7 @@ export async function registrarCompraEnTx(tx: Tx, compra: CompraNueva): Promise<
     });
     await tx.movimientoStock.create({
       data: {
+        negocioId,
         materialId: l.materialId,
         tipo: "COMPRA",
         cantidad: l.cantidad,

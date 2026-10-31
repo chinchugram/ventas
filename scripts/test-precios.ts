@@ -50,6 +50,19 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 async function escenario(titulo: string, fn: (tx: Tx) => Promise<void>) {
@@ -88,39 +101,42 @@ const datosCliente = (extra: Partial<DatosCliente> = {}): DatosCliente => ({
  */
 async function preparar(tx: Tx, listaActiva = true) {
   const material = await tx.material.create({
-    data: { nombre: "Material de prueba", unidad: "U", stockActual: d(100), costoUnitario: d(100) },
+    data: { negocioId, nombre: "Material de prueba", unidad: "U", stockActual: d(100), costoUnitario: d(100) },
   });
   const x = await tx.articulo.create({
     data: {
+      negocioId,
       nombre: "Artículo X",
       precioVenta: d(1210),
       ivaPct: d(21),
-      receta: { create: { componentes: { create: [{ tipo: "MATERIAL", materialId: material.id, cantidad: d(2) }] } } },
+      receta: { create: { negocioId, componentes: { create: [{ negocioId, tipo: "MATERIAL", materialId: material.id, cantidad: d(2) }] } } },
     },
   });
-  const y = await tx.articulo.create({ data: { nombre: "Servicio Y", precioVenta: d(500), esServicio: true } });
-  const z = await tx.articulo.create({ data: { nombre: "Servicio Z", precioVenta: d(1000), esServicio: true } });
+  const y = await tx.articulo.create({ data: { negocioId, nombre: "Servicio Y", precioVenta: d(500), esServicio: true } });
+  const z = await tx.articulo.create({ data: { negocioId, nombre: "Servicio Z", precioVenta: d(1000), esServicio: true } });
   const lista = await tx.listaPrecio.create({
     data: {
+      negocioId,
       nombre: "Mayoristas de prueba",
       descuentoPct: d(10),
       activo: listaActiva,
-      items: { create: [{ articuloId: x.id, precio: d(800) }] },
+      items: { create: [{ negocioId, articuloId: x.id, precio: d(800) }] },
     },
   });
-  const conLista = await tx.cliente.create({ data: { nombre: "Cliente con lista", listaPrecioId: lista.id } });
-  const sinLista = await tx.cliente.create({ data: { nombre: "Cliente sin lista" } });
+  const conLista = await tx.cliente.create({ data: { negocioId, nombre: "Cliente con lista", listaPrecioId: lista.id } });
+  const sinLista = await tx.cliente.create({ data: { negocioId, nombre: "Cliente sin lista" } });
   return { x, y, z, lista, conLista, sinLista };
 }
 
 async function vender(tx: Tx, clienteId: string, items: { articuloId: string; cantidad: Dinero; precioUnitario?: Dinero }[]) {
-  const r = await registrarVentaEnTx(tx, { clienteId, fecha: hoy, observaciones: null, entregada: true, items, pago: null });
+  const r = await registrarVentaEnTx(tx, negocioId, { clienteId, fecha: hoy, observaciones: null, entregada: true, items, pago: null });
   const v = await tx.venta.findUniqueOrThrow({ where: { id: r.id }, include: { items: true } });
   const linea = (articuloId: string) => v.items.find((i) => i.articuloId === articuloId)!;
   return { r, v, linea };
 }
 
 async function main() {
+  await resolverNegocio();
   await escenario("Cliente con lista: cada rama de la regla", async (tx) => {
     const { x, y, z, conLista } = await preparar(tx);
     const { v, linea } = await vender(tx, conLista.id, [
@@ -213,15 +229,15 @@ async function main() {
   });
 
   await escenario("ABM de listas y precios específicos", async (tx) => {
-    const { id } = await crearListaEnTx(tx, { nombre: "  Gremio  ", descuentoPct: d("12.5") });
+    const { id } = await crearListaEnTx(tx, negocioId, { nombre: "  Gremio  ", descuentoPct: d("12.5") });
     const l = await tx.listaPrecio.findUniqueOrThrow({ where: { id } });
     comprobar("nombre sin espacios", l.nombre, "Gremio");
     comprobar("descuento", num(l.descuentoPct), "12.5");
     comprobar("activa por defecto", String(l.activo), "true");
     await rechaza("nombre repetido (sin distinguir mayúsculas)", "Ya hay una lista", () =>
-      crearListaEnTx(tx, { nombre: "gremio", descuentoPct: d(0) }),
+      crearListaEnTx(tx, negocioId, { nombre: "gremio", descuentoPct: d(0) }),
     );
-    await rechaza("descuento > 100", "entre 0 y 100", () => crearListaEnTx(tx, { nombre: "Otra", descuentoPct: d(101) }));
+    await rechaza("descuento > 100", "entre 0 y 100", () => crearListaEnTx(tx, negocioId, { nombre: "Otra", descuentoPct: d(101) }));
 
     await editarListaEnTx(tx, id, { nombre: "Gremio 2", descuentoPct: d(20) });
     const e = await tx.listaPrecio.findUniqueOrThrow({ where: { id } });
@@ -230,14 +246,14 @@ async function main() {
       editarListaEnTx(tx, "00000000-0000-4000-8000-0000000000aa", { nombre: "X", descuentoPct: d(0) }),
     );
 
-    const articulo = await tx.articulo.create({ data: { nombre: "Artículo ABM", precioVenta: d(1000) } });
-    const baja = await tx.articulo.create({ data: { nombre: "Artículo de baja", precioVenta: d(1), activo: false } });
-    await guardarPrecioListaEnTx(tx, id, articulo.id, d(700));
-    await guardarPrecioListaEnTx(tx, id, articulo.id, d(650));
+    const articulo = await tx.articulo.create({ data: { negocioId, nombre: "Artículo ABM", precioVenta: d(1000) } });
+    const baja = await tx.articulo.create({ data: { negocioId, nombre: "Artículo de baja", precioVenta: d(1), activo: false } });
+    await guardarPrecioListaEnTx(tx, negocioId, id, articulo.id, d(700));
+    await guardarPrecioListaEnTx(tx, negocioId, id, articulo.id, d(650));
     const items = await tx.listaPrecioItem.findMany({ where: { listaPrecioId: id } });
     comprobar("un solo ítem por par (upsert)", `${items.length} ${num(items[0]!.precio)}`, "1 650");
-    await rechaza("precio negativo", "negativo", () => guardarPrecioListaEnTx(tx, id, articulo.id, d(-1)));
-    await rechaza("artículo de baja", "dado de baja", () => guardarPrecioListaEnTx(tx, id, baja.id, d(1)));
+    await rechaza("precio negativo", "negativo", () => guardarPrecioListaEnTx(tx, negocioId, id, articulo.id, d(-1)));
+    await rechaza("artículo de baja", "dado de baja", () => guardarPrecioListaEnTx(tx, negocioId, id, baja.id, d(1)));
     await quitarPrecioListaEnTx(tx, id, articulo.id);
     comprobar("quitado", String(await tx.listaPrecioItem.count({ where: { listaPrecioId: id } })), "0");
 
@@ -258,14 +274,14 @@ async function main() {
     });
     const creador = async (id: string) => (await tx.listaPrecio.findUniqueOrThrow({ where: { id } })).usuarioId;
 
-    const { id } = await crearListaEnTx(tx, { nombre: "Con usuario", descuentoPct: d(5) }, ana.id);
+    const { id } = await crearListaEnTx(tx, negocioId, { nombre: "Con usuario", descuentoPct: d(5) }, ana.id);
     comprobar("crear guarda el usuario", String((await creador(id)) === ana.id), "true");
     const leida = await tx.listaPrecio.findUniqueOrThrow({ where: { id }, include: { usuario: { select: { nombre: true } } } });
     comprobar("se lee el nombre para mostrar", String(leida.usuario?.nombre), "Ana de prueba");
 
-    const sin = await crearListaEnTx(tx, { nombre: "Sin usuario", descuentoPct: d(5) }, null);
+    const sin = await crearListaEnTx(tx, negocioId, { nombre: "Sin usuario", descuentoPct: d(5) }, null);
     comprobar("con null queda NULL", String(await creador(sin.id)), "null");
-    const omitido = await crearListaEnTx(tx, { nombre: "Omitido", descuentoPct: d(5) });
+    const omitido = await crearListaEnTx(tx, negocioId, { nombre: "Omitido", descuentoPct: d(5) });
     comprobar("sin pasar usuario queda NULL", String(await creador(omitido.id)), "null");
 
     // Editar, dar de baja o tocar precios no cambia quien la creó.
@@ -275,7 +291,7 @@ async function main() {
 
     await tx.$executeRaw`SAVEPOINT prueba`;
     try {
-      await crearListaEnTx(tx, { nombre: "Usuario fantasma", descuentoPct: d(1) }, "00000000-0000-4000-8000-0000000000ee");
+      await crearListaEnTx(tx, negocioId, { nombre: "Usuario fantasma", descuentoPct: d(1) }, "00000000-0000-4000-8000-0000000000ee");
       comprobar("FK: un usuario inexistente se rechaza", "se aceptó", "rechazada por la base");
     } catch {
       comprobar("FK: un usuario inexistente se rechaza", "rechazada por la base", "rechazada por la base");
@@ -293,14 +309,14 @@ async function main() {
   });
 
   await escenario("Asignación de lista al cliente", async (tx) => {
-    const activa = await tx.listaPrecio.create({ data: { nombre: "Activa de prueba" } });
-    const deBaja = await tx.listaPrecio.create({ data: { nombre: "De baja de prueba", activo: false } });
+    const activa = await tx.listaPrecio.create({ data: { negocioId, nombre: "Activa de prueba" } });
+    const deBaja = await tx.listaPrecio.create({ data: { negocioId, nombre: "De baja de prueba", activo: false } });
 
-    const { id } = await crearClienteEnTx(tx, datosCliente({ listaPrecioId: activa.id }));
+    const { id } = await crearClienteEnTx(tx, negocioId, datosCliente({ listaPrecioId: activa.id }));
     comprobar("alta con lista", String((await tx.cliente.findUniqueOrThrow({ where: { id } })).listaPrecioId === activa.id), "true");
-    await rechaza("alta con lista de baja", "dada de baja", () => crearClienteEnTx(tx, datosCliente({ nombre: "Otro", listaPrecioId: deBaja.id })));
+    await rechaza("alta con lista de baja", "dada de baja", () => crearClienteEnTx(tx, negocioId, datosCliente({ nombre: "Otro", listaPrecioId: deBaja.id })));
     await rechaza("alta con lista inexistente", "no existe", () =>
-      crearClienteEnTx(tx, datosCliente({ nombre: "Otro", listaPrecioId: "00000000-0000-4000-8000-0000000000bb" })),
+      crearClienteEnTx(tx, negocioId, datosCliente({ nombre: "Otro", listaPrecioId: "00000000-0000-4000-8000-0000000000bb" })),
     );
 
     await editarClienteEnTx(tx, id, datosCliente({ nombre: "Renombrado" }));
@@ -309,7 +325,7 @@ async function main() {
     comprobar("null quita la lista", String((await tx.cliente.findUniqueOrThrow({ where: { id } })).listaPrecioId), "null");
 
     // Un cliente que ya tenia una lista que luego se dio de baja puede editarse sin perderla.
-    const viejo = await tx.cliente.create({ data: { nombre: "Cliente viejo", listaPrecioId: deBaja.id } });
+    const viejo = await tx.cliente.create({ data: { negocioId, nombre: "Cliente viejo", listaPrecioId: deBaja.id } });
     await editarClienteEnTx(tx, viejo.id, datosCliente({ nombre: "Cliente viejo 2", listaPrecioId: deBaja.id }));
     comprobar("conserva su lista de baja", String((await tx.cliente.findUniqueOrThrow({ where: { id: viejo.id } })).listaPrecioId === deBaja.id), "true");
   });

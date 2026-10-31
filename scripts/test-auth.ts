@@ -40,6 +40,19 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 async function escenario(titulo: string, fn: (tx: Tx) => Promise<void>) {
@@ -84,6 +97,7 @@ async function usuarioDePrueba(tx: Tx, rol: "DUENO" | "EMPLEADO" = "EMPLEADO", u
 }
 
 async function main() {
+  await resolverNegocio();
   await escenario("Login correcto", async (tx) => {
     const u = await usuarioDePrueba(tx);
     const r = await iniciarSesion(tx, "  Prueba.AUTH ", CLAVE);
@@ -130,15 +144,15 @@ async function main() {
     const u = await usuarioDePrueba(tx);
     const hoy = ahora();
 
-    const vieja = await crearSesion(tx, u.id, mas(-31 * DIA, hoy));
+    const vieja = await crearSesion(tx, negocioId, u.id, mas(-31 * DIA, hoy));
     comprobar("sesion de hace 31 dias no vale", String(await resolverSesion(tx, vieja.token, hoy)), "null");
     comprobar("y se borra", String(await tx.sesion.count({ where: { tokenHash: hashDeToken(vieja.token) } })), "0");
 
-    const casi = await crearSesion(tx, u.id, mas(-29 * DIA, hoy));
+    const casi = await crearSesion(tx, negocioId, u.id, mas(-29 * DIA, hoy));
     comprobar("de hace 29 dias todavia vale", String((await resolverSesion(tx, casi.token, hoy))?.usuario.id === u.id), "true");
     comprobar("un segundo despues del vencimiento no", String(await resolverSesion(tx, casi.token, mas(1000, casi.expiraEn))), "null");
 
-    const reciente = await crearSesion(tx, u.id, mas(-2 * DIA, hoy));
+    const reciente = await crearSesion(tx, negocioId, u.id, mas(-2 * DIA, hoy));
     const sinRenovar = await resolverSesion(tx, reciente.token, hoy);
     comprobar("sin pedir renovacion no renueva", String(sinRenovar?.renovadaHasta), "null");
     const renovada = await resolverSesion(tx, reciente.token, hoy, { renovar: true });
@@ -149,7 +163,7 @@ async function main() {
     comprobar("en el mismo dia no vuelve a escribir", String(otraVez?.renovadaHasta), "null");
     comprobar("...pero sigue valiendo", String(otraVez?.usuario.id === u.id), "true");
 
-    const nueva = await crearSesion(tx, u.id, hoy);
+    const nueva = await crearSesion(tx, negocioId, u.id, hoy);
     const sinTocar = await resolverSesion(tx, nueva.token, mas(1000, hoy), { renovar: true });
     comprobar("una sesion recien abierta no se renueva", String(sinTocar?.renovadaHasta), "null");
   });
@@ -278,15 +292,15 @@ async function main() {
   });
   await rechazaLaBase("token guardado en claro (no es SHA-256 hex)", "sesiones_token_hash_check", async (tx) => {
     const u = await usuarioDePrueba(tx);
-    await tx.sesion.create({ data: { tokenHash: "x".repeat(43), usuarioId: u.id, expiraEn: mas(DIA, ahora()) } });
+    await tx.sesion.create({ data: { negocioId, tokenHash: "x".repeat(43), usuarioId: u.id, expiraEn: mas(DIA, ahora()) } });
   });
   await rechazaLaBase("sesion que vence antes de crearse", "sesiones_vencimiento_check", async (tx) => {
     const u = await usuarioDePrueba(tx);
-    await tx.sesion.create({ data: { tokenHash: "a".repeat(64), usuarioId: u.id, expiraEn: mas(-DIA, ahora()) } });
+    await tx.sesion.create({ data: { negocioId, tokenHash: "a".repeat(64), usuarioId: u.id, expiraEn: mas(-DIA, ahora()) } });
   });
   await rechazaLaBase("borrar un usuario con sesiones", "sesiones_usuarioId_fkey", async (tx) => {
     const u = await usuarioDePrueba(tx);
-    await crearSesion(tx, u.id);
+    await crearSesion(tx, negocioId, u.id);
     await tx.usuario.delete({ where: { id: u.id } });
   });
 

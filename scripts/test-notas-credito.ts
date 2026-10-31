@@ -115,6 +115,19 @@ function nuevoCliente() {
 }
 const prisma = nuevoCliente();
 
+/** Negocio de las pruebas: el de la migracion (`hl-laser`). Se resuelve al empezar `main`. */
+let negocioId = "";
+async function resolverNegocio() {
+  negocioId = (
+    await prisma.negocio.upsert({
+      where: { slug: "hl-laser" },
+      update: {},
+      create: { nombre: "HL Laser", slug: "hl-laser" },
+      select: { id: true },
+    })
+  ).id;
+}
+
 class Deshacer extends Error {}
 
 async function escenario(titulo: string, fn: (tx: Tx) => Promise<void>) {
@@ -160,7 +173,7 @@ async function configurarFiscal(db: Tx | PrismaClient, valores: Partial<Record<k
   for (const [campo, valor] of Object.entries(todos) as [keyof typeof CLAVES_FISCALES, string][]) {
     const clave = CLAVES_FISCALES[campo];
     if (valor === "") await db.configuracion.deleteMany({ where: { clave } });
-    else await db.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+    else await db.configuracion.upsert({ where: { negocioId_clave: { negocioId, clave } }, update: { valor }, create: { negocioId, clave, valor } });
   }
 }
 
@@ -171,12 +184,12 @@ async function configurarFiscal(db: Tx | PrismaClient, valores: Partial<Record<k
  */
 async function preparar(db: Tx | PrismaClient, prefijo: string, puntoVenta = PV) {
   await configurarFiscal(db, { puntoVenta: String(puntoVenta) });
-  const x = await db.articulo.create({ data: { nombre: `${prefijo} X`, precioVenta: d(1210), ivaPct: d(21), esServicio: true } });
-  const y = await db.articulo.create({ data: { nombre: `${prefijo} Y`, precioVenta: d("110.5"), ivaPct: d("10.5"), esServicio: true } });
-  const z = await db.articulo.create({ data: { nombre: `${prefijo} Z`, precioVenta: d(500), ivaPct: d(0), esServicio: true } });
-  const final = await db.cliente.create({ data: { nombre: `${prefijo} consumidor final`, direccion: "Mostrador" } });
+  const x = await db.articulo.create({ data: { negocioId, nombre: `${prefijo} X`, precioVenta: d(1210), ivaPct: d(21), esServicio: true } });
+  const y = await db.articulo.create({ data: { negocioId, nombre: `${prefijo} Y`, precioVenta: d("110.5"), ivaPct: d("10.5"), esServicio: true } });
+  const z = await db.articulo.create({ data: { negocioId, nombre: `${prefijo} Z`, precioVenta: d(500), ivaPct: d(0), esServicio: true } });
+  const final = await db.cliente.create({ data: { negocioId, nombre: `${prefijo} consumidor final`, direccion: "Mostrador" } });
   const ri = await db.cliente.create({
-    data: { nombre: `${prefijo} RI`, cuit: CUIT_RI, condicionIva: "RESPONSABLE_INSCRIPTO", direccion: "Av. Colón 1, Córdoba" },
+    data: { negocioId, nombre: `${prefijo} RI`, cuit: CUIT_RI, condicionIva: "RESPONSABLE_INSCRIPTO", direccion: "Av. Colón 1, Córdoba" },
   });
   return { x, y, z, final, ri };
 }
@@ -193,7 +206,7 @@ async function usuarioDePrueba(tx: Tx) {
 }
 
 async function venta(db: Tx, clienteId: string, items: { articuloId: string; cantidad: string | number }[], fecha = HOY) {
-  const v = await registrarVentaEnTx(db, {
+  const v = await registrarVentaEnTx(db, negocioId, {
     clienteId,
     fecha,
     observaciones: null,
@@ -229,6 +242,7 @@ const TRES_ARTICULOS = (t: Awaited<ReturnType<typeof preparar>>) => [
 ];
 
 async function main() {
+  await resolverNegocio();
   const antes = await contarTodo(prisma);
 
   await escenario("Factura B: no se anula sin nota de crédito; con ella sí", async (tx) => {
@@ -236,7 +250,7 @@ async function main() {
     const usuario = await usuarioDePrueba(tx);
     const v = await venta(tx, t.final.id, TRES_ARTICULOS(t));
     comprobar("sin factura: no hay factura para anular", String(await facturaAnulableDeVenta(tx, v)), "null");
-    const fac = await emitirFacturaEnTx(tx, v, null, { emisor: simulado(tx) });
+    const fac = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
     comprobar("factura emitida", `${fac.estado} ${fac.tipo} ${fac.numero}`, "EMITIDO FACTURA_B 1");
     const anulable = await facturaAnulableDeVenta(tx, v);
     comprobar("la factura emitida es anulable", `${anulable?.id === fac.id} ${anulable?.etiqueta}`, `true Factura B ${PV}-00000001`);
@@ -244,13 +258,13 @@ async function main() {
     await rechaza(
       "anular la venta facturada: mensaje claro con el número",
       `La venta tiene la Factura B ${PV}-00000001: primero hay que emitir la nota de crédito.`,
-      () => anularVentaEnTx(tx, v),
+      () => anularVentaEnTx(tx, negocioId, v),
     );
     comprobar("la venta sigue sin anular", (await tx.venta.findUniqueOrThrow({ where: { id: v } })).estado, "PENDIENTE");
 
     const capturadas: SolicitudCae[] = [];
     const emisor = simulado(tx, { rechazar: (s) => (capturadas.push(s), null) });
-    const nc = await emitirNotaCreditoEnTx(tx, v, usuario.id, { emisor, facturaId: fac.id });
+    const nc = await emitirNotaCreditoEnTx(tx, negocioId, v, usuario.id, { emisor, facturaId: fac.id });
     comprobar("NC emitida", `${nc.estado} ${nc.tipo} ${nc.puntoVenta}-${nc.numero}`, `EMITIDO NOTA_CREDITO_B ${PV}-1`);
     comprobar("CAE de 14 dígitos", String(/^\d{14}$/.test(nc.cae ?? "")), "true");
     comprobar("mensaje", nc.mensaje.startsWith(`Nota de crédito B ${PV}-00000001 emitida (CAE `) ? "ok" : nc.mensaje, "ok");
@@ -283,17 +297,17 @@ async function main() {
 
     comprobar("ya no hay factura para anular", String(await facturaAnulableDeVenta(tx, v)), "null");
     await rechaza("segunda NC de la misma factura", `La Factura B ${PV}-00000001 ya está anulada por la Nota de crédito B ${PV}-00000001.`, () =>
-      emitirNotaCreditoEnTx(tx, v, null, { emisor: simulado(tx) }),
+      emitirNotaCreditoEnTx(tx, negocioId, v, null, { emisor: simulado(tx) }),
     );
     comprobar("una sola NC", String(await tx.comprobante.count({ where: { comprobanteAsociadoId: fac.id } })), "1");
 
-    await anularVentaEnTx(tx, v, usuario.id);
+    await anularVentaEnTx(tx, negocioId, v, usuario.id);
     comprobar("con la NC EMITIDA, la venta se anula", (await tx.venta.findUniqueOrThrow({ where: { id: v } })).estado, "ANULADA");
 
     // La serie de NC es propia: la segunda venta lleva factura 2 y NC 2.
     const v2 = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    const fac2 = await emitirFacturaEnTx(tx, v2, null, { emisor: simulado(tx) });
-    const nc2 = await emitirNotaCreditoEnTx(tx, v2, null, { emisor: simulado(tx) });
+    const fac2 = await emitirFacturaEnTx(tx, negocioId, v2, null, { emisor: simulado(tx) });
+    const nc2 = await emitirNotaCreditoEnTx(tx, negocioId, v2, null, { emisor: simulado(tx) });
     comprobar("segunda venta: factura 2 y NC 2", `${fac2.numero} ${nc2.numero}`, "2 2");
     comprobar("NC sin usuario: queda null", String((await tx.comprobante.findUniqueOrThrow({ where: { id: nc2.id } })).usuarioId), "null");
   });
@@ -306,9 +320,9 @@ async function main() {
     ];
     for (const caso of casos) {
       const v = await venta(tx, caso.clienteId, [{ articuloId: t.x.id, cantidad: 1 }]);
-      const fac = await emitirFacturaEnTx(tx, v, null, { emisor: simulado(tx) });
+      const fac = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
       const capturadas: SolicitudCae[] = [];
-      const nc = await emitirNotaCreditoEnTx(tx, v, null, { emisor: simulado(tx, { rechazar: (s) => (capturadas.push(s), null) }) });
+      const nc = await emitirNotaCreditoEnTx(tx, negocioId, v, null, { emisor: simulado(tx, { rechazar: (s) => (capturadas.push(s), null) }) });
       const c = await tx.comprobante.findUniqueOrThrow({ where: { id: nc.id }, include: { comprobanteAsociado: true } });
       comprobar(`${caso.nombre}: tipo de la factura`, fac.tipo, caso.asociada);
       comprobar(`${caso.nombre}: tipo y código de la NC`, `${c.tipo} ${c.codigoArca} ${c.estado}`, `${caso.esperada} ${caso.arca} EMITIDO`);
@@ -324,8 +338,8 @@ async function main() {
     // C: emisor monotributista, articulos con IVA 0.
     await configurarFiscal(tx, { condicionIva: "MONOTRIBUTO", puntoVenta: String(PV + 1) });
     const v = await venta(tx, t.final.id, [{ articuloId: t.z.id, cantidad: 3 }]);
-    const fac = await emitirFacturaEnTx(tx, v, null, { emisor: simulado(tx) });
-    const nc = await emitirNotaCreditoEnTx(tx, v, null, { emisor: simulado(tx) });
+    const fac = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
+    const nc = await emitirNotaCreditoEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
     const { c } = await detalle(tx, nc.id);
     comprobar("C: la factura", fac.tipo, "FACTURA_C");
     comprobar("C: la NC", `${c.tipo} ${c.codigoArca} ${c.estado} ${c.emisorCondicionIva}`, "NOTA_CREDITO_C 13 EMITIDO MONOTRIBUTO");
@@ -336,7 +350,7 @@ async function main() {
   await escenario("La NC copia la foto de la factura, no la configuración ni el cliente de hoy", async (tx) => {
     const t = await preparar(tx, "Prueba NC foto");
     const v = await venta(tx, t.final.id, TRES_ARTICULOS(t));
-    const fac = await emitirFacturaEnTx(tx, v, null, { emisor: simulado(tx) });
+    const fac = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
     const antes = await detalle(tx, fac.id);
 
     // Se edita TODO: el cliente (hasta su condición y CUIT), los articulos y la configuracion fiscal.
@@ -355,7 +369,7 @@ async function main() {
       puntoVenta: "77",
     });
 
-    const nc = await emitirNotaCreditoEnTx(tx, v, null, { emisor: simulado(tx) });
+    const nc = await emitirNotaCreditoEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
     const despues = await detalle(tx, nc.id);
     comprobar("sigue siendo NC B (letra de la factura, no de la configuración de hoy)", despues.c.tipo, "NOTA_CREDITO_B");
     comprobar("mismo punto de venta que la factura (no el 77 de hoy)", String(despues.c.puntoVenta), String(PV));
@@ -370,39 +384,39 @@ async function main() {
   await escenario("Rechazo del emisor y corte: no se pierde el número", async (tx) => {
     const t = await preparar(tx, "Prueba NC rechazo");
     const v = await venta(tx, t.final.id, TRES_ARTICULOS(t));
-    const fac = await emitirFacturaEnTx(tx, v, null, { emisor: simulado(tx) });
+    const fac = await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
 
-    const rech = await emitirNotaCreditoEnTx(tx, v, null, { emisor: simulado(tx, { rechazar: () => ["[10016] prueba"] }) });
+    const rech = await emitirNotaCreditoEnTx(tx, negocioId, v, null, { emisor: simulado(tx, { rechazar: () => ["[10016] prueba"] }) });
     comprobar("rechazada: estado y número intentado", `${rech.estado} ${rech.numero}`, "RECHAZADO 1");
     comprobar("rechazada: mensaje con el motivo", rech.mensaje.includes("[10016] prueba") ? "ok" : rech.mensaje, "ok");
     const guardada = await tx.comprobante.findUniqueOrThrow({ where: { id: rech.id } });
     comprobar("rechazada: guardada con sus observaciones", `${guardada.estado} ${guardada.observaciones}`, "RECHAZADO [10016] prueba");
     comprobar("rechazada: no es vigente, la factura sigue anulable", String((await facturaAnulableDeVenta(tx, v))?.id === fac.id), "true");
-    await rechaza("rechazada: la venta sigue sin poder anularse", "primero hay que emitir la nota de crédito", () => anularVentaEnTx(tx, v));
+    await rechaza("rechazada: la venta sigue sin poder anularse", "primero hay que emitir la nota de crédito", () => anularVentaEnTx(tx, negocioId, v));
 
-    const bien = await emitirNotaCreditoEnTx(tx, v, null, { emisor: simulado(tx) });
+    const bien = await emitirNotaCreditoEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
     comprobar("reintento: EMITIDO con el mismo número", `${bien.estado} ${bien.numero}`, "EMITIDO 1");
     comprobar("quedan dos filas (el intento y la emitida)", String(await tx.comprobante.count({ where: { comprobanteAsociadoId: fac.id } })), "2");
-    await anularVentaEnTx(tx, v);
+    await anularVentaEnTx(tx, negocioId, v);
 
     // Corte: el emisor no responde.
     const v2 = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    const fac2 = await emitirFacturaEnTx(tx, v2, null, { emisor: simulado(tx) });
-    const corte = await emitirNotaCreditoEnTx(tx, v2, null, { emisor: simulado(tx, { cortar: () => true }) });
+    const fac2 = await emitirFacturaEnTx(tx, negocioId, v2, null, { emisor: simulado(tx) });
+    const corte = await emitirNotaCreditoEnTx(tx, negocioId, v2, null, { emisor: simulado(tx, { cortar: () => true }) });
     comprobar("corte: queda PENDIENTE con su número", `${corte.estado} ${corte.numero}`, "PENDIENTE 2");
     comprobar("corte: mensaje", corte.mensaje.includes("quedó pendiente") ? "ok" : corte.mensaje, "ok");
     comprobar("corte: ya no ofrece otra NC", String(await facturaAnulableDeVenta(tx, v2)), "null");
     await rechaza("corte: otro pedido de la misma factura", `La Factura B ${PV}-00000002 ya tiene la Nota de crédito B ${PV}-00000002 esperando respuesta`, () =>
-      emitirNotaCreditoEnTx(tx, v2, null, { emisor: simulado(tx) }),
+      emitirNotaCreditoEnTx(tx, negocioId, v2, null, { emisor: simulado(tx) }),
     );
     await rechaza("corte: no se anula la venta (mensaje claro, sin error crudo)", "su nota de crédito está esperando respuesta del emisor", () =>
-      anularVentaEnTx(tx, v2),
+      anularVentaEnTx(tx, negocioId, v2),
     );
     // Otra venta de la serie, con el PENDIENTE: espera.
     const v3 = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    await emitirFacturaEnTx(tx, v3, null, { emisor: simulado(tx) });
+    await emitirFacturaEnTx(tx, negocioId, v3, null, { emisor: simulado(tx) });
     await rechaza("corte: otra NC de la serie espera la respuesta", `Hay otra Nota de crédito B ${PV}-00000002 esperando respuesta`, () =>
-      emitirNotaCreditoEnTx(tx, v3, null, { emisor: simulado(tx) }),
+      emitirNotaCreditoEnTx(tx, negocioId, v3, null, { emisor: simulado(tx) }),
     );
     comprobar("(la factura 2 sigue EMITIDA)", (await tx.comprobante.findUniqueOrThrow({ where: { id: fac2.id } })).estado, "EMITIDO");
   });
@@ -411,40 +425,40 @@ async function main() {
     const t = await preparar(tx, "Prueba NC errores");
     const sinFactura = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
     await rechaza("venta sin factura", "La venta no tiene una factura emitida: no hay nada que anular con una nota de crédito.", () =>
-      emitirNotaCreditoEnTx(tx, sinFactura, null, { emisor: simulado(tx) }),
+      emitirNotaCreditoEnTx(tx, negocioId, sinFactura, null, { emisor: simulado(tx) }),
     );
-    await rechaza("venta inexistente", "La venta no existe.", () => emitirNotaCreditoEnTx(tx, "00000000-0000-4000-8000-000000000000", null, { emisor: simulado(tx) }));
+    await rechaza("venta inexistente", "La venta no existe.", () => emitirNotaCreditoEnTx(tx, negocioId, "00000000-0000-4000-8000-000000000000", null, { emisor: simulado(tx) }));
     comprobar("venta sin factura: nada que mostrar", String(await facturaAnulableDeVenta(tx, sinFactura)), "null");
-    await anularVentaEnTx(tx, sinFactura);
+    await anularVentaEnTx(tx, negocioId, sinFactura);
     comprobar("venta sin factura: se anula sin NC", (await tx.venta.findUniqueOrThrow({ where: { id: sinFactura } })).estado, "ANULADA");
 
     // Factura RECHAZADA: como si no hubiera factura (y la venta se anula sin NC).
     const rech = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    const fr = await emitirFacturaEnTx(tx, rech, null, { emisor: simulado(tx, { rechazar: () => ["[10048] prueba"] }) });
+    const fr = await emitirFacturaEnTx(tx, negocioId, rech, null, { emisor: simulado(tx, { rechazar: () => ["[10048] prueba"] }) });
     comprobar("(factura rechazada)", fr.estado, "RECHAZADO");
-    await rechaza("factura RECHAZADA: no hay factura emitida", "no tiene una factura emitida", () => emitirNotaCreditoEnTx(tx, rech, null, { emisor: simulado(tx) }));
+    await rechaza("factura RECHAZADA: no hay factura emitida", "no tiene una factura emitida", () => emitirNotaCreditoEnTx(tx, negocioId, rech, null, { emisor: simulado(tx) }));
 
     // La factura que vio la persona no es la vigente.
     const v = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    await emitirFacturaEnTx(tx, v, null, { emisor: simulado(tx) });
+    await emitirFacturaEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
     await rechaza("otra factura distinta de la que se vio", "La factura de la venta cambió mientras tanto", () =>
-      emitirNotaCreditoEnTx(tx, v, null, { emisor: simulado(tx), facturaId: "00000000-0000-4000-8000-000000000000" }),
+      emitirNotaCreditoEnTx(tx, negocioId, v, null, { emisor: simulado(tx), facturaId: "00000000-0000-4000-8000-000000000000" }),
     );
     comprobar("(sin NC creada por el error)", String(await tx.comprobante.count({ where: { ventaId: v, tipo: "NOTA_CREDITO_B" } })), "0");
 
     // Otro ambiente: la NC tiene que salir por el mismo ambiente que la factura.
     const otroAmbiente: EmisorFiscal = { ...simulado(tx), ambiente: "HOMOLOGACION" };
     await rechaza("emisor de otro ambiente", "La factura es del ambiente SIMULADO y el emisor configurado es HOMOLOGACION", () =>
-      reservarNotaCreditoEnTx(tx, v, null, { emisor: otroAmbiente }),
+      reservarNotaCreditoEnTx(tx, negocioId, v, null, { emisor: otroAmbiente }),
     );
     try {
-      await emitirNotaCreditoEnTx(tx, v, null, { emisor: otroAmbiente });
+      await emitirNotaCreditoEnTx(tx, negocioId, v, null, { emisor: otroAmbiente });
       comprobar("emitirNotaCreditoEnTx solo con el simulado", "no lanzó error", "error");
     } catch (error) {
       comprobar("emitirNotaCreditoEnTx solo con el simulado", String(error instanceof Error && error.message.includes("solo para el emisor simulado")), "true");
     }
     // reservar directo (como la fase 1): vale lo mismo.
-    const reserva = await reservarNotaCreditoEnTx(tx, v, null, { emisor: simulado(tx) });
+    const reserva = await reservarNotaCreditoEnTx(tx, negocioId, v, null, { emisor: simulado(tx) });
     comprobar("la reserva deja la NC PENDIENTE con su número", `${reserva.tipo} ${reserva.numero}`, "NOTA_CREDITO_B 1");
     comprobar(
       "la reserva está PENDIENTE y sin CAE",
@@ -454,12 +468,12 @@ async function main() {
 
     // Factura PENDIENTE (el emisor no respondio): no hay NC posible ni se anula la venta.
     const pend = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    await emitirFacturaEnTx(tx, pend, null, { emisor: simulado(tx, { cortar: () => true }) });
+    await emitirFacturaEnTx(tx, negocioId, pend, null, { emisor: simulado(tx, { cortar: () => true }) });
     await rechaza("factura PENDIENTE: no se hace NC", `La Factura B ${PV}-00000002 está esperando respuesta del emisor`, () =>
-      emitirNotaCreditoEnTx(tx, pend, null, { emisor: simulado(tx) }),
+      emitirNotaCreditoEnTx(tx, negocioId, pend, null, { emisor: simulado(tx) }),
     );
     await rechaza("factura PENDIENTE: no se anula la venta (mensaje claro)", `La venta tiene la Factura B ${PV}-00000002 esperando respuesta del emisor`, () =>
-      anularVentaEnTx(tx, pend),
+      anularVentaEnTx(tx, negocioId, pend),
     );
     comprobar("factura PENDIENTE: nada que mostrar", String(await facturaAnulableDeVenta(tx, pend)), "null");
   });
@@ -510,7 +524,7 @@ async function contarTodo(cliente: PrismaClient): Promise<Cuentas> {
 
 const ANIO_FICTICIO = f("2099-06-15");
 const PREFIJO = "ZZ prueba notas de credito";
-let configuracionOriginal: { clave: string; valor: string }[] | null = null;
+let configuracionOriginal: { negocioId: string; clave: string; valor: string }[] | null = null;
 
 /** Borra lo que crea la parte real y restaura la configuracion fiscal. */
 async function limpiarReal() {
@@ -549,7 +563,7 @@ async function parteReal() {
     /** Una venta ya facturada (EMITIDO), con la transaccion confirmada. */
     const ventaFacturada = async () => {
       const v = await nuevaVenta();
-      const fac = await emitirFactura(prisma, v, null, { emisor: emisorGlobal });
+      const fac = await emitirFactura(prisma, negocioId, v, null, { emisor: emisorGlobal });
       if (fac.estado !== "EMITIDO") throw new Error(`No se pudo preparar la factura: ${fac.mensaje}`);
       return { v, fac };
     };
@@ -560,7 +574,7 @@ async function parteReal() {
     for (const ronda of [1, 2, 3]) {
       const { v } = await ventaFacturada();
       const intento = (db: PrismaClient) =>
-        db.$transaction((tx) => emitirNotaCreditoEnTx(tx, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx)) }), { timeout: 30_000 });
+        db.$transaction((tx) => emitirNotaCreditoEnTx(tx, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx)) }), { timeout: 30_000 });
       const res = await Promise.allSettled([intento(prisma), intento(b), intento(prisma), intento(b)]);
       const ok = res.filter((r) => r.status === "fulfilled");
       const malos = res.filter((r): r is PromiseRejectedResult => r.status === "rejected");
@@ -577,8 +591,8 @@ async function parteReal() {
     for (const ronda of [1, 2, 3]) {
       const { v } = await ventaFacturada();
       const res = await Promise.allSettled([
-        emitirNotaCredito(prisma, v, null, { emisor: emisorGlobal }),
-        emitirNotaCredito(b, v, null, { emisor: emisorDeB }),
+        emitirNotaCredito(prisma, negocioId, v, null, { emisor: emisorGlobal }),
+        emitirNotaCredito(b, negocioId, v, null, { emisor: emisorDeB }),
       ]);
       const ok = res.filter((r): r is PromiseFulfilledResult<ComprobanteProcesado> => r.status === "fulfilled");
       const malos = res.filter((r): r is PromiseRejectedResult => r.status === "rejected");
@@ -600,7 +614,7 @@ async function parteReal() {
     for (let k = 0; k < 5; k++) facturadas.push(await ventaFacturada());
     const emitidas = await Promise.all(
       facturadas.map(({ v }, k) =>
-        (k % 2 ? b : prisma).$transaction((tx) => emitirNotaCreditoEnTx(tx, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx)) }), { timeout: 30_000 }),
+        (k % 2 ? b : prisma).$transaction((tx) => emitirNotaCreditoEnTx(tx, negocioId, v, null, { emisor: crearEmisorSimulado(accesoSimulado(tx)) }), { timeout: 30_000 }),
       ),
     );
     comprobar("ventas distintas a la vez: todas emitidas", emitidas.map((e) => e.estado).join(","), "EMITIDO,EMITIDO,EMITIDO,EMITIDO,EMITIDO");
@@ -618,7 +632,7 @@ async function parteReal() {
     const otras = [];
     for (let k = 0; k < 4; k++) otras.push(await ventaFacturada());
     const res4 = await Promise.allSettled(
-      otras.map(({ v }, k) => (k % 2 ? emitirNotaCredito(b, v, null, { emisor: emisorDeB }) : emitirNotaCredito(prisma, v, null, { emisor: emisorGlobal }))),
+      otras.map(({ v }, k) => (k % 2 ? emitirNotaCredito(b, negocioId, v, null, { emisor: emisorDeB }) : emitirNotaCredito(prisma, negocioId, v, null, { emisor: emisorGlobal }))),
     );
     comprobar(
       "dos fases, ventas distintas: emite o espera con mensaje claro (nunca un error crudo)",
@@ -638,37 +652,37 @@ async function parteReal() {
     // Las que esperaron se reintentan y salen.
     for (const [k, r] of res4.entries()) {
       if (r.status === "rejected") {
-        const rr = await emitirNotaCredito(prisma, otras[k]!.v, null, { emisor: emisorGlobal });
+        const rr = await emitirNotaCredito(prisma, negocioId, otras[k]!.v, null, { emisor: emisorGlobal });
         comprobar(`  reintento de la que esperó (${k + 1})`, rr.estado, "EMITIDO");
       }
     }
 
     // 5. Corte en dos fases: el PENDIENTE sobrevive (esta confirmado) y se resuelve despues.
     const { v: vCorte } = await ventaFacturada();
-    const cortado = await emitirNotaCredito(prisma, vCorte, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { cortar: () => true }) });
+    const cortado = await emitirNotaCredito(prisma, negocioId, vCorte, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { cortar: () => true }) });
     comprobar("corte: queda PENDIENTE", cortado.estado, "PENDIENTE");
     const guardado = await prisma.comprobante.findUniqueOrThrow({ where: { id: cortado.id } });
     comprobar("corte: el PENDIENTE quedó confirmado con su número", `${guardado.estado} ${guardado.tipo} ${guardado.numero}`, `PENDIENTE NOTA_CREDITO_B ${numeros.length + otras.length + 1}`);
-    await rechaza("corte: no se anula la venta", "esperando respuesta del emisor", () => prisma.$transaction((tx) => anularVentaEnTx(tx, vCorte)));
-    await rechaza("corte: no se vuelve a pedir la NC", "esperando respuesta del emisor", () => emitirNotaCredito(prisma, vCorte, null, { emisor: emisorGlobal }));
+    await rechaza("corte: no se anula la venta", "esperando respuesta del emisor", () => prisma.$transaction((tx) => anularVentaEnTx(tx, negocioId, vCorte)));
+    await rechaza("corte: no se vuelve a pedir la NC", "esperando respuesta del emisor", () => emitirNotaCredito(prisma, negocioId, vCorte, null, { emisor: emisorGlobal }));
     await rechaza("resolver un PENDIENTE recién creado: todavía no", "probá en unos minutos", () => resolverPendiente(prisma, cortado.id, emisorGlobal));
     const mas = new Date(guardado.creadoEn.getTime() + ANTIGUEDAD_MINIMA_PENDIENTE_MS + 1000);
     const resuelto = await resolverPendiente(prisma, cortado.id, emisorGlobal, mas);
     comprobar("resolver: el simulador no la autorizó → RECHAZADO", `${resuelto.estado} ${resuelto.numero}`, `RECHAZADO ${guardado.numero}`);
-    const otraVez = await emitirNotaCredito(prisma, vCorte, null, { emisor: emisorGlobal });
+    const otraVez = await emitirNotaCredito(prisma, negocioId, vCorte, null, { emisor: emisorGlobal });
     comprobar("reintento: EMITIDO con el mismo número", `${otraVez.estado} ${otraVez.numero}`, `EMITIDO ${guardado.numero}`);
 
     // 6. Rechazo en dos fases: queda RECHAZADO, confirmado.
     const { v: vRech } = await ventaFacturada();
-    const rech = await emitirNotaCredito(prisma, vRech, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { rechazar: () => ["[10016] prueba"] }) });
+    const rech = await emitirNotaCredito(prisma, negocioId, vRech, null, { emisor: crearEmisorSimulado(accesoSimulado(prisma), { rechazar: () => ["[10016] prueba"] }) });
     comprobar("rechazo en dos fases: RECHAZADO confirmado", (await prisma.comprobante.findUniqueOrThrow({ where: { id: rech.id } })).estado, "RECHAZADO");
-    await rechaza("rechazo: la venta sigue sin poder anularse", "primero hay que emitir la nota de crédito", () => prisma.$transaction((tx) => anularVentaEnTx(tx, vRech)));
+    await rechaza("rechazo: la venta sigue sin poder anularse", "primero hay que emitir la nota de crédito", () => prisma.$transaction((tx) => anularVentaEnTx(tx, negocioId, vRech)));
 
     // 7. Anulacion confirmada: sin NC no; con NC si.
     const { v: vAnular } = await ventaFacturada();
-    await rechaza("venta facturada confirmada: no se anula sin NC", "primero hay que emitir la nota de crédito", () => prisma.$transaction((tx) => anularVentaEnTx(tx, vAnular)));
-    await emitirNotaCredito(prisma, vAnular, null, { emisor: emisorGlobal });
-    await prisma.$transaction((tx) => anularVentaEnTx(tx, vAnular));
+    await rechaza("venta facturada confirmada: no se anula sin NC", "primero hay que emitir la nota de crédito", () => prisma.$transaction((tx) => anularVentaEnTx(tx, negocioId, vAnular)));
+    await emitirNotaCredito(prisma, negocioId, vAnular, null, { emisor: emisorGlobal });
+    await prisma.$transaction((tx) => anularVentaEnTx(tx, negocioId, vAnular));
     comprobar("con la NC emitida: la venta se anula", (await prisma.venta.findUniqueOrThrow({ where: { id: vAnular } })).estado, "ANULADA");
 
     // 8. La server action REAL, con sesiones reales.
@@ -676,8 +690,8 @@ async function parteReal() {
     const CLAVE = "clave-de-prueba-123";
     const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `zz-nc-emp-${randomBytes(3).toString("hex")}`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
     const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `zz-nc-due-${randomBytes(3).toString("hex")}`, nombre: "Dueño de prueba", rol: "DUENO", clave: CLAVE }));
-    const tEmp = (await crearSesion(prisma, emp.id)).token;
-    const tDue = (await crearSesion(prisma, due.id)).token;
+    const tEmp = (await crearSesion(prisma, negocioId, emp.id)).token;
+    const tDue = (await crearSesion(prisma, negocioId, due.id)).token;
     const invocar = async (token: string | undefined, datos: unknown) => {
       cookieActual = token;
       try {

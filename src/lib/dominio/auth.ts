@@ -55,7 +55,8 @@ export async function verificarCredenciales(
   clave: string,
   ahora: Date = new Date(),
 ): Promise<ResultadoCredenciales> {
-  const fila = await db.usuario.findUnique({ where: { usuario: normalizarUsuario(usuarioTipeado) } });
+  // TRANSITORIO (F1.2): `usuario` ya no es unico solo; el login por negocio es de F3.1.
+  const fila = await db.usuario.findFirst({ where: { usuario: normalizarUsuario(usuarioTipeado) } });
 
   if (!fila || !fila.activo || estaEnPausa(fila, ahora)) {
     await verificarClave(clave, HASH_FALSO);
@@ -96,13 +97,36 @@ export async function verificarCredenciales(
 
 export type SesionNueva = { token: string; expiraEn: Date };
 
+/**
+ * TRANSITORIO (VTA-22): el unico negocio que hay. Existe solo para que las
+ * server actions tengan de donde sacar el `negocioId` explicito que piden las
+ * funciones de dominio hasta que VTA-8 traiga el contexto de negocio de la
+ * sesion. Con mas de un negocio falla: ahi ya no hay "el" negocio.
+ */
+export async function negocioUnico(db: Db): Promise<string> {
+  const negocios = await db.negocio.findMany({ select: { id: true }, take: 2 });
+  if (negocios.length === 1) return negocios[0]!.id;
+  throw new ErrorDeNegocio(negocios.length === 0 ? "No hay ningún negocio." : "Hay más de un negocio: falta elegir cuál.");
+}
+
+/**
+ * Negocio con el que se abre la sesion de un usuario: el suyo. Transitorio
+ * (VTA-22): un usuario sin negocio (dado de alta antes de que el alta lo
+ * asigne) usa el negocio unico si hay uno solo. El contexto de negocio de verdad
+ * es de VTA-8.
+ */
+export async function negocioDeUsuario(db: Db, usuarioId: string): Promise<string> {
+  const u = await db.usuario.findUnique({ where: { id: usuarioId }, select: { negocioId: true } });
+  return u?.negocioId ?? (await negocioUnico(db));
+}
+
 /** Abre una sesion: token nuevo (nunca se reutiliza uno que traiga el navegador). Limpia las vencidas del usuario. */
-export async function crearSesion(db: Db, usuarioId: string, ahora: Date = new Date()): Promise<SesionNueva> {
+export async function crearSesion(db: Db, negocioId: string, usuarioId: string, ahora: Date = new Date()): Promise<SesionNueva> {
   await db.sesion.deleteMany({ where: { usuarioId, expiraEn: { lte: ahora } } });
   const token = generarToken();
   const expiraEn = vencimientoDesde(ahora);
   await db.sesion.create({
-    data: { tokenHash: hashDeToken(token), usuarioId, creadaEn: ahora, renovadaEn: ahora, expiraEn },
+    data: { negocioId, tokenHash: hashDeToken(token), usuarioId, creadaEn: ahora, renovadaEn: ahora, expiraEn },
   });
   return { token, expiraEn };
 }
@@ -118,7 +142,7 @@ export async function iniciarSesion(
 ): Promise<ResultadoLogin> {
   const verificado = await verificarCredenciales(db, usuario, clave, ahora);
   if (!verificado.ok) return { ok: false };
-  const sesion = await crearSesion(db, verificado.usuario.id, ahora);
+  const sesion = await crearSesion(db, await negocioDeUsuario(db, verificado.usuario.id), verificado.usuario.id, ahora);
   return { ok: true, usuario: verificado.usuario, ...sesion };
 }
 
@@ -201,7 +225,7 @@ export async function crearUsuarioEnTx(tx: Tx, datos: DatosUsuarioNuevo): Promis
   if (problema) throw new ErrorDeNegocio(problema);
   if (nombre.length === 0 || nombre.length > 80) throw new ErrorDeNegocio("El nombre debe tener entre 1 y 80 caracteres.");
 
-  if (await tx.usuario.findUnique({ where: { usuario }, select: { id: true } })) {
+  if (await tx.usuario.findFirst({ where: { usuario }, select: { id: true } })) {
     throw new ErrorDeNegocio(`Ya existe un usuario "${usuario}".`);
   }
   const creado = await tx.usuario.create({

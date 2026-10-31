@@ -465,8 +465,9 @@ async function sembrarDistintivos(prisma: Prisma) {
   for (const [nombre, costoHora] of Object.entries(COSTO_HORA_MAQUINA)) {
     await prisma.maquina.updateMany({ where: { nombre }, data: { costoHora } });
   }
+  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
   for (const [clave, valor] of [["costoHoraManoObra", COSTO_HORA_MANO_OBRA], ["margenObjetivo", MARGEN_OBJETIVO]] as const) {
-    await prisma.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+    await prisma.configuracion.upsert({ where: { negocioId_clave: { negocioId, clave } }, update: { valor }, create: { negocioId, clave, valor } });
   }
   // Dos materiales bajo el minimo: asi la lista de reposicion tiene renglones con costo estimado para el dueno.
   await prisma.material.updateMany({ where: { nombre: "Acrílico opalino 3mm" }, data: { stockActual: "1.5" } });
@@ -507,6 +508,7 @@ async function sembrarDistintivos(prisma: Prisma) {
 async function sembrarProduccion(prisma: Prisma, usuarioId: string) {
   const hoy = new Date();
   const fecha = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()));
+  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
   const material = (nombre: string) => prisma.material.findFirstOrThrow({ where: { nombre } });
   const maquina = (nombre: string) => prisma.maquina.findFirstOrThrow({ where: { nombre } });
   const vinil = await material("Vinil adhesivo brillante");
@@ -519,23 +521,23 @@ async function sembrarProduccion(prisma: Prisma, usuarioId: string) {
   // 1: consumo + maquinas + mano de obra.
   await prisma.trabajoProduccion.create({
     data: {
-      ventaItemId: i1.id, fecha, usuarioId, minutosManoObra: "22", costoHoraManoObraSnapshot: COSTO_HORA_MANO_OBRA,
-      consumos: { create: [{ materialId: vinil.id, cantidad: "2.75", costoUnitarioSnapshot: vinil.costoUnitario.toString() }, { materialId: transportador.id, cantidad: "1.4", costoUnitarioSnapshot: transportador.costoUnitario.toString() }] },
-      tiempos: { create: [{ maquinaId: plotter.id, minutos: "37", costoHoraSnapshot: plotter.costoHora.toString() }, { maquinaId: laser.id, minutos: "14.5", costoHoraSnapshot: laser.costoHora.toString() }] },
+      negocioId, ventaItemId: i1.id, fecha, usuarioId, minutosManoObra: "22", costoHoraManoObraSnapshot: COSTO_HORA_MANO_OBRA,
+      consumos: { create: [{ negocioId, materialId: vinil.id, cantidad: "2.75", costoUnitarioSnapshot: vinil.costoUnitario.toString() }, { negocioId, materialId: transportador.id, cantidad: "1.4", costoUnitarioSnapshot: transportador.costoUnitario.toString() }] },
+      tiempos: { create: [{ negocioId, maquinaId: plotter.id, minutos: "37", costoHoraSnapshot: plotter.costoHora.toString() }, { negocioId, maquinaId: laser.id, minutos: "14.5", costoHoraSnapshot: laser.costoHora.toString() }] },
     },
   });
   // 2: solo materiales.
   await prisma.trabajoProduccion.create({
     data: {
-      ventaItemId: i2.id, fecha, usuarioId,
-      consumos: { create: [{ materialId: vinil.id, cantidad: "4.2", costoUnitarioSnapshot: vinil.costoUnitario.toString() }] },
+      negocioId, ventaItemId: i2.id, fecha, usuarioId,
+      consumos: { create: [{ negocioId, materialId: vinil.id, cantidad: "4.2", costoUnitarioSnapshot: vinil.costoUnitario.toString() }] },
     },
   });
   // 3: anulado, con un costo que no tiene que aparecer en ningun lado (3.333 x 7531,27 = 25.103,2...).
   await prisma.trabajoProduccion.create({
     data: {
-      ventaItemId: i3.id, fecha, usuarioId, anuladoEn: new Date(), motivoAnulacion: "Prueba de acceso: cargado mal",
-      consumos: { create: [{ materialId: vinil.id, cantidad: "3.333", costoUnitarioSnapshot: vinil.costoUnitario.toString() }] },
+      negocioId, ventaItemId: i3.id, fecha, usuarioId, anuladoEn: new Date(), motivoAnulacion: "Prueba de acceso: cargado mal",
+      consumos: { create: [{ negocioId, materialId: vinil.id, cantidad: "3.333", costoUnitarioSnapshot: vinil.costoUnitario.toString() }] },
     },
   });
 }
@@ -544,20 +546,22 @@ type Ids = { articulo: string; cliente: string; maquina: string; lista: string; 
 
 /** Lo que el seed no trae (lista de precios y presupuesto) y los ids para instanciar las rutas dinamicas. */
 async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Ids> {
+  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
   const articulo = (await prisma.articulo.findFirst({ where: { nombre: { startsWith: "Sticker" } } }))!;
   const cliente = (await prisma.cliente.findFirst({ orderBy: { nombre: "asc" } }))!;
   const maquina = (await prisma.maquina.findFirst({ orderBy: { nombre: "asc" } }))!;
   const material = (await prisma.material.findFirst({ where: { nombre: { startsWith: "Vinil" } } }))!;
   const lista = await prisma.listaPrecio.create({
-    data: { nombre: "Lista de prueba (acceso)", descuentoPct: "10", items: { create: [{ articuloId: articulo.id, precio: "3100" }] } },
+    data: { negocioId, nombre: "Lista de prueba (acceso)", descuentoPct: "10", items: { create: [{ negocioId, articuloId: articulo.id, precio: "3100" }] } },
   });
   const presupuesto = await prisma.presupuesto.create({
     data: {
+      negocioId,
       numero: 1,
       anio: new Date().getFullYear(),
       clienteId: cliente.id,
       fecha: new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())),
-      items: { create: [{ articuloId: articulo.id, descripcion: articulo.nombre, cantidad: "10", precioUnitario: "3500", ivaPct: "21" }] },
+      items: { create: [{ negocioId, articuloId: articulo.id, descripcion: articulo.nombre, cantidad: "10", precioUnitario: "3500", ivaPct: "21" }] },
     },
   });
   // La venta con mas renglones: la pantalla de detalle muestra mas cosas.
@@ -566,7 +570,7 @@ async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Id
   // Una factura EMITIDA (simulada) de esa venta: la usan /comprobantes/[id] y su vista imprimible.
   // El seed deja los datos fiscales de ejemplo fuera de produccion; si faltaran, la emision falla fuerte.
   const emisor = crearEmisorSimulado(accesoSimulado(prisma));
-  const emitida = await emitirFactura(prisma, venta.id, usuarioId, { emisor });
+  const emitida = await emitirFactura(prisma, negocioId, venta.id, usuarioId, { emisor });
   if (emitida.estado !== "EMITIDO") throw new Error(`No se pudo sembrar la factura de prueba: ${emitida.mensaje}`);
   // Ola 6: un renglon cualquiera (para la pantalla de carga) y un trabajo vigente (para su detalle), sembrados antes.
   const trabajo = await prisma.trabajoProduccion.findFirstOrThrow({ where: { anuladoEn: null }, orderBy: { creadoEn: "asc" } });
@@ -866,7 +870,8 @@ async function crearSesionDirecta(prisma: Prisma, usuarioId: string, opciones: {
   // CHECK de la base: el vencimiento es posterior a la creacion. Una sesion vencida se crea "en el pasado".
   const creadaEn = new Date(opciones.vencida ? ahora - 40 * DIA : ahora);
   const expiraEn = new Date(opciones.vencida ? ahora - 10 * DIA : ahora + 30 * DIA);
-  await prisma.sesion.create({ data: { tokenHash: hashDeToken(token), usuarioId, creadaEn, renovadaEn: creadaEn, expiraEn } });
+  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
+  await prisma.sesion.create({ data: { negocioId, tokenHash: hashDeToken(token), usuarioId, creadaEn, renovadaEn: creadaEn, expiraEn } });
   return token;
 }
 

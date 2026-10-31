@@ -33,10 +33,15 @@ Un solo modelo para todo el sistema, tal como queda con las olas 0 a 7 integrada
    al emitirse. Después no lee el cliente, el artículo ni la configuración: editarlos no cambia ni un byte del
    comprobante. Lo que un comprobante emitido tiene mal se corrige con una nota de crédito, nunca editándolo.
 
+9. **Cada fila tiene dueño (multi-tenant).** Todas las tablas de datos guardan `negocioId` (ver "Negocio y
+   multi-tenant"). Es la base del aislamiento por RLS; las restricciones únicas y las consultas por negocio
+   llegan en F1.2, F2.1 y F3.
+
 ## Mapa de tablas
 
 | Grupo | Tablas |
 |---|---|
+| Negocios (multi-tenant) | `negocios` |
 | Usuarios y acceso | `usuarios`, `sesiones` (enum `Rol`) |
 | Clientes | `clientes` (con `condicionIva` y `dni`) |
 | Facturación | `comprobantes`, `comprobante_items`, `comprobante_iva` |
@@ -50,6 +55,78 @@ Un solo modelo para todo el sistema, tal como queda con las olas 0 a 7 integrada
 ---
 
 ## Entidades
+
+### Negocio y multi-tenant
+
+#### `Negocio`
+Un negocio (tenant) y dueño de todos los datos. Tabla `negocios`.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `nombre` | string | "HL Laser" |
+| `slug` | string | único; identificador corto ("hl-laser") |
+| `logoUrl` | string? | opcional |
+| `activo` | bool | baja lógica: un negocio no se borra |
+| `creadoEn`, `actualizadoEn` | timestamptz | |
+
+#### `negocioId` en las demás tablas
+Lo llevan las 22 tablas de datos de F1.1: `clientes`, `materiales`, `maquinas`, `articulos`, `listas_precios`,
+`lista_precio_items`, `recetas`, `receta_componentes`, `ventas`, `venta_items`, `pagos`, `compras`,
+`compra_items`, `movimientos_stock`, `contactos_cobranza`, `presupuestos`, `presupuesto_items`, `usuarios`,
+`sesiones`, `comprobantes`, `comprobante_items` y `comprobante_iva`. `configuracion` lo lleva en su clave
+compuesta `(negocioId, clave)` (F1.2) y las 3 tablas de producción de la ola 6 (`trabajos_produccion`,
+`trabajo_tiempos` y `trabajo_consumos`) lo reciben en `20260601020000_negocio_produccion` (F1.3, abajo).
+
+- `uuid NOT NULL`, FK a `negocios` con `ON DELETE RESTRICT`. Sin `DEFAULT`: toda fila nueva tiene que decir de
+  qué negocio es.
+- **Decisión: columna propia también en las hijas** (`venta_items`, `pagos`, `receta_componentes`,
+  `comprobante_items`, ...) en lugar de heredar el negocio por la FK del padre. Cuesta una columna por fila
+  y permite que RLS (F2.1) filtre sin joins. Que la hija y su padre coincidan en negocio no lo garantiza esta
+  migración (queda para F1.2/F2.1).
+- **`usuarios.negocioId` es nullable**: solo el futuro `SUPERADMIN` va sin negocio. Hoy todos los usuarios
+  tienen negocio.
+- **`configuracion` no lleva `negocioId`**: la resuelve F1.2 (clave compuesta).
+- Los únicos (`ventas(anio, numero)`, `presupuestos(anio, numero)`, `listas_precios.nombre`,
+  `usuarios.usuario`, CUIT de cliente, numeración de comprobantes) siguen globales hasta F1.2.
+- Índices: uno por `negocioId` en cada tabla. En las grandes, `negocioId` es la primera columna de los
+  compuestos, que ya cubren las consultas solo por negocio: `ventas(negocioId, fecha)` y `(negocioId, estado)`,
+  `pagos(negocioId, fecha)` y `(negocioId, ventaId)`, `movimientos_stock(negocioId, materialId, creadoEn)`,
+  `comprobantes(negocioId, fecha)` y `(negocioId, estado)`.
+- `TrabajoProduccion`, `TrabajoTiempo` y `TrabajoConsumo` (ola 6) no existían cuando se hizo F1.1: entraron a
+  `multitenant` con el merge de `staging` y reciben `negocioId` en F1.3 (ver "Producción y negocio").
+
+#### Migración y backfill (`20260601000000_negocio`)
+Crea el negocio "HL Laser" (`hl-laser`) y se lo asigna a todas las filas existentes. Por tabla: columna
+nullable → `UPDATE` → `SET NOT NULL` (salvo `usuarios`) → FK → índice. En una base vacía solo queda el negocio.
+Los triggers de `comprobantes`, `comprobante_items` y `comprobante_iva` (lo fiscal es inmutable) se desactivan
+solo durante el `UPDATE` de cada una de esas tablas y se reactivan enseguida: asignar el dueño no cambia nada
+fiscal. Prueba: `NEGOCIO_TEST_URL=postgresql://ventas:ventas@localhost:5432 sh scripts/test-negocio-migracion.sh`
+(base vacía y base con datos; compara filas por tabla, `SUM(ventas.totalBruto)`, saldos de clientes y
+`materiales.stockActual` antes y después) y `scripts/verificar-negocio.sql` sobre cualquier base migrada.
+
+#### Producción y negocio (`20260601020000_negocio_produccion`, F1.3)
+`trabajos_produccion`, `trabajo_tiempos` y `trabajo_consumos` llevan `negocioId` como el resto de las tablas de
+datos (columna propia también en las hijas, para que RLS no necesite joins):
+
+- `uuid NOT NULL`, sin `DEFAULT`, FK a `negocios` con `ON DELETE RESTRICT` e índice `<tabla>_negocioId_idx`. Los
+  únicos (`trabajo_tiempos(trabajoId, maquinaId)`, `trabajo_consumos(trabajoId, materialId)` y el parcial
+  `trabajos_produccion_vigente_key` por línea) no cambian: cuelgan de ids UUID y no pueden chocar entre negocios.
+- Backfill: las filas existentes pasan al negocio `hl-laser`. Estas tablas no tienen triggers de inmutabilidad
+  propios, así que no hace falta desactivar nada.
+- Triggers, con el mismo patrón que el resto: `<tabla>_negocio_inmutable` en las tres (el negocio de una fila no
+  se cambia) y `negocio_igual_al_padre` en cada FK: `trabajos_produccion.ventaItemId` (`venta_items`) y
+  `.usuarioId` (`usuarios`; un usuario sin negocio puede figurar como autor), `trabajo_tiempos.trabajoId`
+  (`trabajos_produccion`) y `.maquinaId` (`maquinas`), `trabajo_consumos.trabajoId` y `.materialId`
+  (`materiales`).
+- Código: `src/lib/dominio/produccion.ts` recibe `negocioId` como parámetro (segundo argumento, después de `tx`) y
+  filtra por él sus lecturas y bloqueos; las acciones de `src/app/produccion/actions.ts` lo sacan de
+  `negocioUnico(tx)` (transitorio, igual que el resto de las acciones, hasta el contexto de negocio de VTA-8).
+- Pruebas: `scripts/test-negocio-migracion.sh` aplica `20260601000000_negocio` y las posteriores sobre una base
+  vacía y sobre una con datos (incluye un trabajo vigente y uno anulado, con tiempos y consumos) y compara lo
+  medido y los costos congelados antes y después; `scripts/verificar-negocio.sql` exige las 26 tablas con
+  `negocioId` (FK `RESTRICT`, índice y triggers en las 3 de producción); `scripts/test-unicos-negocio.sql`
+  prueba que la base rechaza un trabajo, tiempo o consumo apuntando a filas de otro negocio.
 
 ### Usuarios y sesiones
 
@@ -588,9 +665,13 @@ Están en `prisma/migrations/`. Cada una tiene su encabezado con el porqué.
 11. `20260301000000_comprobantes`: enums `CondicionIva`, `TipoComprobante`, `AmbienteFiscal` y `EstadoComprobante`;
     tablas `comprobantes`, `comprobante_items` y `comprobante_iva`; `clientes.condicionIva` y `clientes.dni`. Con sus
     `CHECK`, índices parciales y triggers (ver "Facturación").
-12. `20260401000000_produccion`: `trabajos_produccion`, `trabajo_tiempos` y `trabajo_consumos`, con sus `CHECK`,
+12. `20260601000000_negocio`: tabla `negocios`, negocio "HL Laser" y `negocioId` (con FK e índices) en las 22
+    tablas de datos, con backfill (ver "Negocio y multi-tenant").
+13. `20260401000000_produccion`: `trabajos_produccion`, `trabajo_tiempos` y `trabajo_consumos`, con sus `CHECK`,
     índice único parcial del trabajo vigente por línea y FK `RESTRICT`. Va antes de las de la ola 7: solo depende
     de tablas anteriores.
+14. `20260601020000_negocio_produccion`: `negocioId` (backfill a `hl-laser`, FK `RESTRICT`, índice y triggers de
+    negocio) en las 3 tablas de producción (ver "Producción y negocio").
 
 ---
 

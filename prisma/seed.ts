@@ -62,30 +62,42 @@ async function main() {
     await prisma.usuario.deleteMany();
   }
 
+  // El negocio de los datos de ejemplo. La migracion `negocio` ya lo crea; se resuelve por slug.
+  const negocio = await prisma.negocio.upsert({
+    where: { slug: "hl-laser" },
+    update: {},
+    create: { nombre: "HL Laser", slug: "hl-laser" },
+    select: { id: true },
+  });
+  const negocioId = negocio.id;
+
   if (PRODUCCION) {
     console.log("Usuarios: en produccion el seed no los toca (ver npm run usuarios:crear-dueno).");
   } else {
     console.log("Creando usuarios de ejemplo...");
     await prisma.$transaction(async (tx) => {
-      for (const u of USUARIOS_DE_EJEMPLO) await crearUsuarioEnTx(tx, { ...u });
+      for (const u of USUARIOS_DE_EJEMPLO) {
+        const creado = await crearUsuarioEnTx(tx, { ...u });
+        await tx.usuario.update({ where: { id: creado.id }, data: { negocioId } });
+      }
     });
   }
 
   console.log("Creando configuracion...");
   await prisma.configuracion.upsert({
-    where: { clave: "nombreNegocio" },
+    where: { negocioId_clave: { negocioId, clave: "nombreNegocio" } },
     update: { valor: "HL Laser" },
-    create: { clave: "nombreNegocio", valor: "HL Laser" },
+    create: { negocioId, clave: "nombreNegocio", valor: "HL Laser" },
   });
   await prisma.configuracion.upsert({
-    where: { clave: "costoHoraManoObra" },
+    where: { negocioId_clave: { negocioId, clave: "costoHoraManoObra" } },
     update: { valor: "3500" },
-    create: { clave: "costoHoraManoObra", valor: "3500" },
+    create: { negocioId, clave: "costoHoraManoObra", valor: "3500" },
   });
   await prisma.configuracion.upsert({
-    where: { clave: "margenObjetivo" },
+    where: { negocioId_clave: { negocioId, clave: "margenObjetivo" } },
     update: { valor: "45" },
-    create: { clave: "margenObjetivo", valor: "45" },
+    create: { negocioId, clave: "margenObjetivo", valor: "45" },
   });
   if (!PRODUCCION) {
     // Datos fiscales de EJEMPLO (ola 5), solo fuera de produccion, para poder
@@ -101,19 +113,19 @@ async function main() {
       fiscalPuntoVenta: "1",
     };
     for (const [clave, valor] of Object.entries(fiscales)) {
-      await prisma.configuracion.upsert({ where: { clave }, update: { valor }, create: { clave, valor } });
+      await prisma.configuracion.upsert({ where: { negocioId_clave: { negocioId, clave } }, update: { valor }, create: { negocioId, clave, valor } });
     }
   }
 
   console.log("Creando maquinas...");
   const plotter = await prisma.maquina.create({
-    data: { nombre: "Plotter de impresión", costoHora: d(2500) },
+    data: { negocioId, nombre: "Plotter de impresión", costoHora: d(2500) },
   });
   const laser = await prisma.maquina.create({
-    data: { nombre: "Láser CO2", costoHora: d(8000) },
+    data: { negocioId, nombre: "Láser CO2", costoHora: d(8000) },
   });
   const viniladora = await prisma.maquina.create({
-    data: { nombre: "Viniladora", costoHora: d(1500) },
+    data: { negocioId, nombre: "Viniladora", costoHora: d(1500) },
   });
 
   // Los materiales arrancan en 0: el stock y el costo salen de las compras de
@@ -121,6 +133,7 @@ async function main() {
   console.log("Creando materiales...");
   const vinilo = await prisma.material.create({
     data: {
+      negocioId,
       nombre: "Vinil adhesivo brillante",
       unidad: "M2",
       stockMinimo: d("10"),
@@ -129,6 +142,7 @@ async function main() {
   });
   const transportador = await prisma.material.create({
     data: {
+      negocioId,
       nombre: "Transportador (vinil transfer)",
       unidad: "M2",
       stockMinimo: d("10"),
@@ -136,6 +150,7 @@ async function main() {
   });
   const lamina = await prisma.material.create({
     data: {
+      negocioId,
       nombre: "Laminación brillante",
       unidad: "M2",
       stockMinimo: d("8"),
@@ -143,6 +158,7 @@ async function main() {
   });
   const mdf = await prisma.material.create({
     data: {
+      negocioId,
       nombre: "MDF 3mm",
       unidad: "M2",
       stockMinimo: d("6"),
@@ -150,6 +166,7 @@ async function main() {
   });
   const acrílico = await prisma.material.create({
     data: {
+      negocioId,
       nombre: "Acrílico opalino 3mm",
       unidad: "M2",
       stockMinimo: d("4"),
@@ -161,6 +178,7 @@ async function main() {
   const clientes = await Promise.all([
     prisma.cliente.create({
       data: {
+        negocioId,
         nombre: "Ferretería El Tornillo",
         cuit: "30712345671",
         telefono: "3514123456",
@@ -170,6 +188,7 @@ async function main() {
     }),
     prisma.cliente.create({
       data: {
+        negocioId,
         nombre: "Café La Esquina",
         cuit: "20345678906",
         telefono: "3514556677",
@@ -179,6 +198,7 @@ async function main() {
     }),
     prisma.cliente.create({
       data: {
+        negocioId,
         nombre: "Estudio Weber",
         telefono: "3514998877",
         email: "hola@estudioweber.com.ar",
@@ -186,6 +206,7 @@ async function main() {
     }),
     prisma.cliente.create({
       data: {
+        negocioId,
         nombre: "Gimnasio Fuerza Total",
         cuit: "30555555551",
         telefono: "3514887766",
@@ -199,6 +220,7 @@ async function main() {
   // opcional y 6 min de plotter + 10 min de viniladora + 15 min de mano de obra.
   const sticker = await prisma.articulo.create({
     data: {
+      negocioId,
       nombre: "Sticker en vinil 10x15 cm",
       descripcion: "Vinil adhesivo + corte + aplicación. Precio por unidad.",
       precioVenta: d("3500"),
@@ -207,15 +229,16 @@ async function main() {
   });
   await prisma.receta.create({
     data: {
+      negocioId,
       articuloId: sticker.id,
       notas: "Rendimiento 10x15 cm = 0,015 m2. Se carga 0,5 m2 por unidad por merma de corte.",
       componentes: {
         create: [
-          { tipo: "MATERIAL", materialId: vinilo.id, cantidad: d("0.02") },
-          { tipo: "MATERIAL", materialId: transportador.id, cantidad: d("0.02") },
-          { tipo: "MAQUINA", maquinaId: plotter.id, cantidad: d("0.1") },
-          { tipo: "MAQUINA", maquinaId: viniladora.id, cantidad: d("0.17") },
-          { tipo: "MANO_OBRA", cantidad: d("0.25") },
+          { negocioId, tipo: "MATERIAL", materialId: vinilo.id, cantidad: d("0.02") },
+          { negocioId, tipo: "MATERIAL", materialId: transportador.id, cantidad: d("0.02") },
+          { negocioId, tipo: "MAQUINA", maquinaId: plotter.id, cantidad: d("0.1") },
+          { negocioId, tipo: "MAQUINA", maquinaId: viniladora.id, cantidad: d("0.17") },
+          { negocioId, tipo: "MANO_OBRA", cantidad: d("0.25") },
         ],
       },
     },
@@ -224,6 +247,7 @@ async function main() {
   // Vinil por m2: mucho menos trabajo por m2, pero incluye solo el corte.
   const vinilMetro = await prisma.articulo.create({
     data: {
+      negocioId,
       nombre: "Vinil rotulado por m2",
       descripcion: "Incluye impresión, corte y aplicación. Precio por m2.",
       precioVenta: d("18000"),
@@ -232,14 +256,15 @@ async function main() {
   });
   await prisma.receta.create({
     data: {
+      negocioId,
       articuloId: vinilMetro.id,
       componentes: {
         create: [
-          { tipo: "MATERIAL", materialId: vinilo.id, cantidad: d("1") },
-          { tipo: "MATERIAL", materialId: transportador.id, cantidad: d("1") },
-          { tipo: "MAQUINA", maquinaId: plotter.id, cantidad: d("0.2") },
-          { tipo: "MAQUINA", maquinaId: viniladora.id, cantidad: d("0.3") },
-          { tipo: "MANO_OBRA", cantidad: d("0.5") },
+          { negocioId, tipo: "MATERIAL", materialId: vinilo.id, cantidad: d("1") },
+          { negocioId, tipo: "MATERIAL", materialId: transportador.id, cantidad: d("1") },
+          { negocioId, tipo: "MAQUINA", maquinaId: plotter.id, cantidad: d("0.2") },
+          { negocioId, tipo: "MAQUINA", maquinaId: viniladora.id, cantidad: d("0.3") },
+          { negocioId, tipo: "MANO_OBRA", cantidad: d("0.5") },
         ],
       },
     },
@@ -248,6 +273,7 @@ async function main() {
   // Cartel en MDF: el material pesa, y el laser se lleva buena parte del costo.
   const cartel = await prisma.articulo.create({
     data: {
+      negocioId,
       nombre: "Cartel en MDF 40x60 cm",
       descripcion: "Placa grabada a láser, para exhibidores y vidrieras. Precio por unidad.",
       precioVenta: d("28000"),
@@ -256,12 +282,13 @@ async function main() {
   });
   await prisma.receta.create({
     data: {
+      negocioId,
       articuloId: cartel.id,
       componentes: {
         create: [
-          { tipo: "MATERIAL", materialId: mdf.id, cantidad: d("0.24") },
-          { tipo: "MAQUINA", maquinaId: laser.id, cantidad: d("0.3") },
-          { tipo: "MANO_OBRA", cantidad: d("0.4") },
+          { negocioId, tipo: "MATERIAL", materialId: mdf.id, cantidad: d("0.24") },
+          { negocioId, tipo: "MAQUINA", maquinaId: laser.id, cantidad: d("0.3") },
+          { negocioId, tipo: "MANO_OBRA", cantidad: d("0.4") },
         ],
       },
     },
@@ -270,6 +297,7 @@ async function main() {
   // Rótulo en acrílico: el artículo con mejor margen del catálogo.
   const rotulo = await prisma.articulo.create({
     data: {
+      negocioId,
       nombre: "Rótulo luminoso en acrílico",
       descripcion: "Acrílico opalino + vinil. Precio por unidad.",
       precioVenta: d("65000"),
@@ -278,14 +306,15 @@ async function main() {
   });
   await prisma.receta.create({
     data: {
+      negocioId,
       articuloId: rotulo.id,
       componentes: {
         create: [
-          { tipo: "MATERIAL", materialId: acrílico.id, cantidad: d("0.15") },
-          { tipo: "MATERIAL", materialId: vinilo.id, cantidad: d("0.1") },
-          { tipo: "MAQUINA", maquinaId: laser.id, cantidad: d("0.2") },
-          { tipo: "MAQUINA", maquinaId: plotter.id, cantidad: d("0.1") },
-          { tipo: "MANO_OBRA", cantidad: d("0.5") },
+          { negocioId, tipo: "MATERIAL", materialId: acrílico.id, cantidad: d("0.15") },
+          { negocioId, tipo: "MATERIAL", materialId: vinilo.id, cantidad: d("0.1") },
+          { negocioId, tipo: "MAQUINA", maquinaId: laser.id, cantidad: d("0.2") },
+          { negocioId, tipo: "MAQUINA", maquinaId: plotter.id, cantidad: d("0.1") },
+          { negocioId, tipo: "MANO_OBRA", cantidad: d("0.5") },
         ],
       },
     },
@@ -295,6 +324,7 @@ async function main() {
   // la alerta de "articulo sin receta" y quede claro que el sistema avisa.
   const diseno = await prisma.articulo.create({
     data: {
+      negocioId,
       nombre: "Diseño de arte (por hora)",
       descripcion: "Diseño vectorial para plotter o láser.",
       precioVenta: d("12000"),
@@ -318,7 +348,7 @@ async function main() {
   await prisma.$transaction(
     async (tx) => {
       console.log("Creando compras...");
-      await registrarCompraEnTx(tx, {
+      await registrarCompraEnTx(tx, negocioId, {
         fecha: dia(30),
         proveedor: "Distribuidora Gráfica Centro",
         comprobante: "FC A 0003-00012840",
@@ -335,7 +365,7 @@ async function main() {
       });
       // Reposicion con aumento del vinilo: las ventas anteriores conservan el
       // costo de $4.000; las posteriores ya salen con $4.200.
-      await registrarCompraEnTx(tx, {
+      await registrarCompraEnTx(tx, negocioId, {
         fecha: dia(12),
         proveedor: "Distribuidora Gráfica Centro",
         comprobante: "FC A 0003-00013377",
@@ -368,7 +398,7 @@ async function main() {
 
       for (const v of ventasDemo) {
         const cliente = clientes[v.cliente]!;
-        const venta = await registrarVentaEnTx(tx, {
+        const venta = await registrarVentaEnTx(tx, negocioId, {
           clienteId: cliente.id,
           fecha: dia(v.offset),
           observaciones: null,
@@ -381,12 +411,20 @@ async function main() {
 
         if (v.cobro === "total") {
           await tx.pago.create({
-            data: { ventaId: venta.id, clienteId: cliente.id, fecha: dia(v.offset), monto: venta.totalBruto, metodo: "EFECTIVO" },
+            data: {
+              negocioId,
+              ventaId: venta.id,
+              clienteId: cliente.id,
+              fecha: dia(v.offset),
+              monto: venta.totalBruto,
+              metodo: "EFECTIVO",
+            },
           });
         } else if (v.cobro === "mitad") {
           // Cobro parcial al dia siguiente: el estado de pago tiene que salir "Parcial".
           await tx.pago.create({
             data: {
+              negocioId,
               ventaId: venta.id,
               clienteId: cliente.id,
               fecha: dia(v.offset - 1),
@@ -399,7 +437,7 @@ async function main() {
       }
 
       console.log("Ajustando stock por conteo...");
-      await ajustarStockEnTx(tx, {
+      await ajustarStockEnTx(tx, negocioId, {
         materialId: lamina.id,
         stockContado: d("29.5"),
         motivo: "Conteo: medio metro dañado al cortar",

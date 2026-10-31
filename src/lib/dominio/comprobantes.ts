@@ -122,6 +122,7 @@ const nombre = (tipo: TipoComprobante, puntoVenta: number, numero: number) =>
  */
 export async function reservarFacturaEnTx(
   tx: Tx,
+  negocioId: string,
   ventaId: string,
   usuarioId: string | null | undefined,
   { emisor, hoy = hoyArgentina() }: OpcionesEmision,
@@ -209,6 +210,7 @@ export async function reservarFacturaEnTx(
 
   const creado = await tx.comprobante.create({
     data: {
+      negocioId,
       ambiente,
       tipo,
       codigoArca: CODIGO_ARCA[tipo],
@@ -232,9 +234,10 @@ export async function reservarFacturaEnTx(
       importeTotal: importes.total,
       ventaId,
       usuarioId: usuarioId ?? null,
-      items: { create: importes.lineas },
+      items: { create: importes.lineas.map((l) => ({ negocioId, ...l })) },
       alicuotas: {
         create: importes.alicuotas.map((a) => ({
+          negocioId,
           alicuotaPct: a.pct,
           codigoArca: a.codigo,
           baseImponible: a.base,
@@ -360,6 +363,7 @@ function quedoPendiente(reserva: FacturaReservada): ComprobanteProcesado {
  */
 export async function emitirFacturaEnTx(
   tx: Tx,
+  negocioId: string,
   ventaId: string,
   usuarioId: string | null | undefined,
   opciones: OpcionesEmision,
@@ -367,7 +371,7 @@ export async function emitirFacturaEnTx(
   if (opciones.emisor.ambiente !== "SIMULADO") {
     throw new Error("emitirFacturaEnTx es solo para el emisor simulado: con un emisor real usá emitirFactura (dos fases).");
   }
-  const reserva = await reservarFacturaEnTx(tx, ventaId, usuarioId, opciones);
+  const reserva = await reservarFacturaEnTx(tx, negocioId, ventaId, usuarioId, opciones);
   let resultado: ResultadoCae;
   try {
     resultado = await opciones.emisor.solicitarCae(reserva.solicitud);
@@ -389,13 +393,14 @@ const OPCIONES_TX = { timeout: 30_000 } as const;
  */
 export async function emitirFactura(
   db: BaseDeDatos,
+  negocioId: string,
   ventaId: string,
   usuarioId: string | null | undefined,
   opciones: OpcionesEmision,
 ): Promise<ComprobanteProcesado> {
   let reserva: FacturaReservada;
   try {
-    reserva = await db.$transaction((tx) => reservarFacturaEnTx(tx, ventaId, usuarioId, opciones), OPCIONES_TX);
+    reserva = await db.$transaction((tx) => reservarFacturaEnTx(tx, negocioId, ventaId, usuarioId, opciones), OPCIONES_TX);
   } catch (error) {
     throw traducirErrorDeEmision(error);
   }
