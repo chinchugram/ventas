@@ -64,6 +64,14 @@ export function GananciaDelMes({
 
 export type DiaVentas = { clave: string; dia: string; total: number; hoy: boolean };
 
+/** "2026-10-29" -> "29 de octubre" para el lector de pantalla (la barra solo muestra el numero del dia). */
+function diaCompleto(d: DiaVentas): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d.clave);
+  if (!m) return d.dia;
+  const fecha = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return fecha.toLocaleDateString("es-AR", { day: "numeric", month: "long", timeZone: "UTC" });
+}
+
 /** Facturado por dia en las ultimas semanas: barras simples, sin librerias. */
 export function VentasPorDia({ dias }: { dias: DiaVentas[] }) {
   const total = dias.reduce((acc, d) => acc + d.total, 0);
@@ -83,7 +91,8 @@ export function VentasPorDia({ dias }: { dias: DiaVentas[] }) {
           <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
             {fmtMonedaCorta(total)}
           </p>
-          <div className="mt-4 flex h-24 items-end gap-1" role="img" aria-label="Ventas por día">
+          {/* Las barras son solo visuales (aria-hidden): los montos los lee el lector de pantalla en la tabla de abajo. */}
+          <div className="mt-4 flex h-24 items-end gap-1" aria-hidden="true">
             {dias.map((d) => (
               <div
                 key={d.clave}
@@ -101,7 +110,27 @@ export function VentasPorDia({ dias }: { dias: DiaVentas[] }) {
               </div>
             ))}
           </div>
-          <div className="mt-1.5 flex justify-between text-xs text-slate-500 tabular-nums">
+          {/* En un contenedor sr-only: los estilos globales de `table` pisarian la utilidad si fuera la propia tabla. */}
+          <div className="sr-only">
+            <table>
+              <caption>Ventas por día, últimos {dias.length} días</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Día</th>
+                  <th scope="col">Facturado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dias.map((d) => (
+                  <tr key={d.clave}>
+                    <th scope="row">{d.hoy ? `${diaCompleto(d)} (hoy)` : diaCompleto(d)}</th>
+                    <td>{fmtMonedaCorta(d.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-1.5 flex justify-between text-xs text-slate-500 tabular-nums" aria-hidden="true">
             <span>{dias[0]?.dia}</span>
             <span>{dias[Math.floor(dias.length / 2)]?.dia}</span>
             <span>hoy</span>

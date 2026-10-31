@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearLista, editarLista, type DatosLista } from "@/app/listas-precios/actions";
-import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoDecimal, CampoTexto, useAccion } from "@/components/form";
+import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoDecimal, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
 
 /**
  * Alta y edicion de una lista de precios. Sin `id` crea; con `id` edita. Los
@@ -41,6 +41,7 @@ export function ListaForm({
       }}
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
     >
+      <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="las listas de precios" />
       <CampoTexto
         etiqueta="Nombre de la lista"

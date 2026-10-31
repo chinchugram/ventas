@@ -15,6 +15,31 @@ type Base = {
   className?: string;
 };
 
+/**
+ * Marca de campo obligatorio (WCAG 3.3.2): asterisco visible (oculto al lector de
+ * pantalla, que lo leeria como "asterisco") mas el texto "(obligatorio)" solo para el lector.
+ * Va dentro del `<label>`, asi entra en el nombre accesible del campo.
+ */
+export function MarcaObligatorio() {
+  return (
+    <>
+      <span aria-hidden="true" className="ml-0.5 text-red-700">
+        *
+      </span>
+      <span className="sr-only"> (obligatorio)</span>
+    </>
+  );
+}
+
+/** Leyenda del asterisco: va una vez por formulario, antes del primer campo. */
+export function NotaObligatorio({ className }: { className?: string }) {
+  return (
+    <p className={`text-xs text-slate-600 ${className ?? ""}`}>
+      Los campos con <span className="text-red-700">*</span> son obligatorios.
+    </p>
+  );
+}
+
 type AtributosInput = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "className" | "type">;
 
 function Envoltura({
@@ -23,11 +48,15 @@ function Envoltura({
   ayuda,
   error,
   className,
+  obligatorio,
   children,
-}: Base & { id: string; children: ReactNode }) {
+}: Base & { id: string; obligatorio?: boolean; children: ReactNode }) {
   return (
     <div className={className}>
-      <label htmlFor={id}>{etiqueta}</label>
+      <label htmlFor={id}>
+        {etiqueta}
+        {obligatorio ? <MarcaObligatorio /> : null}
+      </label>
       {children}
       {ayuda ? (
         <p id={`${id}-ayuda`} className="mt-1 text-xs text-slate-500">
@@ -56,6 +85,7 @@ export function CampoTexto({
   alCambiar,
   tipo = "text",
   id: idPropio,
+  required,
   ...resto
 }: Base &
   AtributosInput & {
@@ -66,10 +96,11 @@ export function CampoTexto({
   const idAuto = useId();
   const id = idPropio ?? idAuto;
   return (
-    <Envoltura id={id} etiqueta={etiqueta} ayuda={ayuda} error={error} className={className}>
+    <Envoltura id={id} etiqueta={etiqueta} ayuda={ayuda} error={error} className={className} obligatorio={required}>
       <input
         id={id}
         type={tipo}
+        required={required}
         value={valor}
         onChange={(e) => alCambiar(e.target.value)}
         aria-invalid={error ? true : undefined}
@@ -91,12 +122,21 @@ export function CampoNotas({
   filas = 3,
   maxLength,
   placeholder,
-}: Base & { valor: string; alCambiar: (valor: string) => void; filas?: number; maxLength?: number; placeholder?: string }) {
+  required,
+}: Base & {
+  valor: string;
+  alCambiar: (valor: string) => void;
+  filas?: number;
+  maxLength?: number;
+  placeholder?: string;
+  required?: boolean;
+}) {
   const id = useId();
   return (
-    <Envoltura id={id} etiqueta={etiqueta} ayuda={ayuda} error={error} className={className}>
+    <Envoltura id={id} etiqueta={etiqueta} ayuda={ayuda} error={error} className={className} obligatorio={required}>
       <textarea
         id={id}
+        required={required}
         rows={filas}
         value={valor}
         maxLength={maxLength}
@@ -123,6 +163,7 @@ export function CampoDecimal({
   sufijo,
   prefijo,
   id: idPropio,
+  required,
   ...resto
 }: Base &
   Omit<AtributosInput, "inputMode"> & {
@@ -134,7 +175,7 @@ export function CampoDecimal({
   const idAuto = useId();
   const id = idPropio ?? idAuto;
   return (
-    <Envoltura id={id} etiqueta={etiqueta} ayuda={ayuda} error={error} className={className}>
+    <Envoltura id={id} etiqueta={etiqueta} ayuda={ayuda} error={error} className={className} obligatorio={required}>
       <div className="relative">
         {prefijo ? (
           <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500">{prefijo}</span>
@@ -144,6 +185,7 @@ export function CampoDecimal({
           type="text"
           inputMode="decimal"
           autoComplete="off"
+          required={required}
           value={valor}
           onChange={(e) => alCambiar(e.target.value)}
           aria-invalid={error ? true : undefined}
@@ -185,7 +227,7 @@ export function CampoSelect({
 }) {
   const id = useId();
   return (
-    <Envoltura id={id} etiqueta={etiqueta} ayuda={ayuda} error={error} className={className}>
+    <Envoltura id={id} etiqueta={etiqueta} ayuda={ayuda} error={error} className={className} obligatorio={required}>
       <select
         id={id}
         value={valor}

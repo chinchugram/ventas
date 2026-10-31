@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { BloqueError, BotonEnviar, CampoTexto } from "@/components/form";
+import { BloqueError, BotonEnviar, CampoTexto, NotaObligatorio } from "@/components/form";
 import { entrar, type EstadoLogin } from "./actions";
 
 const INICIAL: EstadoLogin = { error: null, usuario: "" };
@@ -25,6 +25,7 @@ export function FormularioLogin({ siguiente }: { siguiente: string | null }) {
 
   return (
     <form action={enviar} className="space-y-4">
+      <NotaObligatorio />
       {siguiente ? <input type="hidden" name="siguiente" value={siguiente} /> : null}
       <CampoTexto
         etiqueta="Usuario"
