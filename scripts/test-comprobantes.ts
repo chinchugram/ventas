@@ -646,7 +646,7 @@ async function contarTodo(cliente: PrismaClient): Promise<Cuentas> {
     cliente.cliente.count(),
     cliente.articulo.count(),
     cliente.usuario.count(),
-    cliente.configuracion.findMany({ orderBy: { clave: "asc" } }),
+    cliente.configuracion.findMany({ orderBy: [{ negocioId: "asc" }, { clave: "asc" }] }),
   ]);
   return {
     comprobantes,
