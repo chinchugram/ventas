@@ -288,9 +288,11 @@ async function main() {
     const { a, articulo, cliente } = await preparar(tx);
     const sufijo = Date.now().toString(36);
     const laura = await crearUsuarioEnTx(tx, {
+      negocioId,
       usuario: `laura-${sufijo}`, nombre: "Laura", clave: "clave-de-prueba-1", rol: "EMPLEADO",
     });
     const dueno = await crearUsuarioEnTx(tx, {
+      negocioId,
       usuario: `dueno-${sufijo}`, nombre: "Dueño", clave: "clave-de-prueba-2", rol: "DUENO",
     });
     // `now()` es el inicio de la transaccion: todos los movimientos comparten `creadoEn`, asi que se ordenan por id de usuario.

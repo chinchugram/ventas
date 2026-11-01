@@ -21,10 +21,21 @@ import type { VentaRow } from "@/lib/queries/ventas";
  * No son numeros escritos a mano: todo (costos, margenes, saldos, totales) sale
  * de las mismas funciones de `costing.ts` que usa la version con base. Asi las
  * pantallas son coherentes entre si y el mockup muestra el comportamiento real.
+ *
+ * MODO DEMO = UN SOLO NEGOCIO. Este juego de datos (el respaldo de `conRespaldo`, que solo
+ * entra cuando la base no responde) describe un unico negocio demo, "HL Laser": no hay
+ * login, ni sesion, ni `negocioId`, y NO es multi-negocio ni sirve para probar el
+ * aislamiento. Los dos negocios de ejemplo ("HL Laser" y "Taller Demo", con datos
+ * distintos) los siembra `npm run db:seed` (prisma/seed.ts) en una base real; ahi si
+ * rige el aislamiento por RLS y cada dueño ve solo lo suyo. No hay que agregar un segundo
+ * negocio a este archivo: con base, los datos de demostracion nunca se mezclan.
  */
 
+/** El unico negocio del modo demo sin base. Coincide con el primer negocio del seed. */
+export const DEMO_NEGOCIO = { nombre: "HL Laser", slug: "hl-laser" } as const;
+
 export const DEMO_CONFIG: Record<string, string> = {
-  nombreNegocio: "HL Laser",
+  nombreNegocio: DEMO_NEGOCIO.nombre,
   costoHoraManoObra: "3500",
   ivaPorDefecto: "21",
   margenObjetivo: "40",
