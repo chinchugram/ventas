@@ -13,6 +13,9 @@ dónde quedan, cómo se restauran y cómo se prueba que la restauración funcion
 | Respaldo a mano | `npm run db:backup` |
 | Restaurar | `npm run db:restore -- backups/ARCHIVO.sql.gz` |
 | Probar que se puede restaurar | `npm run test:respaldo:restaurar` |
+| Exportar UN negocio | `sh scripts/exportar-negocio.sh <slug>` |
+| Importar UN negocio | `sh scripts/importar-negocio.sh ARCHIVO --base NOMBRE` |
+| Probar el respaldo por negocio | `npm run test:respaldo:negocio` |
 | Aviso en pantalla | El inicio muestra un cartel si el último respaldo tiene más de 48 h o si no hay ninguno |
 
 ## Respaldo programado
@@ -153,10 +156,111 @@ También se comprobó:
 Queda pendiente correr la misma prueba con Docker (modo `docker`) en el VPS: en el entorno de
 desarrollo no había Docker. `docker compose config` valida el archivo.
 
+## Varios negocios en una base: respaldo completo y respaldo por negocio
+
+Desde el multi-tenant (VTA-4) una base guarda a **varios negocios**. Hay dos herramientas, y no
+se reemplazan:
+
+| | Respaldo completo (`backup.sh` / `restaurar.sh`) | Por negocio (`exportar-negocio.sh` / `importar-negocio.sh`) |
+|---|---|---|
+| Qué guarda | Toda la base: esquema, todos los negocios | Solo las filas de un `negocioId` (sin sesiones) |
+| Para qué | Seguro principal; perder el servidor o la base | Devolver **un** negocio a un estado anterior sin tocar a los demás |
+| Restaurar | **Reemplaza todo**: pisaría a los demás negocios | Solo toca ese negocio |
+
+**Regla:** restaurar el respaldo completo sobre una base viva con varios negocios solo se hace si
+el problema es de toda la base (y entonces todos vuelven al mismo momento). Para recuperar a un
+solo negocio, **nunca** se restaura el completo encima: se restaura en una base aparte, se exporta
+de ahí ese negocio y se importa en la viva.
+
+Los scripts usan `DATABASE_URL_MIGRACIONES` (rol `ventas_migrador`, con `BYPASSRLS`) si está, y
+`DATABASE_URL` si no. Con el rol de la app (`ventas_app`) las políticas RLS dejan ver una fila de
+nada y `pg_dump` ni siquiera puede leer las tablas: por eso exportar/importar se niegan con ese rol.
+Al restaurar el completo, `restaurar.sh` le vuelve a dar sus permisos a `ventas_app` (el volcado va
+`--no-privileges`).
+
+### Exportar un negocio
+
+```sh
+sh scripts/exportar-negocio.sh hl-laser                     # de la base de la app
+sh scripts/exportar-negocio.sh hl-laser --base ventas_aparte
+```
+
+- Genera `backups/negocios/<slug>-<base>-AAAAMMDD-HHMMSS.negocio.sql.gz` y deja los 30 más
+  recientes de cada negocio y base (`BACKUP_CONSERVAR`). La extensión `.negocio.sql.gz` y la
+  carpeta aparte evitan que cuente como respaldo completo: no apaga el aviso de respaldo viejo
+  (`src/lib/respaldo-estado.ts`), no lo toma la rotación de `backup.sh` ni lo acepta `restaurar.sh`.
+- Es una foto consistente (una sola transacción `REPEATABLE READ`): se puede correr con la app en uso.
+- Lleva, en orden de dependencias (padres antes que hijos), un `COPY` filtrado por `negocioId` de
+  cada tabla: `negocios`, `usuarios`, `listas_precios`, `clientes`, `materiales`, `maquinas`,
+  `articulos`, … hasta `trabajo_consumos`. **No lleva las sesiones** (credenciales vivas): al
+  importar, los usuarios vuelven a entrar.
+- Al final trae, por tabla, la cantidad de filas y una huella `md5` de su contenido. La importación
+  las vuelve a calcular y, si algo difiere, no deja nada.
+- Se niega si una tabla nueva con `negocioId` no está en la lista `TABLAS_NEGOCIO` de
+  `scripts/respaldo-comun.sh` (hay que sumarla en la misma migración; así nunca queda un dato
+  afuera sin avisar), si las claves foráneas no respetan ese orden o si una fila del negocio apunta
+  a una de otro negocio (por ejemplo, un usuario SUPERADMIN como autor).
+
+### Importar un negocio
+
+```sh
+sh scripts/importar-negocio.sh backups/negocios/hl-laser-....negocio.sql.gz --base ventas_aparte
+sh scripts/importar-negocio.sh ARCHIVO --base ventas --reemplazar     # pisa SOLO ese negocio
+```
+
+Política: **nunca se sobreescriben datos vivos de otros negocios**.
+
+1. `--base` es obligatorio (no hay base por defecto). La base tiene que existir y tener
+   **exactamente el mismo esquema** que la de origen (misma última migración y misma cantidad):
+   una base nueva se crea vacía y se migra (`npm run db:deploy`) antes de importar.
+2. Si el negocio (mismo `id` o mismo `slug`) ya está en la base con datos, no importa nada. La única
+   excepción es el negocio `hl-laser` vacío que trae toda base recién migrada (lo crea la migración
+   inicial): sin datos propios se descarta solo.
+3. `--reemplazar` borra las filas de **ese** negocio (por `negocioId`, hijos primero) y las carga de
+   nuevo; los demás negocios no se tocan. Pide escribir el slug para confirmar, o `--si-estoy-seguro`
+   (sin terminal y sin el flag, no hace nada). Si el slug está en la base con otro `id`, es otro
+   negocio y se niega.
+4. Todo va en **una transacción**; si falla algo (incluida la verificación de filas y huella), la
+   base queda como estaba. Durante la carga se deshabilitan los triggers de usuario de las tablas del
+   negocio (los de `comprobantes` solo admiten altas `PENDIENTE`; las FK siguen activas) y se vuelven
+   a habilitar antes de confirmar. Eso toma un candado exclusivo breve sobre esas tablas: hacerlo con
+   la app frenada, o mejor en una base aparte.
+
+### Recuperar un negocio de producción (procedimiento)
+
+1. Elegir el respaldo completo anterior al problema: `ls -lt backups/ | head`.
+2. Restaurarlo en una base aparte (nunca sobre la viva):
+   `sh scripts/restaurar.sh backups/ventas-AAAAMMDD-HHMMSS.sql.gz --base ventas_recuperada`.
+3. Exportar el negocio de esa base: `sh scripts/exportar-negocio.sh <slug> --base ventas_recuperada`.
+4. Frenar la app, hacer un respaldo completo del estado actual (`npm run db:backup`) y un export
+   del negocio tal cual está (por si hay que volver atrás).
+5. Importar en la viva: `sh scripts/importar-negocio.sh ARCHIVO --base ventas --reemplazar`.
+6. Levantar la app, mirar el inicio y una venta conocida. Borrar `ventas_recuperada`.
+
+También sirve para mover un negocio a otra base (importar sin `--reemplazar` en una base donde no
+está) o para sacar una copia de un cliente.
+
+### Prueba
+
+`npm run test:respaldo:negocio` arma una base con **dos negocios** (el del seed, con facturas y una
+nota de crédito emitidas, y una copia modificada) y otra vacía, y comprueba: exportar A e importarlo
+en la vacía reproduce exactamente sus datos (filas y huella de las 26 tablas, y totales de ventas,
+pagos, stock y comprobantes); importar o reemplazar A no cambia ni una fila de B; las negativas
+(negocio presente, archivo truncado o de otro esquema, datos alterados, sin `--base`, rol sujeto a
+RLS, `restaurar.sh` rechazando una exportación de negocio, tabla nueva fuera de la lista); la rotación;
+y que el respaldo completo restaura a los dos negocios y le devuelve sus permisos a `ventas_app`.
+
+Necesita un rol que pueda crear bases (`RESPALDO_ADMIN_URL` = superusuario, solo para
+`CREATE/DROP DATABASE`) además de `DATABASE_URL_MIGRACIONES`; `RESPALDO_URL_APP` (opcional) prueba
+que exportar se niega con `ventas_app`. Local sin Docker: Postgres en el puerto que sea, con
+`pg_dump`/`psql`/`node` en el PATH. Lo mismo vale para `npm run test:respaldo:restaurar`, que crea
+una base de prueba: correrlo con un rol con `CREATEDB` (en el compose, el superusuario del contenedor).
+
 ## Aviso en pantalla
 
 `src/components/aviso-respaldo.tsx` (en el inicio) muestra un cartel ámbar si el último respaldo
-tiene más de 48 h o si no hay ninguno. La lógica está en `src/lib/respaldo-estado.ts` (verificada
+tiene más de 48 h o si no hay ninguno. Con varios negocios el aviso es **de la base** (el respaldo
+completo cubre a todos), no de un negocio, y **no cuenta** las exportaciones `*.negocio.sql.gz`. La lógica está en `src/lib/respaldo-estado.ts` (verificada
 por `npm run test:respaldo`): mira la fecha de modificación del `.sql.gz` más nuevo de `BACKUP_DIR`.
 
 | Variable (de la app) | Por defecto | Para qué |

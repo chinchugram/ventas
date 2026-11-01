@@ -9,6 +9,9 @@
 # - Si existe, se REEMPLAZA su contenido: hay que escribir el nombre de la base
 #   para confirmar, o pasar --si-estoy-seguro. Sin terminal y sin el flag, no hace nada.
 # - Todo corre en una sola transaccion: si algo falla, la base queda como estaba.
+# - Restaura la base ENTERA (todos los negocios). Para devolver uno solo sin tocar a los demas:
+#   scripts/exportar-negocio.sh e scripts/importar-negocio.sh.
+# - Usa DATABASE_URL_MIGRACIONES (rol que se salta RLS) si esta; ver cargar_url en respaldo-comun.sh.
 set -e
 cd "$(dirname "$0")/.."
 . scripts/respaldo-comun.sh
@@ -21,7 +24,7 @@ while [ $# -gt 0 ]; do
     --base) [ $# -ge 2 ] || fallar "--base necesita un nombre"; BASE="$2"; shift 2 ;;
     --base=*) BASE="${1#--base=}"; shift ;;
     --si-estoy-seguro) SEGURO=si; shift ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     -*) fallar "opcion desconocida: $1" ;;
     *) [ -z "$ARCHIVO" ] || fallar "sobra el argumento '$1'"; ARCHIVO="$1"; shift ;;
   esac
@@ -30,6 +33,10 @@ done
 [ -n "$ARCHIVO" ] || fallar "uso: sh scripts/restaurar.sh ARCHIVO.sql.gz [--base NOMBRE] [--si-estoy-seguro]"
 [ -f "$ARCHIVO" ] || fallar "no existe el archivo '$ARCHIVO'"
 gzip -t "$ARCHIVO" || fallar "'$ARCHIVO' no es un gzip valido"
+# Una exportacion de UN negocio (exportar-negocio.sh) no es un respaldo de la base: restaurarla
+# aca vaciaria el esquema y dejaria solo ese negocio.
+[ "$(gzip -dc "$ARCHIVO" | head -n 1)" != "-- ventas-exportacion-negocio v1" ] \
+  || fallar "'$ARCHIVO' es la exportacion de un solo negocio, no un respaldo completo. Se carga con: sh scripts/importar-negocio.sh ARCHIVO --base NOMBRE"
 gzip -dc "$ARCHIVO" | tail -n 5 | grep -q "PostgreSQL database dump complete" \
   || fallar "'$ARCHIVO' no parece un volcado completo de pg_dump"
 
@@ -58,5 +65,6 @@ fi
 # El esquema se vacia dentro de la misma transaccion que la carga: si la carga
 # falla, el DROP tambien se deshace.
 echo "Restaurando $ARCHIVO en '$BASE'..."
-{ echo "SET client_min_messages = warning; DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;"; gzip -dc "$ARCHIVO"; } | psql_en "$BASE" --single-transaction >/dev/null
+# Al final se devuelven los permisos de `ventas_app` (el volcado va sin privilegios).
+{ echo "SET client_min_messages = warning; DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;"; gzip -dc "$ARCHIVO"; sql_permisos_app; } | psql_en "$BASE" --single-transaction >/dev/null
 echo "Restauracion terminada en '$BASE'."

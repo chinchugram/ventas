@@ -60,6 +60,7 @@ console.log("--- Que archivos cuentan ---");
 comprobar("volcado", String(esArchivoDeRespaldo("ventas-20261029-031500.sql.gz")), "true");
 comprobar("temporal a medias", String(esArchivoDeRespaldo("ventas-20261029-031500.sql.gz.tmp")), "false");
 comprobar("otro archivo", String(esArchivoDeRespaldo("notas.txt")), "false");
+comprobar("exportacion de un negocio no es respaldo de la base", String(esArchivoDeRespaldo("hl-laser-ventas-20261029-031500.negocio.sql.gz")), "false");
 
 async function conDirectorio() {
   console.log("--- Lectura del directorio (BACKUP_DIR temporal) ---");
@@ -84,6 +85,11 @@ async function conDirectorio() {
     await writeFile(vacio, "");
     await utimes(vacio, haceHoras(2), haceHoras(2));
     comprobar("un .sql.gz vacio no cuenta", (await getEstadoRespaldo(ahora)).estado, "viejo");
+
+    const exportado = path.join(base, "hl-laser-ventas-20261029-110000.negocio.sql.gz");
+    await writeFile(exportado, "x");
+    await utimes(exportado, haceHoras(1), haceHoras(1));
+    comprobar("una exportacion de negocio reciente no apaga el aviso", (await getEstadoRespaldo(ahora)).estado, "viejo");
 
     const nuevo = path.join(base, "ventas-20261029-090000.sql.gz");
     await writeFile(nuevo, "x");
