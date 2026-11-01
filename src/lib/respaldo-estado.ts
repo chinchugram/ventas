@@ -1,6 +1,9 @@
 /**
- * Estado del ultimo respaldo de la base (scripts/backup.sh), para avisar en
- * pantalla si quedo viejo. No confundir con src/lib/respaldo.ts, que es el
+ * Estado del ultimo respaldo COMPLETO de la base (scripts/backup.sh), para avisar en
+ * pantalla si quedo viejo. Con varios negocios en la misma base (multi-tenant) el respaldo
+ * completo sigue siendo el seguro principal y cubre a todos: el aviso es de la base, no de un
+ * negocio. Las exportaciones de un solo negocio (scripts/exportar-negocio.sh, `*.negocio.sql.gz`
+ * en `backups/negocios/`) no cuentan: no guardan el esquema ni a los demas negocios. No confundir con src/lib/respaldo.ts, que es el
  * respaldo de *datos de demostracion* cuando no hay base.
  *
  * La fuente es simple a proposito: la fecha de modificacion del .sql.gz mas
@@ -69,9 +72,14 @@ export function describirAntiguedad(horas: number): string {
   return `hace ${dias} días`;
 }
 
-/** Solo cuentan los volcados terminados (el temporal es `.sql.gz.tmp`). */
+/** Exportacion de un solo negocio (scripts/exportar-negocio.sh): no es un respaldo de la base. */
+export function esExportacionDeNegocio(nombre: string): boolean {
+  return nombre.endsWith(".negocio.sql.gz");
+}
+
+/** Solo cuentan los volcados completos terminados (el temporal es `.sql.gz.tmp`). */
 export function esArchivoDeRespaldo(nombre: string): boolean {
-  return nombre.endsWith(".sql.gz");
+  return nombre.endsWith(".sql.gz") && !esExportacionDeNegocio(nombre);
 }
 
 // ---------------------------------------------------------------------------
