@@ -7,6 +7,8 @@ se lanzan juntas y, cuando todas terminan y se integran, empieza la ola siguient
 Estado al día de hoy: **etapas 1, 2, 3, comercial (ola 7) y la etapa 4 (facturación con emisor simulado) hechas;
 olas 0 a 7 cerradas, salvo la 5.2.** La etapa 4 está hecha sin ARCA real: todo comprobante es simulado y sin
 validez fiscal. Pendiente de `docs/01-alcance-funcional.md`: solo la 5.2 (integración con ARCA, diferida).
+**El épico multi-tenant (VTA-4, ola 8) está cerrado en código y documentación; su despliegue sobre la base real de Neon
+está preparado y ensayado en local, pero NO ejecutado** (lo decide y ejecuta el product owner, ver la ola 8).
 
 Leyenda: `[x]` hecho · `[ ]` pendiente · `(R)` toca archivos compartidos, ver "Reglas".
 
@@ -202,6 +204,51 @@ Ola 4 (multi-usuario) y ola 7 (comercial) unidas en `integracion-4-7`.
 - [x] **8.3 `npm run test:acceso`**: regresión de autorización por HTTP contra `next build && next start`, con
       una base descartable. Cubre las rutas de la ola 7 y que el empleado no reciba costos ni márgenes.
 - [x] **8.4 Documentación**: README, modelo de datos, esta lista y `docs/seguridad-ola-4-auth.md`.
+
+---
+
+## Ola 8 — Multi-tenant: varios negocios en una base (épico VTA-4)
+
+Rama base `multitenant`; una rama por ticket (`multitenant-vta-N`). Migraciones `20260601000000` a `20260601030100`. Es la
+única ola que cambia el esquema de **todas** las tablas, así que su cierre incluye un despliegue con copia previa
+(`docs/07-multitenant-despliegue.md`).
+
+- [x] **F0 Decisiones de diseño (VTA-5)**: el negocio se elige en `/login` por su identificador corto (`slug`); el rol `SUPERADMIN` no
+      tiene negocio, solo entra a `/admin/**` y no ve datos de ninguno. Aislamiento por RLS: decisión y descartes en
+      `docs/03-stack-y-decisiones.md`.
+- [x] **F1.1 Modelo (VTA-6)**: tabla `Negocio`, `negocioId` en las tablas de datos y backfill al negocio `hl-laser`
+      (`20260601000000_negocio`; prueba `npm run test:negocio`). Más VTA-22: `negocioId` en seed, dominio, acciones y tests.
+- [x] **F1.2 Únicos por negocio (VTA-7)**: `ventas(negocioId, anio, numero)`, CUIT, usuario, listas, series fiscales;
+      `Configuracion` con clave `(negocioId, clave)` y triggers de "el hijo es del mismo negocio que el padre"
+      (`20260601010000_unicos_por_negocio`; `npm run test:unicos-negocio`).
+- [x] **F1.3 Producción con `negocioId` (VTA-24)**: las 3 tablas de la ola 6 (`20260601020000_negocio_produccion`).
+- [x] **F2.1 `conNegocio` y RLS (VTA-8)**: contexto `app.negocio_id` por transacción, política `aislamiento_negocio` en las 26 tablas,
+      roles `ventas_app` / `ventas_migrador` (`20260601020000_rls`, `scripts/crear-roles-db.sql`; `npm run test:rls`).
+- [x] **F3.1 a F3.5 Consultas y acciones por `conNegocio` (VTA-9 a VTA-13)**: catálogo; ventas, pagos, presupuestos y cobranzas;
+      stock, compras y producción; facturación; dashboard, reportes y CSV.
+- [x] **F3.6 Candados y numeración por negocio (VTA-14)**: `npm run test:concurrencia-negocios`, `test:facturacion-negocios`.
+- [x] **F4.1 Login por negocio (VTA-15)**: el login pide negocio; la cookie es `<negocioId>.<token>` (las sesiones con la cookie vieja
+      dejan de valer); sesiones atadas al negocio, `getNegocioId()` y proxy (`npm run test:login-negocios`).
+- [x] **F4.2 Marca por negocio (VTA-16)**: nombre y logo desde `Negocio` (`npm run test:marca`).
+- [x] **F4.3 `/admin/negocios` y SUPERADMIN (VTA-17)**: rol `SUPERADMIN` en la base (`20260601030000` y `20260601030100`),
+      `usuarios:crear-superadmin`, `usuarios:crear-dueno -- --negocio <slug>` (`npm run test:negocios`).
+- [x] **F5.1 Respaldo y restauración por negocio (VTA-18)**: `exportar-negocio.sh` / `importar-negocio.sh` (`npm run test:respaldo:negocio`).
+- [x] **F5.2 Seed y modo demo con dos negocios (VTA-19)**: `hl-laser` y `taller-demo`.
+- [x] **F5.3 Aislamiento entre negocios por HTTP (VTA-20)**: dentro de `npm run test:acceso`; obligatorio antes de desplegar.
+- [x] **F6.1 Documentación y procedimiento de despliegue (VTA-21)**: README, modelo de datos, decisión RLS, `.env.example`,
+      `package.json` (`npm run test:cierre`) y `docs/07-multitenant-despliegue.md`, con el procedimiento **ensayado entero contra
+      Postgres local** (`npm run ensayo:despliegue`: copia, migración, reconciliación idéntica, roles, humo y vuelta atrás).
+- [ ] **Despliegue real sobre Neon**: **lo decide y ejecuta el product owner (Claudio)**, en una ventana de mantenimiento acordada con
+      HL Laser (el cliente validador) y avisándole antes. Sigue `docs/07-multitenant-despliegue.md`: respaldo, copia/rama,
+      migración y reconciliación idéntica sobre la copia, y recién después sobre la real; redeploy de `staging` en Vercel y verificar
+      login y una venta. Registrar la reconciliación en VTA-21.
+- [ ] **Prueba pendiente: `test:rls` contra Neon en modo pooled** (host `-pooler`, en una rama de pruebas, no en producción). Hoy los
+      scripts se niegan a correr contra un host remoto; habilitarlo para esa prueba lo decide el product owner. **No probado.**
+
+**Cierre de la ola.** `npm run test:cierre` encadena `typecheck`, `build`, `test:costeo`, `test:stock`, `test:permisos`, `test:rls`,
+`test:negocios`, `test:respaldo:negocio`, `test:acceso` y `npm audit` (ver el README para las variables que necesita). Los dos comandos
+que sostienen el aislamiento son `npm run test:rls` (por cada tabla, contra Postgres con los dos roles) y `npm run test:acceso`
+(por HTTP, con la app corriendo como `ventas_app`; al final corre también `test:rls`).
 
 ---
 

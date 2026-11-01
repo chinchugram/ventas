@@ -16,10 +16,12 @@ npm install
 # 2. Variables de entorno
 cp .env.example .env        # en Windows: copy .env.example .env
 
-# 3. Base de datos (Postgres en Docker)
+# 3. Base de datos (Postgres en Docker) y sus dos roles (una sola vez)
 docker compose up -d db
+docker compose exec -T db psql -U ventas -d ventas -v ON_ERROR_STOP=1 -f - < scripts/crear-roles-db.sql
+docker compose exec -T db psql -U ventas -d ventas -c 'ALTER DATABASE ventas OWNER TO ventas_migrador'
 
-# 4. Esquema + datos de ejemplo
+# 4. Esquema + datos de ejemplo (corren con el rol migrador, DATABASE_URL_MIGRACIONES)
 npm run db:generate
 npm run db:deploy
 npm run db:seed
@@ -28,18 +30,27 @@ npm run db:seed
 npm run dev
 ```
 
-Abrir <http://localhost:3000>.
+Abrir <http://localhost:3000>. Se entra por `/login` con **negocio**, usuario y clave (ver "Usuarios de ejemplo"
+más abajo).
 
-El seed carga un comercio de ejemplo con 4 clientes, 5 artículos con receta, 5 materiales,
-3 máquinas, 2 compras, 7 ventas (pagadas, sin cobrar y pagadas a medias) y un ajuste por conteo,
-para ver las pantallas con información realista antes de cargar nada real. Compras y ventas pasan
-por la misma lógica que las pantallas, así que el stock de cada material coincide con su libro de
-movimientos.
+El sistema es **multi-tenant**: varios negocios comparten una base y Postgres aísla sus datos (ver "Varios negocios en una base").
+Por eso el arranque usa **dos roles de base**: `ventas_app` (la app, `DATABASE_URL`) y `ventas_migrador` (migraciones,
+seed y scripts, `DATABASE_URL_MIGRACIONES`). `.env.example` ya trae las dos URL para este Postgres local.
+
+El seed (`npm run db:seed`) carga **dos negocios de ejemplo**, cada uno con su catálogo, sus usuarios y sus movimientos:
+
+| Negocio | Identificador (`slug`) | Qué tiene |
+|---|---|---|
+| HL Laser | `hl-laser` | 4 clientes, 5 artículos con receta, 5 materiales, 3 máquinas, 2 compras, 7 ventas (pagadas, sin cobrar y pagadas a medias) y un ajuste por conteo |
+| Taller Demo | `taller-demo` | 4 clientes, 5 artículos con receta, 6 materiales, 3 máquinas, 2 compras, 6 ventas y un ajuste por conteo (sublimación y cartelería en chapa: nombres y montos distintos, para reconocer a simple vista de qué negocio es cada pantalla) |
+
+Compras y ventas pasan por la misma lógica que las pantallas, así que el stock de cada material coincide con su libro de
+movimientos. Ningún dato de un negocio aparece en el otro.
 
 Fuera de producción, el seed también carga datos fiscales de ejemplo (CUIT ficticio y punto de venta 1)
 para poder facturar con el simulador. No carga comprobantes.
 
-**Para limpiar los datos de ejemplo y empezar de cero:** `npm run db:reset`
+**Para limpiar los datos de ejemplo y empezar de cero:** `npm run db:reset` (borra **todos** los negocios).
 
 ### Modo demo (sin base de datos)
 
@@ -53,7 +64,8 @@ responde o la consulta falla (por ejemplo, migraciones pendientes).
 
 ### Acceso: usuarios y sesiones
 
-Se entra por `/login` con usuario y clave. Hay dos roles:
+Se entra por `/login` con **negocio**, usuario y clave. El negocio es su identificador corto (`slug`), por ejemplo
+`hl-laser`; el mismo nombre de usuario puede existir en dos negocios. Hay tres roles:
 
 - **`DUENO`**: todo, incluidas las notas de crédito y los datos fiscales del negocio.
 - **`EMPLEADO`**: carga ventas, registra cobros, marca ventas como entregadas, ve y edita clientes,
@@ -63,13 +75,34 @@ Se entra por `/login` con usuario y clave. Hay dos roles:
   precios (ni asignarlas a un cliente: ese selector no le aparece). Factura las ventas desde `/ventas/[id]` y ve los
   comprobantes, pero no emite notas de crédito ni toca los datos fiscales del negocio. Su pantalla de inicio es
   `/ventas/nueva`.
+- **`SUPERADMIN`**: no pertenece a ningún negocio y **no ve datos de ninguno**. Solo entra a `/admin/negocios`, donde da de alta
+  negocios, crea su primer dueño y los da de baja (ve nombre, estado y cantidad de usuarios, nada más).
 
-**Primer dueño:** `npm run usuarios:crear-dueno` pide usuario, nombre y clave (la clave no se ve al
-tipearla y se repite para confirmar; mínimo 10 caracteres). También acepta `DUENO_USUARIO`,
-`DUENO_CLAVE` y `DUENO_NOMBRE` como variables de entorno. Se niega si ya hay un dueño, aunque esté
-dado de baja: los demás usuarios se crean desde `/usuarios`.
+#### Usuarios de ejemplo (`npm run db:seed`, solo fuera de producción)
 
-- **Sin ningún usuario** el sitio responde 503 con esa instrucción, en cualquier entorno: nunca
+| Negocio (`slug`) | Usuario | Clave | Rol |
+|---|---|---|---|
+| `hl-laser` | `dueno` | `dueno-de-ejemplo` | `DUENO` |
+| `hl-laser` | `empleado` | `empleado-de-ejemplo` | `EMPLEADO` |
+| `taller-demo` | `dueno` | `dueno-taller-demo` | `DUENO` |
+| `taller-demo` | `empleado` | `empleado-taller-demo` | `EMPLEADO` |
+
+El seed **no** crea ningún SUPERADMIN: se crea con el comando de abajo. Los mismos nombres de usuario en los dos negocios
+son a propósito: lo que decide a qué negocio se entra es el campo *Negocio* del login.
+
+**Primer SUPERADMIN:** `npm run usuarios:crear-superadmin` pide usuario, nombre y clave (la clave no se ve al tipearla; mínimo
+10 caracteres). También acepta `SUPERADMIN_USUARIO`, `SUPERADMIN_CLAVE` y `SUPERADMIN_NOMBRE`. Solo se crea desde la terminal del
+servidor, nunca desde la web, y se niega si ya hay un SUPERADMIN. **Entra en `/login` escribiendo `admin` en *Negocio*** (es un
+identificador reservado: ningún negocio puede llamarse así).
+
+**Primer dueño de un negocio:** `npm run usuarios:crear-dueno -- --negocio <slug>` (por ejemplo `-- --negocio hl-laser`; también
+`DUENO_NEGOCIO`). El negocio es obligatorio (con varios nunca se adivina), tiene que existir (lo crea el SUPERADMIN en
+`/admin/negocios`) y estar activo. Pide usuario, nombre y clave (no se ve al tipearla, se repite para confirmar; mínimo 10
+caracteres). También acepta `DUENO_USUARIO`, `DUENO_CLAVE` y `DUENO_NOMBRE`. Se niega si ya hay un dueño **en ese negocio**, aunque esté
+dado de baja: los demás usuarios se crean desde `/usuarios`. Desde `/admin/negocios` el SUPERADMIN también puede crear ese primer dueño
+(con una clave inicial que el dueño tiene que cambiar al entrar).
+
+- **Sin ningún negocio ni SUPERADMIN** el sitio responde 503 con esa instrucción, en cualquier entorno: nunca
   queda abierto.
 - **En producción sin base de datos** responde 503.
 - **En producción se exige HTTPS.** La cookie de sesión es `Secure` y se llama
@@ -78,21 +111,48 @@ dado de baja: los demás usuarios se crean desde `/usuarios`.
   equivalente de Caddy / Cloudflare). La app no limita por IP, y cada intento cuesta un scrypt. La pausa
   por usuario ya acota la fuerza bruta. Ver "Fuera de alcance" en
   [`docs/seguridad-ola-4-auth.md`](docs/seguridad-ola-4-auth.md).
-- **En desarrollo**, `npm run db:seed` crea `dueno` / `dueno-de-ejemplo` y `empleado` /
-  `empleado-de-ejemplo`. Solo fuera de producción.
 - **Sin base de datos en desarrollo** (modo demo) se entra como "Demo", un dueño simulado. Las
   acciones no escriben nada y devuelven `SIN_BASE`.
 - Las sesiones duran 30 días y se renuevan con el uso. Cerrar sesión, dar de baja a un usuario,
-  cambiarle el rol o reiniciarle la clave corta sus sesiones abiertas.
+  cambiarle el rol o reiniciarle la clave corta sus sesiones abiertas. Un negocio dado de baja no deja entrar a nadie.
+- **Desde el multi-tenant, la cookie es `<negocioId>.<token>`: las sesiones abiertas con la cookie anterior (solo el token) dejan de
+  valer.** Al desplegar, cada persona vuelve a entrar una vez, escribiendo el negocio. Hay que avisarlo antes (ver
+  [`docs/07-multitenant-despliegue.md`](docs/07-multitenant-despliegue.md)).
 - Desde el quinto fallo seguido, la cuenta queda en pausa: 30 s, luego 1 min, 2 min… hasta 15 min.
-  Durante la pausa no se verifica la clave. El mensaje de error no dice si falló el usuario o la clave.
+  Durante la pausa no se verifica la clave. El mensaje de error no dice si falló el negocio, el usuario o la clave.
 - Los costos y márgenes no se envían al navegador del empleado: no se consultan, no solo se ocultan.
 
-No hay variables de entorno de acceso: solo `DATABASE_URL`. `BASIC_AUTH_USER` y
-`BASIC_AUTH_PASSWORD` ya no existen; si el servidor las tenía, se pueden retirar.
+No hay variables de entorno de acceso: las únicas de la base son `DATABASE_URL` y `DATABASE_URL_MIGRACIONES`.
+`BASIC_AUTH_USER` y `BASIC_AUTH_PASSWORD` ya no existen; si el servidor las tenía, se pueden retirar.
 
 Decisiones de seguridad (claves, sesiones, cookies, qué queda fuera): ver
 [`docs/seguridad-ola-4-auth.md`](docs/seguridad-ola-4-auth.md).
+
+### Varios negocios en una base (multi-tenant)
+
+Cada fila de las 26 tablas de datos lleva el `negocioId` de su dueño y **Postgres fuerza el aislamiento** con Row Level Security:
+aunque una consulta olvide el `WHERE`, la base no devuelve ni deja escribir filas de otro negocio. Los datos de un negocio solo se
+tocan dentro de `conNegocio(negocioId, fn)` (`src/lib/negocio.ts`). Detalle en
+[`docs/03-stack-y-decisiones.md`](docs/03-stack-y-decisiones.md) (decisión, descartes, roles) y
+[`docs/02-modelo-datos.md`](docs/02-modelo-datos.md) (`Negocio`, `negocioId`, únicos por negocio).
+
+- **Dos roles de base, dos URL.** `DATABASE_URL` es el rol `ventas_app` (la app; sin `BYPASSRLS`, no es dueño de nada).
+  `DATABASE_URL_MIGRACIONES` es `ventas_migrador` (dueño de las tablas, con `BYPASSRLS`): migraciones, seed, respaldos y los scripts de
+  alta. **Nunca** va a la app. En producción la app se niega a operar con un rol que se salta RLS.
+- **Crear los roles:** `psql "$ADMIN_URL" -f scripts/crear-roles-db.sql` (superusuario; idempotente; claves de desarrollo por defecto o
+  `-v app_password="'…'" -v migrador_password="'…'"`). **Hay que re-correrlo después de migrar** y después de restaurar un respaldo completo:
+  `ventas_app` necesita `INSERT`/`UPDATE` sobre `negocios` (el SUPERADMIN da de alta negocios) y `EXECUTE` sobre
+  `usuarios_por_negocio()` (la cantidad de usuarios en `/admin/negocios`), y esa función exige que su dueño, el migrador, tenga `BYPASSRLS`.
+  `psql "$DATABASE_URL_MIGRACIONES" -f scripts/verificar-roles-db.sql` lo comprueba (solo lee).
+- La base tiene que ser **del migrador** (`ALTER DATABASE … OWNER TO ventas_migrador`); si no, `prisma migrate deploy` falla con "permission denied for database".
+- **Migrar:** `npm run db:deploy` (usa `DATABASE_URL_MIGRACIONES`).
+- **Neon:** `DATABASE_URL` con el host *pooled* (`-pooler`) y `DATABASE_URL_MIGRACIONES` con el directo. **El modo pooled está
+  diseñado para funcionar (el contexto vive solo dentro de una transacción) pero NO está probado contra Neon.** Es una prueba pendiente de
+  `docs/07-multitenant-despliegue.md`.
+- **Desplegar sobre la base real de Neon** (HL Laser) tiene su procedimiento ensayado, con copia previa, reconciliación y vuelta atrás, en
+  [`docs/07-multitenant-despliegue.md`](docs/07-multitenant-despliegue.md). No se ejecuta sin la aprobación del product owner.
+- **Respaldos:** el completo cubre a todos los negocios; para devolver **uno** sin tocar a los demás existe el respaldo por negocio
+  (`scripts/exportar-negocio.sh` / `importar-negocio.sh`). Ver [`docs/05-respaldos.md`](docs/05-respaldos.md).
 
 ### Probarlo desde el celular
 
@@ -115,10 +175,12 @@ los botones no responden).
 | [`docs/01-alcance-funcional.md`](docs/01-alcance-funcional.md) | Qué hace el MVP, qué NO hace, y las etapas siguientes |
 | [`docs/02-modelo-datos.md`](docs/02-modelo-datos.md) | Entidades, decisiones de diseño y los cálculos derivados |
 | [`docs/03-stack-y-decisiones.md`](docs/03-stack-y-decisiones.md) | Stack, con el porqué de cada elección |
-| [`docs/05-respaldos.md`](docs/05-respaldos.md) | Respaldo diario, restauración y prueba de restauración |
+| [`docs/04-checklist-olas.md`](docs/04-checklist-olas.md) | Plan por olas y su estado (incluye el épico multi-tenant, VTA-4) |
+| [`docs/05-respaldos.md`](docs/05-respaldos.md) | Respaldo diario, restauración, prueba de restauración y respaldo por negocio |
 | [`docs/seguridad-ola-4-auth.md`](docs/seguridad-ola-4-auth.md) | Login, claves, sesiones y permisos: decisiones de seguridad y qué queda fuera |
 | [`docs/fiscal-5.1-decisiones.md`](docs/fiscal-5.1-decisiones.md) | Decisiones fiscales de la facturación (numeración, redondeo, receptor, notas de crédito) y dudas para el contador |
 | [`docs/06-facturacion-arca.md`](docs/06-facturacion-arca.md) | Facturación con ARCA: qué falta para pasar del simulador a la integración real (5.2) y qué necesita el dueño |
+| [`docs/07-multitenant-despliegue.md`](docs/07-multitenant-despliegue.md) | Despliegue multi-tenant sobre Neon: procedimiento con copia previa, reconciliación, roles y vuelta atrás; ensayo local y pruebas pendientes |
 
 ---
 
@@ -306,14 +368,21 @@ el mostrador con el teléfono en la mano.
 | `npm run typecheck` | TypeScript sin emitir |
 | `npm run db:up` / `db:down` | Levantar / bajar Postgres |
 | `npm run db:migrate` | Crear y aplicar una migración (desarrollo) |
-| `npm run db:deploy` | Aplicar migraciones (producción) |
-| `npm run db:seed` | Cargar datos de ejemplo |
-| `npm run db:reset` | **Borra todo** y vuelve a migrar + sembrar |
+| `npm run db:deploy` | Aplicar migraciones (producción). Usa `DATABASE_URL_MIGRACIONES` (rol `ventas_migrador`) si está definida |
+| `npm run db:seed` | Cargar los **dos negocios de ejemplo** (`hl-laser` y `taller-demo`) con sus usuarios (solo fuera de producción); corre con el migrador y **borra los datos de todos los negocios** antes de sembrar |
+| `npm run db:reset` | **Borra todo** (todos los negocios) y vuelve a migrar + sembrar |
 | `npm run db:studio` | Prisma Studio, para mirar la base |
-| `npm run usuarios:crear-dueno` | Crea el primer dueño (pide usuario, nombre y clave); se niega si ya hay un dueño. Ver "Acceso" |
+| `npm run usuarios:crear-superadmin` | Crea el primer SUPERADMIN (pide usuario, nombre y clave); entra en `/login` con el negocio `admin`. Se niega si ya hay uno. Ver "Acceso" |
+| `npm run usuarios:crear-dueno -- --negocio <slug>` | Crea el primer dueño de **ese negocio** (pide usuario, nombre y clave); se niega si el negocio ya tiene un dueño. Ver "Acceso" |
 | `npm run db:backup` | `pg_dump` a `backups/`, con rotación de 30 archivos (el servicio `backup` del compose lo hace solo, una vez por día) |
 | `npm run db:restore -- ARCHIVO` | Restaura un respaldo (pide confirmar si pisa una base existente). Ver `docs/05-respaldos.md` |
-| `npm run test:respaldo` / `test:respaldo:restaurar` | Lógica del aviso de respaldo viejo / prueba de restauración de punta a punta en una base descartable |
+| `npm run test:respaldo` / `test:respaldo:restaurar` | Lógica del estado del último respaldo (`src/lib/respaldo-estado.ts`) / prueba de restauración de punta a punta en una base descartable |
+| `npm run test:respaldo:negocio` | Respaldo y restauración de **un** negocio: exportar A e importarlo reproduce sus datos, no cambia nada de B, las negativas y que el respaldo completo restaura a los dos negocios. Necesita `RESPALDO_ADMIN_URL` (ver `docs/05-respaldos.md`) |
+| `npm run test:rls` | Aislamiento por RLS contra Postgres local con los dos roles: por cada tabla con `negocioId`, ver/modificar/insertar entre negocios, sin contexto, el SUPERADMIN, y que el contexto no se filtra entre transacciones ni conexiones. Necesita `DATABASE_URL` (`ventas_app`) y `DATABASE_URL_MIGRACIONES` |
+| `npm run test:negocios` | Administración de negocios del SUPERADMIN (alta, primer dueño, baja y reactivación, permisos) y los scripts `crear-superadmin` / `crear-dueno --negocio` |
+| `npm run test:unicos-negocio` / `test:negocio` / `test:facturacion-negocios` / `test:concurrencia-negocios` / `test:login-negocios` / `test:marca` | Piezas del multi-tenant: únicos y triggers por negocio / migración `negocio` con datos / facturación por negocio / candados y numeración concurrentes / login por negocio y SUPERADMIN / marca (nombre y logo) por negocio |
+| `npm run test:cierre` | **Suite de cierre del épico multi-tenant:** `typecheck`, `build`, `test:costeo`, `test:stock`, `test:permisos`, `test:rls`, `test:negocios`, `test:respaldo:negocio`, `test:acceso` y `npm audit`. Variables: `DATABASE_URL`, `DATABASE_URL_MIGRACIONES`, `ACCESO_URL_ADMIN` y `RESPALDO_ADMIN_URL` (superusuario local, solo para crear bases de prueba). Si la computadora está en UTC, entre las 21:00 y las 24:00 de Argentina `test:acceso` falla por la fecha de hoy: correr con `TZ=America/Argentina/Buenos_Aires` |
+| `npm run ensayo:despliegue` | Ensayo local completo del despliegue multi-tenant (copia, migración, reconciliación, roles, humo y vuelta atrás) contra Postgres local. Necesita `ENSAYO_HOST` y `ENSAYO_PORT`. Ver `docs/07-multitenant-despliegue.md` |
 | `npm run test:cobranzas` / `test:cobranzas:db` / `test:reposicion` | Cobros y lista de reposición |
 | `npm run test:costeo` | Verifica el motor de costeo contra 15 números conocidos |
 | `npm run test:stock` | Verifica las cuentas de compras y stock contra números conocidos |
@@ -336,7 +405,7 @@ el mostrador con el teléfono en la mano.
 | `npm run test:produccion` / `test:produccion:db` | Registro de producción: sugerencia desde la receta, validación, costo real, ajuste de stock idempotente / el mismo flujo contra Postgres real (un vigente por línea, costos congelados, CHECK). Sin rastro |
 | `npm run test:margen-real` / `test:margen-real:db` | Margen real con cuentas a mano (desvíos, nulos, CSV) / contra Postgres real con trabajos sembrados (rango de fechas, anulados) |
 | `npm run test:estimacion-tiempos` / `test:estimacion-tiempos:db` | Mediana, mínimo de muestras y totales de la estimación / contra Postgres real con trabajos sembrados |
-| `npm run test:acceso` | Autorización por HTTP contra la app de producción (`next build && next start` en el puerto 3103) y una base descartable `ventas_acceso`: rutas sin sesión, empleado, sesión expirada o de baja, y que el HTML y el RSC del empleado no traigan costos ni márgenes. Reconstruye `.next`. Ver el encabezado de `scripts/test-acceso.ts` |
+| `npm run test:acceso` | Autorización por HTTP contra la app de producción (`next build && next start` en el puerto 3103) y una base descartable `ventas_acceso` con los dos negocios del seed y la app corriendo con `ventas_app`: rutas sin sesión, empleado, sesión expirada o de baja, que el HTML y el RSC del empleado no traigan costos ni márgenes, y el **aislamiento entre negocios** (dueño y empleado de cada uno intentan ver y tocar lo del otro con ids reales); al final corre `test:rls`. Reconstruye `.next`. Ver el encabezado de `scripts/test-acceso.ts` |
 | `npm run test:datos-fiscales` | Validación y normalización de los datos fiscales del negocio: cada campo con sus bordes y lo que falta para emitir. Sin base |
 | `npm run test:comprobantes` | Lógica pura de facturación: letras y códigos ARCA, documento del receptor y umbral, importes por alícuota con sus redondeos, factura C, guarda de producción y emisor simulado con acceso en memoria. Sin base |
 | `npm run test:comprobantes:db` | Emisión contra Postgres real: A, B y C con sus estados, la foto, numeración por serie, un rechazo que reusa el número, un corte que deja `PENDIENTE`, los CHECK, índices y triggers de la migración, y dos emisiones simultáneas. No deja rastro |
@@ -402,7 +471,7 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 - [x] Formularios de alta/edición de clientes, artículos, materiales y recetas (ola 1 de `docs/04-checklist-olas.md`)
 - [x] Registro de pagos sobre ventas existentes, anulación de pagos y cambio de estado (ola 2)
 - [x] Página de configuración (costo/hora de mano de obra, IVA, margen objetivo) y máquinas (ola 1)
-- [x] Backup automático diario (ola 2): servicio `backup` del compose, restauración probada y aviso en pantalla. Ver `docs/05-respaldos.md`
+- [x] Backup automático diario (ola 2): servicio `backup` del compose y restauración probada. El aviso en pantalla de "respaldo viejo" ya no se muestra (su pantalla se retiró; la lógica de `src/lib/respaldo-estado.ts` sigue verificada). Ver `docs/05-respaldos.md`
 - [x] Lista de reposición sugerida (ola 2): cierra la etapa 2
 - [x] Reportes con filtro de fechas y exportación a CSV, reporte de stock y auditoría de accesibilidad (ola 3). Hallazgos pendientes en `docs/auditoria-ola-3.md`
 - [x] Listas de precios por cliente (ola 7.1)
@@ -412,6 +481,7 @@ Estas son las que sostienen el código. Si alguna se rompe, el sistema empieza a
 - [x] Integración 4+7 (rama `integracion-4-7`): permisos de las pantallas de la ola 7, trazabilidad de presupuestos, contactos de cobranza y listas de precios, y `npm run test:acceso`
 - [x] Productividad (ola 6, etapa 5): registro de producción por línea de venta, margen real contra receta (solo dueño), estimación de tiempos por arte y pendientes de accesibilidad
 - [x] Facturación con emisor simulado (ola 5, etapa 4): facturar desde la venta, listado y detalle de comprobantes, vista imprimible con QR, notas de crédito totales y datos fiscales. La integración con ARCA (5.2) está diferida
+- [x] Multi-tenant (épico VTA-4): varios negocios en una base con aislamiento por RLS, login por negocio, SUPERADMIN y `/admin/negocios`, marca por negocio, respaldo por negocio y test de aislamiento por HTTP. **Código y documentación cerrados; el despliegue sobre la base real de Neon está preparado y ensayado en local pero NO ejecutado** (decide y ejecuta el product owner: `docs/07-multitenant-despliegue.md`)
 
 El plan completo, por olas y pensado para repartir a subagentes en paralelo, está en
 `docs/04-checklist-olas.md`.
@@ -434,6 +504,13 @@ entonces, todo comprobante es simulado y sin validez fiscal. El estado de cada t
 - **Permisos:** `cargarProduccion` (dueño y empleado, sin costos) y `verMargenReal` (solo dueño).
 - **Margen real** en `/reportes/margen-real` y **estimación de tiempos** en `/produccion/estimar`.
 - La migración `20260401000000_produccion` hay que aplicarla a mano en Neon antes de redeployar (ver "Despliegue" en `docs/04-checklist-olas.md`).
+
+**El multi-tenant (épico VTA-4) está integrado** en `multitenant` (migraciones `20260601000000` a `20260601030100`). Cambia el esquema de
+todas las tablas, activa RLS y exige los dos roles de base, así que **no se despliega sobre Neon sin seguir
+[`docs/07-multitenant-despliegue.md`](docs/07-multitenant-despliegue.md)**: respaldo, copia, migración con el rol migrador, reconciliación
+idéntica (filas, totales, saldos y stock antes y después), `crear-roles-db.sql` re-corrido, humo y vuelta atrás. Las sesiones abiertas con la
+cookie vieja dejan de valer (todos vuelven a entrar escribiendo el negocio, `hl-laser`). **Sigue pendiente la prueba contra Neon en modo
+pooled** (host `-pooler`): se probó solo en Postgres local. Comandos de cierre: `npm run test:rls`, `npm run test:acceso` y, juntos con el resto, `npm run test:cierre`.
 
 ---
 

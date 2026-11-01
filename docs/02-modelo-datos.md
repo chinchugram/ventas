@@ -1,7 +1,7 @@
 # Modelo de datos
 
 Un solo modelo para todo el sistema, tal como queda con las olas 0 a 7 integradas (ramas
-`integracion-4-7` y `ola-5`). La fuente de verdad es `prisma/schema.prisma`; lo que Prisma no expresa
+`integracion-4-7` y `ola-5`) y el multi-tenant (ola 8, rama `multitenant`: `negocios`, `negocioId`, RLS y `SUPERADMIN`). La fuente de verdad es `prisma/schema.prisma`; lo que Prisma no expresa
 (`CHECK`, índices únicos parciales, triggers) está en las migraciones de `prisma/migrations/`, listadas al final.
 
 ## Ideas de diseño
@@ -34,8 +34,9 @@ Un solo modelo para todo el sistema, tal como queda con las olas 0 a 7 integrada
    comprobante. Lo que un comprobante emitido tiene mal se corrige con una nota de crédito, nunca editándolo.
 
 9. **Cada fila tiene dueño (multi-tenant).** Todas las tablas de datos guardan `negocioId` (ver "Negocio y
-   multi-tenant"). Es la base del aislamiento por RLS; las restricciones únicas y las consultas por negocio
-   llegan en F1.2, F2.1 y F3.
+   multi-tenant"). Postgres fuerza el aislamiento con Row Level Security (una política por tabla; decisión,
+   descartes y roles en `docs/03-stack-y-decisiones.md`), las restricciones únicas son **por negocio** y la app solo
+   toca los datos dentro de `conNegocio(negocioId, fn)`.
 
 ## Mapa de tablas
 
@@ -65,10 +66,16 @@ Un negocio (tenant) y dueño de todos los datos. Tabla `negocios`.
 |---|---|---|
 | `id` | uuid | PK |
 | `nombre` | string | "HL Laser" |
-| `slug` | string | único; identificador corto ("hl-laser") |
-| `logoUrl` | string? | opcional |
-| `activo` | bool | baja lógica: un negocio no se borra |
+| `slug` | string | único; identificador corto ("hl-laser"). Es lo que se escribe en *Negocio* al entrar. `admin`, `api`, `login`, `www` y `app` están reservados |
+| `logoUrl` | string? | opcional: ruta del propio sitio o `https`. El logo que sube el dueño no va acá: se guarda en la `configuracion` del propio negocio (`logoMime`, `logoDatos`, `logoVersion`) |
+| `activo` | bool | baja lógica: un negocio no se borra. Dado de baja, nadie entra y sus sesiones dejan de valer |
 | `creadoEn`, `actualizadoEn` | timestamptz | |
+
+**RLS en `negocios`** (`20260601030100_superadmin_sesiones_rls`): la lectura es libre (el login resuelve `slug` → id antes de
+tener contexto de negocio); el alta y los cambios solo con el contexto de SUPERADMIN; nunca se borra. La cantidad de usuarios de
+cada negocio que ve el SUPERADMIN sale de la función `usuarios_por_negocio()` (`SECURITY DEFINER`: solo conteos y solo para SUPERADMIN;
+exige que su dueño tenga `BYPASSRLS`). Los permisos de `ventas_app` sobre `negocios` y esa función se otorgan con
+`scripts/crear-roles-db.sql`, que se **re-corre tras migrar** (`docs/03-stack-y-decisiones.md`).
 
 #### `negocioId` en las demás tablas
 Lo llevan las 22 tablas de datos de F1.1: `clientes`, `materiales`, `maquinas`, `articulos`, `listas_precios`,
@@ -84,11 +91,22 @@ compuesta `(negocioId, clave)` (F1.2) y las 3 tablas de producción de la ola 6 
   `comprobante_items`, ...) en lugar de heredar el negocio por la FK del padre. Cuesta una columna por fila
   y permite que RLS (F2.1) filtre sin joins. Que la hija y su padre coincidan en negocio no lo garantiza esta
   migración (queda para F1.2/F2.1).
-- **`usuarios.negocioId` es nullable**: solo el futuro `SUPERADMIN` va sin negocio. Hoy todos los usuarios
-  tienen negocio.
-- **`configuracion` no lleva `negocioId`**: la resuelve F1.2 (clave compuesta).
-- Los únicos (`ventas(anio, numero)`, `presupuestos(anio, numero)`, `listas_precios.nombre`,
-  `usuarios.usuario`, CUIT de cliente, numeración de comprobantes) siguen globales hasta F1.2.
+- **`usuarios.negocioId` y `sesiones.negocioId` son nullable**: solo el `SUPERADMIN` va sin negocio. Un CHECK
+  (`usuarios_superadmin_sin_negocio`) exige `rol = 'SUPERADMIN'` ⇔ `negocioId IS NULL`; el trigger de `sesiones` exige que la sesión
+  tenga el negocio de su usuario. Todos los dueños y empleados tienen negocio.
+- **`configuracion` lleva `negocioId` en su clave primaria `(negocioId, clave)`** (F1.2): cada negocio tiene sus propias claves
+  (nombre, costo hora, datos fiscales, logo).
+- **Los únicos son por negocio** (F1.2, `20260601010000_unicos_por_negocio`): `ventas(negocioId, anio, numero)`,
+  `presupuestos(negocioId, anio, numero)`, `listas_precios(negocioId, nombre)`, `usuarios(negocioId, usuario)` (más un índice parcial
+  que mantiene único el usuario de quienes no tienen negocio), CUIT de cliente (parcial, `(negocioId, cuit)`) y las series de
+  comprobantes `(negocioId, ambiente, puntoVenta, tipo[, numero])`. Dos negocios pueden tener el mismo número de venta, el mismo CUIT de
+  cliente, el mismo nombre de usuario y la misma serie fiscal.
+- **El hijo es del mismo negocio que el padre**, y `negocioId` no cambia: lo garantizan triggers (`negocio_igual_al_padre`,
+  `negocio_inmutable`), no claves compuestas. Un usuario sin negocio (SUPERADMIN) puede figurar como autor de filas de cualquier negocio;
+  un usuario con negocio, solo de las del suyo.
+- **RLS** (F2.1, `20260601020000_rls`): las 26 tablas con `negocioId` tienen `ENABLE` + `FORCE ROW LEVEL SECURITY` y una política
+  `aislamiento_negocio` (`"negocioId" = app.negocio_id`). En `usuarios` y `sesiones` la política suma la rama del SUPERADMIN
+  (filas con `negocioId` NULL, solo con `app.superadmin = 'on'`).
 - Índices: uno por `negocioId` en cada tabla. En las grandes, `negocioId` es la primera columna de los
   compuestos, que ya cubren las consultas solo por negocio: `ventas(negocioId, fecha)` y `(negocioId, estado)`,
   `pagos(negocioId, fecha)` y `(negocioId, ventaId)`, `movimientos_stock(negocioId, materialId, creadoEn)`,
@@ -121,7 +139,7 @@ datos (columna propia también en las hijas, para que RLS no necesite joins):
   (`materiales`).
 - Código: `src/lib/dominio/produccion.ts` recibe `negocioId` como parámetro (segundo argumento, después de `tx`) y
   filtra por él sus lecturas y bloqueos; las acciones de `src/app/produccion/actions.ts` lo sacan de
-  `negocioUnico(tx)` (transitorio, igual que el resto de las acciones, hasta el contexto de negocio de VTA-8).
+  `negocioUnico(tx)` (transitorio en F1.3; desde F3 y F4.1 las acciones usan el negocio de la sesión, `getNegocioId()`).
 - Pruebas: `scripts/test-negocio-migracion.sh` aplica `20260601000000_negocio` y las posteriores sobre una base
   vacía y sobre una con datos (incluye un trabajo vigente y uno anulado, con tiempos y consumos) y compara lo
   medido y los costos congelados antes y después; `scripts/verificar-negocio.sql` exige las 26 tablas con
@@ -136,9 +154,11 @@ Persona que entra al sistema. Sin sesión válida no se ve nada (ver `src/lib/au
 | Campo | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
-| `usuario` | text, único | Nombre para entrar, en minúsculas. Formato `^[a-z0-9._-]{3,40}$` |
+| `negocioId` | uuid? FK | Negocio del usuario. `NULL` si y solo si el rol es `SUPERADMIN` (CHECK) |
+| `usuario` | text | Nombre para entrar, en minúsculas. Formato `^[a-z0-9._-]{3,40}$`. **Único por negocio** (y entre los que no tienen negocio) |
 | `nombre` | text | Para mostrar ("Laura", "Mostrador"). 1 a 80 caracteres, sin contar espacios de los extremos |
-| `rol` | enum `Rol` | `DUENO` o `EMPLEADO` |
+| `rol` | enum `Rol` | `DUENO`, `EMPLEADO` o `SUPERADMIN` |
+| `debeCambiarClave` | bool | La clave inicial la puso otra persona (alta desde `/admin/negocios`): hasta cambiarla solo se entra a `/usuarios/mi-clave` |
 | `hashClave` | text | `scrypt$ln=…,r=…,p=…$sal$hash`. Nunca sale del servidor |
 | `activo` | bool | Baja lógica. Reactivar es volver a `true` |
 | `intentosFallidos`, `ultimoFalloEn`, `bloqueadoHasta` | int, timestamptz? | Pausa por intentos fallidos. Está en la base, así sobrevive reinicios |
@@ -154,8 +174,9 @@ Decisiones:
 - **FK `RESTRICT`** desde `sesiones` y desde todas las tablas con `usuarioId`: la base rechaza borrar un
   usuario que tenga historial o sesiones. El seed es la única vía que borra usuarios, y solo fuera de
   producción, después de borrar sesiones y todo lo cargado.
-- El primer dueño se crea con `npm run usuarios:crear-dueno`, que se niega si ya existe un dueño (aunque
-  esté dado de baja). Los demás usuarios, incluido otro dueño, se crean desde `/usuarios`.
+- El primer dueño de un negocio se crea con `npm run usuarios:crear-dueno -- --negocio <slug>` (o desde `/admin/negocios`), que se
+  niega si ya existe un dueño **en ese negocio** (aunque esté dado de baja). Los demás usuarios, incluido otro dueño, se crean desde `/usuarios`.
+- El `SUPERADMIN` se crea con `npm run usuarios:crear-superadmin` (nunca desde la web), sin negocio; entra en `/login` con el negocio `admin`.
 
 #### `Sesion`
 Sesión abierta. La cookie lleva un token aleatorio de 32 bytes; la base guarda solo su SHA-256.
@@ -164,6 +185,7 @@ Sesión abierta. La cookie lleva un token aleatorio de 32 bytes; la base guarda 
 |---|---|---|
 | `id` | uuid PK | |
 | `tokenHash` | text, único | SHA-256 en hex (64 caracteres). El token en claro nunca se guarda |
+| `negocioId` | uuid? FK | Negocio de la sesión: el de su usuario (`NULL` para el `SUPERADMIN`). La cookie es `<negocioId>.<token>` (`admin.<token>` para el SUPERADMIN) |
 | `usuarioId` | uuid FK | `Usuario`. FK `RESTRICT` |
 | `creadaEn` | timestamptz | |
 | `renovadaEn` | timestamptz | Última extensión del vencimiento; a lo sumo una vez por día |
@@ -174,11 +196,14 @@ CHECK: `tokenHash` es 64 caracteres hex minúsculas; `expiraEn > creadaEn`; `ren
 Decisiones:
 - Quien lee la tabla o un respaldo no puede usar las sesiones. Como el token tiene 256 bits de entropía,
   el hash es SHA-256 sin sal (no hace falta un hash lento).
+- **Desde el multi-tenant la cookie lleva `<negocioId>.<token>`**: una cookie con la forma anterior (solo el token) no abre sesión
+  y obliga a entrar de nuevo, eligiendo el negocio. El `negocioId` de la cookie es solo una pista para abrir el contexto RLS; el negocio
+  que se usa sale siempre de la fila de la sesión.
 - Cerrar sesión borra su fila. Dar de baja, cambiar el rol o reiniciar la clave borra todas las sesiones
   del usuario. Una sesión vencida no vale aunque exista, y se borra al encontrarla (no hay tarea programada).
 
 #### `Rol` (enum)
-`DUENO` (todo) y `EMPLEADO`. Es el tipo `"Rol"` de Postgres. Qué puede cada rol está en
+`DUENO` (todo), `EMPLEADO` y `SUPERADMIN` (administra los negocios, sin negocio propio y sin ver datos de ninguno). Es el tipo `"Rol"` de Postgres. Qué puede cada rol está en
 `src/lib/permisos-pura.ts`.
 
 ### Clientes
@@ -188,7 +213,7 @@ Decisiones:
 |---|---|---|
 | `id` | uuid PK | |
 | `nombre` | text | Nombre comercial o razón social |
-| `cuit` | text? | Guardado como texto (conserva ceros). Índice único parcial sobre `cuit` cuando no es null |
+| `cuit` | text? | Guardado como texto (conserva ceros). Índice único parcial sobre `(negocioId, cuit)` cuando no es null |
 | `telefono`, `email`, `direccion`, `notas` | text? | |
 | `activo` | bool | Baja lógica |
 | `listaPrecioId` | uuid? FK | Lista de precios asignada (`ListaPrecio`). Null = precio de catálogo. FK `RESTRICT`, con índice |
@@ -270,6 +295,7 @@ Clave-valor. Todo se guarda como texto y se castea al leer; una clave que falta 
 
 | Campo | Tipo | Notas |
 |---|---|---|
+| `negocioId` | uuid PK | Parte de la clave primaria: cada negocio tiene las suyas |
 | `clave` | text PK | Ver la tabla de claves abajo |
 | `valor` | text | Todo como texto; se castea al leer |
 
@@ -305,7 +331,7 @@ Claves fiscales (ola 5, `src/lib/datos-fiscales.ts`, `CLAVES_FISCALES`). Solo la
 | `usuarioId` | uuid? FK | Quién cargó la venta. `NULL` = histórico, se muestra "—". FK `RESTRICT` |
 | `creadoEn`, `actualizadoEn` | timestamptz | |
 
-`numero` es único **por `anio`**, no global. Una venta puede salir de un presupuesto (`Presupuesto.ventaId`).
+`numero` es único **por negocio y por `anio`**, no global. Una venta puede salir de un presupuesto (`Presupuesto.ventaId`).
 
 Una venta con factura vigente (PENDIENTE o EMITIDA) **no se anula**: la base lo impide hasta que una nota de
 crédito EMITIDA anule la factura (trigger `ventas_validar_anulacion_facturada`). Ver "Facturación".
@@ -372,7 +398,7 @@ Descuento general sobre el catálogo y/o precios específicos por artículo, par
 | Campo | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
-| `nombre` | text, único | El dominio no distingue mayúsculas; la base solo exige único exacto |
+| `nombre` | text, único por negocio | El dominio no distingue mayúsculas; la base solo exige único exacto dentro del negocio |
 | `descuentoPct` | decimal(5,2) | 0 a 100 (CHECK). Se descuenta del precio de catálogo |
 | `activo` | bool | Baja lógica. Una lista de baja no se aplica, aunque tenga clientes asignados |
 | `usuarioId` | uuid? FK | Quién la creó. `NULL` = histórico, se muestra "—". FK `RESTRICT` |
@@ -409,7 +435,7 @@ Oferta de precios a un cliente. No guarda costos ni márgenes.
 | `usuarioId` | uuid? FK | Quién lo creó. `NULL` = histórico. No cambia al editarlo; el duplicado queda a nombre de quien duplica. FK `RESTRICT` |
 | `creadoEn`, `actualizadoEn` | timestamptz | |
 
-Único `(anio, numero)`. CHECK `(estado = 'CONVERTIDO') = (ventaId IS NOT NULL)`.
+Único `(negocioId, anio, numero)`. CHECK `(estado = 'CONVERTIDO') = (ventaId IS NOT NULL)`.
 
 #### `PresupuestoItem`
 Línea congelada del presupuesto.
@@ -464,7 +490,7 @@ Enums:
 | `tipo` | enum `TipoComprobante` | |
 | `codigoArca` | int | Código ARCA del tipo: factura A 1, B 6, C 11; nota de crédito A 3, B 8, C 13. CHECK coherente con `tipo` |
 | `puntoVenta` | int | CHECK 1–99999 |
-| `numero` | int | CHECK `> 0`. Único vigente por (ambiente, punto de venta, tipo) |
+| `numero` | int | CHECK `> 0`. Único vigente por (negocio, ambiente, punto de venta, tipo) |
 | `fecha` | date | Hoy en Argentina al emitir |
 | `estado` | enum `EstadoComprobante` | Por defecto `PENDIENTE` (y un comprobante solo nace así) |
 | `emisorRazonSocial`, `emisorDomicilio` | text | Foto. No vacíos (CHECK) |
@@ -494,8 +520,8 @@ con CUIT; "EMITIDO" ⇔ CAE ⇔ vencimiento; "RECHAZADO" siempre con motivo; la 
 
 | Índice | Columnas | Condición | Para qué |
 |---|---|---|---|
-| `comprobantes_numero_vigente_key` | (ambiente, puntoVenta, tipo, numero) | `estado IN (PENDIENTE, EMITIDO)` | Un número vigente por serie. Un `RECHAZADO` no ocupa el número |
-| `comprobantes_un_pendiente_por_serie_key` | (ambiente, puntoVenta, tipo) | `estado = PENDIENTE` | Mientras un intento no se resuelve, no se sabe cuál es el próximo número |
+| `comprobantes_numero_vigente_key` | (negocioId, ambiente, puntoVenta, tipo, numero) | `estado IN (PENDIENTE, EMITIDO)` | Un número vigente por serie. Un `RECHAZADO` no ocupa el número |
+| `comprobantes_un_pendiente_por_serie_key` | (negocioId, ambiente, puntoVenta, tipo) | `estado = PENDIENTE` | Mientras un intento no se resuelve, no se sabe cuál es el próximo número |
 | `comprobantes_factura_vigente_por_venta_key` | (ventaId) | factura y vigente | Una sola factura vigente por venta |
 | `comprobantes_nc_vigente_por_factura_key` | (comprobanteAsociadoId) | NC y vigente | Una sola nota de crédito vigente por factura (la NC es total) |
 
@@ -672,6 +698,18 @@ Están en `prisma/migrations/`. Cada una tiene su encabezado con el porqué.
     de tablas anteriores.
 14. `20260601020000_negocio_produccion`: `negocioId` (backfill a `hl-laser`, FK `RESTRICT`, índice y triggers de
     negocio) en las 3 tablas de producción (ver "Producción y negocio").
+15. `20260601010000_unicos_por_negocio`: únicos por negocio, `configuracion` con clave `(negocioId, clave)` y triggers de "el hijo es
+    del mismo negocio que el padre" y `negocioId` inmutable (ver "Negocio y multi-tenant").
+16. `20260601020000_rls`: Row Level Security (`ENABLE` + `FORCE` y la política `aislamiento_negocio`) en las 26 tablas con
+    `negocioId`, y permisos de `ventas_app` si el rol ya existe.
+17. `20260601030000_rol_superadmin`: valor `SUPERADMIN` del enum `Rol` (va solo: Postgres no deja usar un valor de enum creado en la
+    misma transacción).
+18. `20260601030100_superadmin_sesiones_rls`: `usuarios.debeCambiarClave`, CHECK `usuarios_superadmin_sin_negocio`, `sesiones.negocioId`
+    nullable con su trigger, políticas de `usuarios` y `sesiones` con la rama del SUPERADMIN, RLS en `negocios` y la función
+    `usuarios_por_negocio()`.
+
+El orden de aplicación es el del nombre (timestamp): `20260601010000` y `20260601020000_negocio_produccion` van antes de
+`20260601020000_rls`. Prisma aplica el orden lexicográfico del nombre de carpeta.
 
 ---
 
