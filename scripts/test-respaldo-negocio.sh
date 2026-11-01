@@ -265,7 +265,7 @@ else
   diff "$DIR_TMP/B.antes" "$DIR_TMP/B.despues" || true
   comprobar "B no cambio" 0
 fi
-comprobar "siguen los dos negocios" "$([ "$(negocios_en "$PRUEBA")" = "$SLUG_A,$SLUG_B" ] && echo 1 || echo 0)"
+comprobar "siguen los dos negocios" "$([ "$(negocios_en "$PRUEBA")" = "$SLUG_A,$SLUG_B,taller-demo" ] && echo 1 || echo 0)"
 
 echo "--- 4. Exportar B e importarlo tambien en la base vacia: conviven sin tocarse ---"
 ARCHIVO_B="$BACKUP_DIR/negocios/$SLUG_B-$PRUEBA.negocio.sql.gz"
@@ -288,7 +288,7 @@ echo "--- 6. El respaldo completo sigue funcionando ---"
 sh scripts/backup.sh "$PRUEBA" >/dev/null
 COMPLETO=$(ls -1t "$BACKUP_DIR/$PRUEBA"-*.sql.gz | head -n 1)
 sh scripts/restaurar.sh "$COMPLETO" --base "$COPIA" --si-estoy-seguro >/dev/null
-comprobar "restaurar el completo trae a los dos negocios" "$([ "$(negocios_en "$COPIA")" = "$SLUG_A,$SLUG_B" ] && echo 1 || echo 0)"
+comprobar "restaurar el completo trae a los dos negocios" "$([ "$(negocios_en "$COPIA")" = "$SLUG_A,$SLUG_B,taller-demo" ] && echo 1 || echo 0)"
 foto "$COPIA" "$SLUG_A" > "$DIR_TMP/A.completo"
 foto "$COPIA" "$SLUG_B" > "$DIR_TMP/B.completo"
 comprobar "y los datos de A y B son exactos" "$(diff "$DIR_TMP/A.antes" "$DIR_TMP/A.completo" >/dev/null && diff "$DIR_TMP/B.antes" "$DIR_TMP/B.completo" >/dev/null && echo 1 || echo 0)"
