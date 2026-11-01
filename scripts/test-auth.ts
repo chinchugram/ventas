@@ -337,15 +337,15 @@ async function main() {
   console.log("--- La base rechaza datos invalidos (CHECK) ---");
   const hashValido = await hashearClave(CLAVE);
   const usuarioCrudo = (usuario: string, hashClave = hashValido) => (tx: Tx) =>
-    tx.$executeRaw`INSERT INTO usuarios (id, usuario, nombre, rol, "hashClave", "actualizadoEn")
-                   VALUES (gen_random_uuid(), ${usuario}, 'X', 'EMPLEADO', ${hashClave}, now())`;
+    tx.$executeRaw`INSERT INTO usuarios (id, "negocioId", usuario, nombre, rol, "hashClave", "actualizadoEn")
+                   VALUES (gen_random_uuid(), ${negocioId}::uuid, ${usuario}, 'X', 'EMPLEADO', ${hashClave}, now())`;
   // La rechaza el CHECK de minusculas o el de formato (el primero que evalue Postgres).
   await rechazaLaBase("usuario con mayusculas", "check constraint \"usuarios_usuario_", usuarioCrudo("Mayus"));
   await rechazaLaBase("usuario con espacios", "usuarios_usuario_formato_check", usuarioCrudo("con espacio"));
   await rechazaLaBase("usuario de 2 letras", "usuarios_usuario_formato_check", usuarioCrudo("ab"));
   await rechazaLaBase("hash vacio", "usuarios_hash_clave_check", usuarioCrudo("sin.hash", ""));
   await rechazaLaBase("clave en texto plano", "usuarios_hash_clave_check", usuarioCrudo("plano", CLAVE));
-  await rechazaLaBase("usuario repetido", "usuarios_usuario_key", async (tx) => {
+  await rechazaLaBase("usuario repetido (en el mismo negocio)", "usuarios_negocioId_usuario_key", async (tx) => {
     await usuarioCrudo("repetido")(tx);
     await usuarioCrudo("repetido")(tx);
   });
@@ -354,8 +354,8 @@ async function main() {
                           VALUES (gen_random_uuid(), 'rol.raro', 'X', 'ADMIN', '${hashValido}', now())`),
   );
   await rechazaLaBase("nombre vacio", "usuarios_nombre_check", (tx) =>
-    tx.$executeRaw`INSERT INTO usuarios (id, usuario, nombre, rol, "hashClave", "actualizadoEn")
-                   VALUES (gen_random_uuid(), 'sin.nombre', '  ', 'EMPLEADO', ${hashValido}, now())`,
+    tx.$executeRaw`INSERT INTO usuarios (id, "negocioId", usuario, nombre, rol, "hashClave", "actualizadoEn")
+                   VALUES (gen_random_uuid(), ${negocioId}::uuid, 'sin.nombre', '  ', 'EMPLEADO', ${hashValido}, now())`,
   );
   await rechazaLaBase("intentos negativos", "usuarios_intentos_fallidos_check", async (tx) => {
     const u = await usuarioDePrueba(tx);
@@ -399,7 +399,7 @@ async function rechaza(etiqueta: string, fragmento: string, fn: () => Promise<un
 async function probarComandoCrearDueno() {
   console.log("--- npm run usuarios:crear-dueno con un dueno ya cargado ---");
   let temporal: string | null = null;
-  if (!(await prisma.usuario.findFirst({ where: { rol: "DUENO" } }))) {
+  if (!(await prisma.usuario.findFirst({ where: { rol: "DUENO", negocioId } }))) {
     const u = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { negocioId, usuario: "dueno.temporal.test", nombre: "Temporal", rol: "DUENO", clave: CLAVE }));
     temporal = u.id;
   }
@@ -408,7 +408,7 @@ async function probarComandoCrearDueno() {
       execFile(
         process.execPath,
         [join(__dirname, "..", "node_modules", "tsx", "dist", "cli.mjs"), join(__dirname, "crear-dueno.ts")],
-        { env: { ...process.env, DUENO_USUARIO: "segundo.dueno.test", DUENO_CLAVE: CLAVE }, timeout: 60_000 },
+        { env: { ...process.env, DUENO_NEGOCIO: "hl-laser", DUENO_USUARIO: "segundo.dueno.test", DUENO_CLAVE: CLAVE }, timeout: 60_000 },
         (error, stdout, stderr) => resolve({ codigo: error ? Number(error.code ?? 1) : 0, texto: `${stdout}${stderr}` }),
       );
     });

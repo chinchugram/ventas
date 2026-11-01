@@ -8,6 +8,7 @@ import {
   generarToken,
   HASH_FALSO,
   hashDeToken,
+  esSlugDeSuperadmin,
   hashearClave,
   leerValorDeCookie,
   necesitaRehash,
@@ -20,6 +21,8 @@ import {
   vencimientoDesde,
   verificarClave,
   type Rol,
+  type SesionDeUsuario,
+  type SuperadminSesion,
   type UsuarioSesion,
 } from "@/lib/auth-pura";
 import type { Tx } from "./tx";
@@ -31,10 +34,21 @@ import type { Tx } from "./tx";
 
 export type Db = PrismaClient | Tx;
 
-const CAMPOS_SESION = { id: true, negocioId: true, usuario: true, nombre: true, rol: true, activo: true } as const;
+const CAMPOS_SESION = { id: true, negocioId: true, usuario: true, nombre: true, rol: true, activo: true, debeCambiarClave: true } as const;
 
-function aUsuarioSesion(u: { id: string; negocioId: string | null; usuario: string; nombre: string; rol: Rol }, negocioId: string): UsuarioSesion {
-  return { id: u.id, negocioId: u.negocioId ?? negocioId, usuario: u.usuario, nombre: u.nombre, rol: u.rol };
+type FilaSesion = { id: string; negocioId: string | null; usuario: string; nombre: string; rol: Rol | "SUPERADMIN" };
+
+/**
+ * De la fila de `usuarios` a lo que se sabe del usuario de la sesion. `negocioId` es el negocio EN EL QUE SE
+ * BUSCO (`null` = contexto de SUPERADMIN) y tiene que ser el de la fila: si no coincide, o el rol no es el que
+ * corresponde a ese contexto, la fila no es de esta sesion (`null`).
+ */
+function aUsuarioSesion(u: FilaSesion, negocioId: string | null): SesionDeUsuario | null {
+  if (u.negocioId !== negocioId) return null;
+  if (negocioId === null) {
+    return u.rol === "SUPERADMIN" ? { id: u.id, negocioId: null, usuario: u.usuario, nombre: u.nombre, rol: "SUPERADMIN" } : null;
+  }
+  return u.rol === "SUPERADMIN" ? null : { id: u.id, negocioId, usuario: u.usuario, nombre: u.nombre, rol: u.rol };
 }
 
 // ─── Contexto de negocio ──────────────────────────────────────────────────────
@@ -50,19 +64,28 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * vive solo hasta el fin de la transaccion). Si `db` ya es una transaccion, fija el negocio
  * en ella y sigue en la misma. Cada llamada es una transaccion corta: NO envolver en una
  * sola la verificacion de la clave (scrypt) ni mas de lo necesario.
+ *
+ * Con `negocioId = null` el contexto es el del SUPERADMIN (`app.superadmin = 'on'`): solo se ven
+ * y escriben filas SIN negocio (las cuentas y sesiones de SUPERADMIN), nunca las de un negocio.
  */
-export async function conNegocioEn<T>(db: Db, negocioId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
-  if (typeof negocioId !== "string" || !UUID.test(negocioId)) {
+export async function conNegocioEn<T>(db: Db, negocioId: string | null, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  if (negocioId !== null && (typeof negocioId !== "string" || !UUID.test(negocioId))) {
     throw new Error("conNegocioEn: negocioId invalido (se espera un UUID).");
   }
   const correr = async (tx: Tx): Promise<T> => {
-    await tx.$queryRaw`SELECT set_config('app.negocio_id', ${negocioId}, true)`;
+    if (negocioId === null) await tx.$queryRaw`SELECT set_config('app.superadmin', 'on', true)`;
+    else await tx.$queryRaw`SELECT set_config('app.negocio_id', ${negocioId}, true)`;
     return fn(tx);
   };
   // El cliente de una transaccion tambien tiene `$transaction` (anidada, sin concurrencia): lo que
   // distingue al cliente real es `$connect`.
   const cliente = db as PrismaClient;
   return typeof cliente.$connect === "function" ? cliente.$transaction((tx) => correr(tx)) : correr(db as Tx);
+}
+
+/** Contexto de SUPERADMIN (sin negocio): ver `conNegocioEn(db, null, fn)`. */
+export function conSuperadminEn<T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return conNegocioEn(db, null, fn);
 }
 
 // ─── Negocio por slug (pantalla de /login) ────────────────────────────────────
@@ -82,17 +105,29 @@ export async function negocioDeLogin(db: Db, slugTipeado: string): Promise<Negoc
 }
 
 /**
- * Hay al menos un negocio cargado (activo o no). Sin ninguno, nadie puede entrar y en
- * produccion el sitio responde 503 con instrucciones. Reemplaza al viejo `hayUsuarios`:
+ * Hay al menos un negocio cargado (activo o no). Reemplaza al viejo `hayUsuarios`:
  * `usuarios` esta bajo RLS y sin negocio no se puede contar; `negocios` es global.
  */
 export async function hayNegocios(db: Db): Promise<boolean> {
   return (await db.negocio.findFirst({ select: { id: true } })) !== null;
 }
 
+/** Hay al menos un SUPERADMIN cargado (se cuenta en contexto de SUPERADMIN: solo ve cuentas sin negocio). */
+export async function haySuperadmin(db: Db): Promise<boolean> {
+  return conSuperadminEn(db, async (tx) => (await tx.usuario.findFirst({ where: { rol: "SUPERADMIN" }, select: { id: true } })) !== null);
+}
+
+/**
+ * Hay alguien que pueda entrar: un negocio o un SUPERADMIN (que da de alta el primer negocio).
+ * Sin ninguno de los dos, en produccion el sitio responde 503 con instrucciones.
+ */
+export async function hayDondeEntrar(db: Db): Promise<boolean> {
+  return (await hayNegocios(db)) || (await haySuperadmin(db));
+}
+
 // ─── Login ────────────────────────────────────────────────────────────────────
 
-export type ResultadoCredenciales = { ok: true; usuario: UsuarioSesion } | { ok: false };
+export type ResultadoCredenciales = { ok: true; usuario: SesionDeUsuario } | { ok: false };
 
 /**
  * Verifica usuario y clave DENTRO de un negocio (el usuario `laura` del negocio A y el de B
@@ -111,7 +146,7 @@ export type ResultadoCredenciales = { ok: true; usuario: UsuarioSesion } | { ok:
  */
 export async function verificarCredenciales(
   db: Db,
-  negocioId: string,
+  negocioId: string | null,
   usuarioTipeado: string,
   clave: string,
   ahora: Date = new Date(),
@@ -159,14 +194,15 @@ export async function verificarCredenciales(
       },
     }),
   );
-  return { ok: true, usuario: aUsuarioSesion(fila, negocioId) };
+  const sesion = aUsuarioSesion(fila, negocioId);
+  return sesion ? { ok: true, usuario: sesion } : { ok: false };
 }
 
 /**
  * Sesion recien abierta. `valorCookie` es lo que va en la cookie (`<negocioId>.<token>`);
  * el `token` solo se guarda hasheado en la base.
  */
-export type SesionNueva = { token: string; negocioId: string; valorCookie: string; expiraEn: Date };
+export type SesionNueva = { token: string; negocioId: string | null; valorCookie: string; expiraEn: Date };
 
 /**
  * TRANSITORIO, ya no es "el unico negocio": devuelve el negocio de la SESION del pedido
@@ -194,7 +230,7 @@ export async function negocioDeUsuario(_db?: Db, _usuarioId?: string): Promise<s
 }
 
 /** Abre una sesion: token nuevo (nunca se reutiliza uno que traiga el navegador). Limpia las vencidas del usuario. */
-export async function crearSesion(db: Db, negocioId: string, usuarioId: string, ahora: Date = new Date()): Promise<SesionNueva> {
+export async function crearSesion(db: Db, negocioId: string | null, usuarioId: string, ahora: Date = new Date()): Promise<SesionNueva> {
   const token = generarToken();
   const expiraEn = vencimientoDesde(ahora);
   await conNegocioEn(db, negocioId, async (tx) => {
@@ -206,7 +242,9 @@ export async function crearSesion(db: Db, negocioId: string, usuarioId: string, 
   return { token, negocioId, valorCookie: armarValorDeCookie(negocioId, token), expiraEn };
 }
 
-export type ResultadoLogin = ({ ok: true; usuario: UsuarioSesion; negocio: NegocioDeLogin } & SesionNueva) | { ok: false };
+export type ResultadoLogin =
+  | ({ ok: true; usuario: SesionDeUsuario; negocio: NegocioDeLogin | null } & SesionNueva)
+  | { ok: false };
 
 /**
  * Verifica y, si corresponde, abre la sesion. Lo usa la accion de /login. El negocio se
@@ -220,6 +258,13 @@ export async function iniciarSesion(
   clave: string,
   ahora: Date = new Date(),
 ): Promise<ResultadoLogin> {
+  // El "negocio" `admin` (reservado) es el SUPERADMIN: se busca entre las cuentas sin negocio.
+  if (esSlugDeSuperadmin(slug)) {
+    const verificadoAdmin = await verificarCredenciales(db, null, usuario, clave, ahora);
+    if (!verificadoAdmin.ok) return { ok: false };
+    const sesionAdmin = await crearSesion(db, null, verificadoAdmin.usuario.id, ahora);
+    return { ok: true, usuario: verificadoAdmin.usuario, negocio: null, ...sesionAdmin };
+  }
   const negocio = await negocioDeLogin(db, slug);
   if (!negocio) {
     await verificarClave(clave, HASH_FALSO);
@@ -234,7 +279,9 @@ export async function iniciarSesion(
 // ─── Sesion de cada pedido ────────────────────────────────────────────────────
 
 export type SesionResuelta = {
-  usuario: UsuarioSesion;
+  usuario: SesionDeUsuario;
+  /** Tiene una clave inicial puesta por otro: hasta que la cambie solo puede entrar a `/usuarios/mi-clave`. */
+  debeCambiarClave: boolean;
   /** Nuevo vencimiento si la sesion se extendio en este pedido (hay que reenviar la cookie). */
   renovadaHasta: Date | null;
 };
@@ -273,13 +320,17 @@ export async function resolverSesion(
     });
     // Con RLS esto ya es imposible; se comprueba igual por si el rol de la conexion se salta las politicas.
     if (!sesion || sesion.negocioId !== negocioId || sesion.usuario.negocioId !== negocioId) return null;
+    // Y el rol tiene que corresponder al contexto: SUPERADMIN <=> sin negocio (tambien lo exige un CHECK).
+    const usuarioDeSesion = aUsuarioSesion(sesion.usuario, negocioId);
+    if (!usuarioDeSesion) return null;
 
     if (sesion.expiraEn.getTime() <= ahora.getTime() || !sesion.usuario.activo) {
       await tx.sesion.deleteMany({ where: { id: sesion.id } });
       return null;
     }
     // Negocio suspendido: nadie entra. La sesion no se borra (al reactivarlo, sigue valiendo).
-    if (!sesion.negocio.activo) return null;
+    // (El SUPERADMIN no tiene negocio que suspender.)
+    if (sesion.negocio && !sesion.negocio.activo) return null;
 
     let renovadaHasta: Date | null = null;
     if (renovar && debeRenovar(sesion.renovadaEn, ahora)) {
@@ -292,7 +343,7 @@ export async function resolverSesion(
       if (count > 0) renovadaHasta = expiraEn;
     }
 
-    return { usuario: aUsuarioSesion(sesion.usuario, negocioId), renovadaHasta };
+    return { usuario: usuarioDeSesion, debeCambiarClave: sesion.usuario.debeCambiarClave, renovadaHasta };
   });
 }
 
@@ -316,7 +367,14 @@ export async function cerrarSesionesDeUsuario(db: Db, usuarioId: string): Promis
 
 // ─── Alta ─────────────────────────────────────────────────────────────────────
 
-export type DatosUsuarioNuevo = { usuario: string; nombre: string; rol: Rol; clave: string };
+export type DatosUsuarioNuevo = {
+  usuario: string;
+  nombre: string;
+  rol: Rol;
+  clave: string;
+  /** La clave la puso otra persona: la primera vez tiene que cambiarla (ver `Usuario.debeCambiarClave`). */
+  debeCambiarClave?: boolean;
+};
 
 /**
  * Negocio para un alta: el indicado, o el del contexto de la transaccion (`conNegocio`), o,
@@ -350,9 +408,36 @@ export async function crearUsuarioEnTx(tx: Tx, datos: DatosUsuarioNuevo & { nego
     throw new ErrorDeNegocio(`Ya existe un usuario "${usuario}".`);
   }
   const creado = await tx.usuario.create({
-    data: { negocioId, usuario, nombre, rol: datos.rol, hashClave: await hashearClave(datos.clave) },
+    data: {
+      negocioId,
+      usuario,
+      nombre,
+      rol: datos.rol,
+      hashClave: await hashearClave(datos.clave),
+      debeCambiarClave: datos.debeCambiarClave === true,
+    },
   });
-  return aUsuarioSesion(creado, negocioId);
+  return { id: creado.id, negocioId, usuario: creado.usuario, nombre: creado.nombre, rol: datos.rol };
+}
+
+/**
+ * Alta de una cuenta de SUPERADMIN (sin negocio). Solo por `npm run usuarios:crear-superadmin`: no hay
+ * forma de crearla desde la web. `tx` tiene que estar en contexto de SUPERADMIN (`conSuperadminEn`) salvo
+ * que la conexion se salte RLS (rol migrador). El usuario es unico entre las cuentas sin negocio.
+ */
+export async function crearSuperadminEnTx(tx: Tx, datos: { usuario: string; nombre: string; clave: string }): Promise<SuperadminSesion> {
+  const usuario = normalizarUsuario(datos.usuario);
+  const nombre = datos.nombre.trim();
+  const problema = problemaDeUsuario(usuario) ?? problemaDeClave(datos.clave);
+  if (problema) throw new ErrorDeNegocio(problema);
+  if (nombre.length === 0 || nombre.length > 80) throw new ErrorDeNegocio("El nombre debe tener entre 1 y 80 caracteres.");
+  if (await tx.usuario.findFirst({ where: { negocioId: null, usuario }, select: { id: true } })) {
+    throw new ErrorDeNegocio(`Ya existe un superadmin "${usuario}".`);
+  }
+  const creado = await tx.usuario.create({
+    data: { negocioId: null, usuario, nombre, rol: "SUPERADMIN", hashClave: await hashearClave(datos.clave) },
+  });
+  return { id: creado.id, negocioId: null, usuario: creado.usuario, nombre: creado.nombre, rol: "SUPERADMIN" };
 }
 
 /**
@@ -373,5 +458,12 @@ export async function crearDuenoEnTx(
         "Este comando solo crea el primero; los demás usuarios se administran desde la app.",
     );
   }
-  return crearUsuarioEnTx(tx, { negocioId, usuario: datos.usuario, nombre: datos.nombre, clave: datos.clave, rol: "DUENO" });
+  return crearUsuarioEnTx(tx, {
+    negocioId,
+    usuario: datos.usuario,
+    nombre: datos.nombre,
+    clave: datos.clave,
+    rol: "DUENO",
+    debeCambiarClave: datos.debeCambiarClave,
+  });
 }

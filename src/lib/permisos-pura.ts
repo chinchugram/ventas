@@ -62,6 +62,13 @@ export type AccionDelMostrador =
 
 export type Accion = AccionDelDueno | AccionDelMostrador;
 
+/**
+ * Acciones del SUPERADMIN (F4.3). Aparte de `Accion` a proposito: `Accion` son las de un negocio
+ * (`PERMISOS`, `ACCIONES`: el dueno puede todas) y el SUPERADMIN no puede ninguna. Esta es la unica
+ * del SUPERADMIN y ningun rol de un negocio la tiene.
+ */
+export type AccionDeSuperadmin = "administrarNegocios"; // /admin/negocios: alta, baja logica y primer dueno de cada negocio
+
 const SOLO_DUENO: readonly Rol[] = ["DUENO"];
 const TODOS: readonly Rol[] = ["DUENO", "EMPLEADO"];
 
@@ -107,17 +114,26 @@ export const PERMISOS: Readonly<Record<Accion, readonly Rol[]>> = {
 
 export const ACCIONES = Object.keys(PERMISOS) as Accion[];
 
+/** Quien puede cada accion del SUPERADMIN: solo el. */
+export const PERMISOS_SUPERADMIN: Readonly<Record<AccionDeSuperadmin, readonly RolConSuperadmin[]>> = {
+  administrarNegocios: ["SUPERADMIN"],
+};
+
+export const ACCIONES_SUPERADMIN = Object.keys(PERMISOS_SUPERADMIN) as AccionDeSuperadmin[];
+
 /**
  * `DUENO` puede todo lo que esta en la tabla. Sin usuario, nada. Una accion
  * desconocida, nada (tampoco para el dueno: ante la duda, cerrado).
  */
-export function puede(usuario: { rol: RolConSuperadmin } | null | undefined, accion: Accion): boolean {
+export function puede(usuario: { rol: RolConSuperadmin } | null | undefined, accion: Accion | AccionDeSuperadmin): boolean {
   if (!usuario) return false;
+  // Las del SUPERADMIN: solo los roles listados (el DUENO NO "puede todo" aca).
+  if (Object.hasOwn(PERMISOS_SUPERADMIN, accion)) return PERMISOS_SUPERADMIN[accion as AccionDeSuperadmin].includes(usuario.rol);
   if (!Object.hasOwn(PERMISOS, accion)) return false;
   // El SUPERADMIN no esta en ninguna fila de la tabla: no puede nada sobre datos de un negocio.
   if (usuario.rol === "SUPERADMIN") return false;
   if (usuario.rol === "DUENO") return true;
-  return PERMISOS[accion].includes(usuario.rol);
+  return PERMISOS[accion as Accion].includes(usuario.rol);
 }
 
 /**
@@ -146,6 +162,9 @@ export function rutaPermitidaParaRol(rol: RolConSuperadmin, pathname: string): b
 }
 
 /** Puede con todas las acciones de la lista (una lista vacia no exige nada). */
-export function puedeTodo(usuario: { rol: RolConSuperadmin } | null | undefined, acciones: readonly Accion[]): boolean {
+export function puedeTodo(
+  usuario: { rol: RolConSuperadmin } | null | undefined,
+  acciones: readonly (Accion | AccionDeSuperadmin)[],
+): boolean {
   return acciones.every((a) => puede(usuario, a));
 }

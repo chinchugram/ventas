@@ -9,8 +9,9 @@ export type Rol = "DUENO" | "EMPLEADO";
 /**
  * `SUPERADMIN` (F0, VTA-5): sin negocio, solo entra a `/admin/**` y no ve datos de ningun
  * negocio. Es un rol APARTE de `Rol` (los roles que se asignan dentro de un negocio): todavia
- * no existe en la base (falta el valor del enum y sesiones sin negocio, ver VTA-17), pero la
- * tabla de permisos ya lo trata como "nada de datos" y el proxy lo encierra en `/admin/**`.
+ * existe en la base desde VTA-17 (valor del enum, `usuarios.negocioId` y `sesiones.negocioId` nulos). La
+ * tabla de permisos lo trata como "nada de datos de un negocio" (solo `administrarNegocios`) y el proxy lo
+ * encierra en `/admin/**`. Entra con el "negocio" `admin` en /login (`SLUG_SUPERADMIN`).
  */
 export type RolConSuperadmin = Rol | "SUPERADMIN";
 
@@ -20,6 +21,26 @@ export type RolConSuperadmin = Rol | "SUPERADMIN";
  * algo que mande el cliente): todo acceso a datos usa ese id (ver `getNegocioId`).
  */
 export type UsuarioSesion = { id: string; negocioId: string; usuario: string; nombre: string; rol: Rol };
+
+/** El SUPERADMIN de la sesion: sin negocio (`negocioId` es siempre null). Nunca lleva el hash de la clave. */
+export type SuperadminSesion = { id: string; negocioId: null; usuario: string; nombre: string; rol: "SUPERADMIN" };
+
+/** Quien puede tener una sesion: un usuario de un negocio o el SUPERADMIN. */
+export type SesionDeUsuario = UsuarioSesion | SuperadminSesion;
+
+/**
+ * El rol de una fila de `usuarios` de un NEGOCIO como `Rol`. Prisma tipa la columna con el enum completo
+ * (incluye SUPERADMIN), pero un usuario con negocio nunca lo es (CHECK `usuarios_superadmin_sin_negocio`):
+ * si pasara, es un error, no un rol mas.
+ */
+export function rolDeNegocio(rol: RolConSuperadmin): Rol {
+  if (rol === "SUPERADMIN") throw new Error("Un usuario de un negocio no puede ser SUPERADMIN.");
+  return rol;
+}
+
+export function esSuperadmin(usuario: SesionDeUsuario): usuario is SuperadminSesion {
+  return usuario.rol === "SUPERADMIN";
+}
 
 // ─── Claves ───────────────────────────────────────────────────────────────────
 
@@ -140,6 +161,13 @@ export function problemaDeUsuario(usuario: string): string | null {
 
 export const SLUG_PATRON = /^[a-z0-9-]{3,30}$/;
 export const SLUGS_RESERVADOS: readonly string[] = ["admin", "api", "login", "www", "app"];
+/** El "negocio" que se escribe en /login para entrar como SUPERADMIN (reservado: ningun negocio lo usa). */
+export const SLUG_SUPERADMIN = "admin";
+
+/** El slug tipeado en /login es el del SUPERADMIN. */
+export function esSlugDeSuperadmin(slug: string): boolean {
+  return normalizarSlug(slug) === SLUG_SUPERADMIN;
+}
 
 export function normalizarSlug(slug: string): string {
   return slug.normalize("NFC").trim().toLowerCase();
@@ -181,18 +209,23 @@ export function hashDeToken(token: string): string {
 
 const UUID_PATRON = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-export function armarValorDeCookie(negocioId: string, token: string): string {
-  return `${negocioId}.${token}`;
+// La sesion del SUPERADMIN (sin negocio) lleva `admin.<token>`: "admin" abre el contexto de SUPERADMIN,
+// donde solo se ven filas sin negocio. Tampoco otorga nada por si solo.
+
+export function armarValorDeCookie(negocioId: string | null, token: string): string {
+  return `${negocioId ?? SLUG_SUPERADMIN}.${token}`;
 }
 
-/** Separa el valor de la cookie; `null` si no tiene la forma esperada (ni se va a la base). */
-export function leerValorDeCookie(valor: string | undefined | null): { negocioId: string; token: string } | null {
+/** Separa el valor de la cookie; `null` si no tiene la forma esperada (ni se va a la base). `negocioId` null = SUPERADMIN. */
+export function leerValorDeCookie(valor: string | undefined | null): { negocioId: string | null; token: string } | null {
   if (typeof valor !== "string" || valor.length > 100) return null;
   const punto = valor.indexOf(".");
+  const token = valor.slice(punto + 1);
+  if (!formatoDeTokenValido(token)) return null;
+  if (punto === SLUG_SUPERADMIN.length && valor.slice(0, punto) === SLUG_SUPERADMIN) return { negocioId: null, token };
   if (punto !== 36) return null;
   const negocioId = valor.slice(0, punto);
-  const token = valor.slice(punto + 1);
-  if (!UUID_PATRON.test(negocioId) || !formatoDeTokenValido(token)) return null;
+  if (!UUID_PATRON.test(negocioId)) return null;
   return { negocioId, token };
 }
 

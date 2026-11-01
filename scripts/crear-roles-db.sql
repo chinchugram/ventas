@@ -13,7 +13,7 @@
 --
 --   ventas_app        La app en runtime. NO es superusuario, NO tiene BYPASSRLS y no es
 --                     dueno de ninguna tabla: las politicas RLS le rigen siempre.
---                     Solo SELECT en `negocios`.
+--                     En `negocios` lee, inserta y actualiza (RLS: solo en contexto de SUPERADMIN); nunca borra.
 --   ventas_migrador   Dueno del esquema: corre `prisma migrate deploy` y los backfills.
 --                     Tiene BYPASSRLS para poder tocar todos los negocios.
 
@@ -48,13 +48,20 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ventas_ap
 DO $$
 BEGIN
   IF to_regclass('public.negocios') IS NOT NULL THEN
-    REVOKE INSERT, UPDATE, DELETE ON "negocios" FROM ventas_app;
+    -- negocios: la app lee, inserta y actualiza (solo en contexto de SUPERADMIN: lo fuerza RLS), nunca borra.
+    REVOKE DELETE ON "negocios" FROM ventas_app;
   END IF;
   IF to_regclass('public._prisma_migrations') IS NOT NULL THEN
     REVOKE ALL ON "_prisma_migrations" FROM ventas_app;
   END IF;
 END $$;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ventas_app;
+DO $$
+BEGIN
+  IF to_regprocedure('public.usuarios_por_negocio()') IS NOT NULL THEN
+    GRANT EXECUTE ON FUNCTION public.usuarios_por_negocio() TO ventas_app;
+  END IF;
+END $$;
 
 -- A proposito NO hay ALTER DEFAULT PRIVILEGES: una tabla nueva debe traer en SU migracion
 -- el RLS, la politica y el GRANT a ventas_app. Si falta, la app falla fuerte

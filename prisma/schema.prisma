@@ -602,6 +602,9 @@ model PresupuestoItem {
 enum Rol {
   DUENO
   EMPLEADO
+  /// Administra los negocios (no los datos de ninguno). Sin negocio: `negocioId` NULL (CHECK en la
+  /// migracion `superadmin_sesiones_rls`). Solo se crea con `npm run usuarios:crear-superadmin`.
+  SUPERADMIN
 }
 
 /// Persona que entra al sistema. Baja logica (`activo = false`): nunca se borra,
@@ -610,7 +613,7 @@ enum Rol {
 /// hash con formato scrypt, contador de fallos no negativo.
 model Usuario {
   id        String  @id @default(uuid()) @db.Uuid
-  /// Negocio dueno de la fila. NULL solo para el futuro SUPERADMIN (sin negocio); hoy todos tienen.
+  /// Negocio dueno de la fila. NULL si y solo si el rol es SUPERADMIN (CHECK `usuarios_superadmin_sin_negocio`).
   negocioId String? @db.Uuid
   /// Nombre para entrar, en minusculas. Unico por negocio (y entre los que no tienen negocio:
   /// indice parcial `usuarios_usuario_key`, solo en SQL).
@@ -621,6 +624,9 @@ model Usuario {
   /// `scrypt$ln=..,r=..,p=..$sal$hash` (ver src/lib/auth-pura.ts). Nunca sale del servidor.
   hashClave String
   activo    Boolean @default(true)
+  /// Clave inicial puesta por otra persona (el SUPERADMIN al crear el primer dueno): hasta que la
+  /// cambie, el proxy solo lo deja entrar a `/usuarios/mi-clave`. `cambiarClavePropia` lo apaga.
+  debeCambiarClave Boolean @default(false)
 
   // Pausa por intentos fallidos (sobrevive reinicios y sirve con varias instancias).
   intentosFallidos Int       @default(0)
@@ -656,8 +662,9 @@ model Usuario {
 /// SHA-256. Cerrar sesion borra la fila; una fila vencida no vale aunque exista.
 model Sesion {
   id         String   @id @default(uuid()) @db.Uuid
-  /// Negocio dueno de la fila (multi-tenant). Se repite en las hijas para que RLS no necesite joins.
-  negocioId String @db.Uuid
+  /// Negocio de la sesion (multi-tenant). NULL solo en la sesion de un SUPERADMIN (el trigger
+  /// `sesiones_usuario_mismo_negocio` exige que coincida con el `negocioId` de su usuario).
+  negocioId String? @db.Uuid
   tokenHash  String   @unique
   usuarioId  String   @db.Uuid
   creadaEn   DateTime @default(now()) @db.Timestamptz(3)
@@ -666,7 +673,7 @@ model Sesion {
   expiraEn   DateTime @db.Timestamptz(3)
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Restrict)
+  negocio Negocio? @relation(fields: [negocioId], references: [id], onDelete: Restrict)
 
   @@index([usuarioId])
   @@index([expiraEn])

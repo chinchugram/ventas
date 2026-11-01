@@ -15,7 +15,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { ACCIONES } from "../src/lib/permisos-pura";
+import { ACCIONES, ACCIONES_SUPERADMIN } from "../src/lib/permisos-pura";
 
 export const RAIZ_APP = join(__dirname, "..", "src", "app");
 const RAIZ_SRC = join(__dirname, "..", "src");
@@ -269,7 +269,7 @@ export function analizarActions(archivo: string, texto: string): ResultadoAccion
         });
         exigidas.set(clave, null);
       } else {
-        if (llamada.accion === null || !(ACCIONES as string[]).includes(llamada.accion)) {
+        if (llamada.accion === null || !([...ACCIONES, ...ACCIONES_SUPERADMIN] as string[]).includes(llamada.accion)) {
           hallazgos.push({ archivo, detalle: `${nombre}: la accion de ${llamada.fn}() no es un literal de \`Accion\` conocido` });
         }
         if (llamada.fn === "verificarPermiso") {

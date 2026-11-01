@@ -1,5 +1,5 @@
 import { ErrorDeNegocio } from "@/lib/acciones";
-import type { Rol, UsuarioSesion } from "@/lib/auth-pura";
+import { rolDeNegocio, type Rol, type UsuarioSesion } from "@/lib/auth-pura";
 import { puede } from "@/lib/permisos-pura";
 import { SIN_PERMISO_USUARIOS } from "@/lib/dominio/usuarios";
 import { conNegocio } from "@/lib/negocio";
@@ -77,7 +77,7 @@ export async function getUsuarios(actor: UsuarioSesion | null | undefined): Prom
       orderBy: [{ activo: "desc" }, { rol: "asc" }, { nombre: "asc" }],
     }),
   );
-  const usuarios = filas.map(aListado);
+  const usuarios = filas.map((f) => aListado({ ...f, rol: rolDeNegocio(f.rol) }));
   return { esDemo: false, usuarios, duenosActivos: usuarios.filter((u) => u.rol === "DUENO" && u.activo).length };
 }
 
@@ -100,6 +100,6 @@ export async function getUsuario(actor: UsuarioSesion | null | undefined, id: st
             where: { negocioId: actor.negocioId, rol: "DUENO", activo: true, id: { not: id } },
           })
         : 1;
-    return { ...aListado(fila), esUltimoDuenoActivo: otros === 0 };
+    return { ...aListado({ ...fila, rol: rolDeNegocio(fila.rol) }), esUltimoDuenoActivo: otros === 0 };
   });
 }

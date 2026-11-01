@@ -112,7 +112,7 @@ async function crear(db: Tx | PrismaClient, usuario: string, rol: Rol, activo = 
   const u = await db.usuario.create({
     data: { negocioId: negocio, usuario, nombre: `Prueba ${usuario}`, rol, hashClave: hashDeCLAVE, activo },
   });
-  return { id: u.id, negocioId: negocio, usuario: u.usuario, nombre: u.nombre, rol: u.rol };
+  return { id: u.id, negocioId: negocio, usuario: u.usuario, nombre: u.nombre, rol };
 }
 
 /** Deja como unicos duenos activos a `ids` (en una transaccion que se deshace). */

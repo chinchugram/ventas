@@ -266,6 +266,7 @@ async function main() {
   await escenario("Trazabilidad (8.2): quién creó la lista", async (tx) => {
     const ana = await tx.usuario.create({
       data: {
+        negocioId,
         usuario: `zz-${Math.random().toString(36).slice(2, 10)}`,
         nombre: "Ana de prueba",
         rol: "EMPLEADO",

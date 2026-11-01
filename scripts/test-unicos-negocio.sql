@@ -99,7 +99,7 @@ BEGIN
 
   -- Un SUPERADMIN (sin negocio) puede figurar como autor en cualquier negocio.
   INSERT INTO usuarios (id, "negocioId", usuario, nombre, rol, "hashClave", "actualizadoEn")
-    VALUES (gen_random_uuid(), NULL, 'super', 'Super', 'DUENO',
+    VALUES (gen_random_uuid(), NULL, 'super', 'Super', 'SUPERADMIN',
       'scrypt$ln=14,r=8,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', now());
   UPDATE ventas SET "usuarioId" = (SELECT id FROM usuarios WHERE usuario = 'super') WHERE id = (ia->>'venta')::uuid;
   RAISE NOTICE 'ok  un usuario sin negocio puede ser autor de una venta de cualquier negocio';
@@ -124,7 +124,7 @@ BEGIN
     'usuarios_negocioId_usuario_key');
   PERFORM pg_temp.debe_fallar('usuario repetido entre quienes no tienen negocio', $q$
     INSERT INTO usuarios (id, "negocioId", usuario, nombre, rol, "hashClave", "actualizadoEn")
-    VALUES (gen_random_uuid(), NULL, 'super', 'Otro', 'DUENO',
+    VALUES (gen_random_uuid(), NULL, 'super', 'Otro', 'SUPERADMIN',
     'scrypt$ln=14,r=8,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', now())$q$,
     'usuarios_usuario_key');
   PERFORM pg_temp.debe_fallar('lista de precios con el mismo nombre en el mismo negocio', format(
@@ -192,7 +192,25 @@ BEGIN
   PERFORM pg_temp.debe_fallar('sesion de otro negocio que su usuario', format(
     $q$INSERT INTO sesiones (id, "negocioId", "tokenHash", "usuarioId", "expiraEn")
        VALUES (gen_random_uuid(), %L, repeat('b', 64), %L, now() + interval '1 day')$q$, b, ia->>'usuario'),
-    'sesiones.usuarioId');
+    'sesiones.negocioId tiene que ser el negocio del usuario');
+  PERFORM pg_temp.debe_fallar('sesion sin negocio para un usuario de un negocio', format(
+    $q$INSERT INTO sesiones (id, "negocioId", "tokenHash", "usuarioId", "expiraEn")
+       VALUES (gen_random_uuid(), NULL, repeat('c', 64), %L, now() + interval '1 day')$q$, ia->>'usuario'),
+    'sesiones.negocioId tiene que ser el negocio del usuario');
+  PERFORM pg_temp.debe_fallar('sesion de un negocio para el SUPERADMIN', format(
+    $q$INSERT INTO sesiones (id, "negocioId", "tokenHash", "usuarioId", "expiraEn")
+       VALUES (gen_random_uuid(), %L, repeat('d', 64), (SELECT id FROM usuarios WHERE usuario = 'super'), now() + interval '1 day')$q$, a),
+    'sesiones.negocioId tiene que ser el negocio del usuario');
+  PERFORM pg_temp.debe_fallar('un SUPERADMIN con negocio', format(
+    $q$INSERT INTO usuarios (id, "negocioId", usuario, nombre, rol, "hashClave", "actualizadoEn")
+       VALUES (gen_random_uuid(), %L, 'super2', 'S', 'SUPERADMIN',
+       'scrypt$ln=14,r=8,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', now())$q$, a),
+    'usuarios_superadmin_sin_negocio');
+  PERFORM pg_temp.debe_fallar('un dueno sin negocio', $q$
+    INSERT INTO usuarios (id, "negocioId", usuario, nombre, rol, "hashClave", "actualizadoEn")
+    VALUES (gen_random_uuid(), NULL, 'sin-negocio', 'S', 'DUENO',
+    'scrypt$ln=14,r=8,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', now())$q$,
+    'usuarios_superadmin_sin_negocio');
   PERFORM pg_temp.debe_fallar('cambiar el negocio de un articulo (padre de venta_items)', format(
     $q$UPDATE articulos SET "negocioId" = %L WHERE id = %L$q$, b, ia->>'articulo'),
     'el negocio de una fila no se cambia');

@@ -177,6 +177,7 @@ async function preparar(tx: Tx, prefijo = "Prueba comprobantes") {
   const riSinCuit = await tx.cliente.create({ data: { negocioId, nombre: `${prefijo} RI sin CUIT`, condicionIva: "RESPONSABLE_INSCRIPTO" } });
   const usuario = await tx.usuario.create({
     data: {
+      negocioId,
       usuario: `zz-${Math.random().toString(36).slice(2, 10)}`,
       nombre: "Facturadora de prueba",
       rol: "EMPLEADO",

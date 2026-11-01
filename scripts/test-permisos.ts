@@ -633,8 +633,8 @@ async function main() {
     comprobar(`${etiqueta}: sin claves de costo`, malas.join(",") || "ninguna", "ninguna");
   };
   const costosEnBase = [
-    ...(await prisma.venta.findMany({ select: { costoTotal: true } })).map((v) => v.costoTotal.toFixed(2)),
-    ...(await prisma.material.findMany({ select: { costoUnitario: true, precioVenta: true } })).flatMap((m) => [m.costoUnitario.toFixed(2), m.costoUnitario.toFixed(4), m.precioVenta?.toFixed(2) ?? "", m.precioVenta?.toFixed(4) ?? ""]),
+    ...(await prisma.venta.findMany({ where: { negocioId }, select: { costoTotal: true } })).map((v) => v.costoTotal.toFixed(2)),
+    ...(await prisma.material.findMany({ where: { negocioId }, select: { costoUnitario: true, precioVenta: true } })).flatMap((m) => [m.costoUnitario.toFixed(2), m.costoUnitario.toFixed(4), m.precioVenta?.toFixed(2) ?? "", m.precioVenta?.toFixed(4) ?? ""]),
   ].filter((c) => c.split(".")[0]!.length >= 4); // montos de 1000 para arriba: los chicos chocan con cantidades cualquiera
   const sinValoresDeCosto = (etiqueta: string, valor: unknown) => {
     const t = texto(valor);
