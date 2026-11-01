@@ -21,7 +21,7 @@ esac
 # Hay un respaldo mas nuevo que BACKUP_CADA_HORAS?
 hay_respaldo_reciente() {
   [ -d "$BACKUP_DIR" ] || return 1
-  [ -n "$(find "$BACKUP_DIR" -maxdepth 1 -name '*.sql.gz' -mmin -"$((BACKUP_CADA_HORAS * 60))" | head -n 1)" ]
+  [ -n "$(find "$BACKUP_DIR" -maxdepth 1 -name '*.sql.gz' ! -name '*.negocio.sql.gz' -mmin -"$((BACKUP_CADA_HORAS * 60))" | head -n 1)" ]
 }
 
 revisar() {

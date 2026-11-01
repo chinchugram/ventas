@@ -55,6 +55,7 @@
     "test:stock-reporte": "tsx scripts/verificar-stock-reporte.ts",
     "test:consumo": "tsx scripts/verificar-consumo.ts",
     "test:respaldo:restaurar": "sh scripts/probar-restauracion.sh",
+    "test:respaldo:negocio": "sh scripts/test-respaldo-negocio.sh",
     "test:recordatorios": "tsx scripts/verificar-recordatorios.ts",
     "test:recordatorios:db": "tsx scripts/test-recordatorios.ts",
     "test:presupuestos": "tsx scripts/verificar-presupuestos.ts",
