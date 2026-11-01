@@ -59,6 +59,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ventas_app;
 DO $$
 BEGIN
   IF to_regprocedure('public.usuarios_por_negocio()') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.usuarios_por_negocio() FROM PUBLIC;
     GRANT EXECUTE ON FUNCTION public.usuarios_por_negocio() TO ventas_app;
   END IF;
 END $$;

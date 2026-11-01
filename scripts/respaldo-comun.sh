@@ -128,7 +128,13 @@ BEGIN
     FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename NOT IN ('negocios', '_prisma_migrations') LOOP
       EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO ventas_app', t);
     END LOOP;
-    GRANT SELECT ON public."negocios" TO ventas_app;
+    IF to_regclass('public.negocios') IS NOT NULL THEN
+      GRANT SELECT, INSERT, UPDATE ON public."negocios" TO ventas_app;
+    END IF;
+    IF to_regprocedure('public.usuarios_por_negocio()') IS NOT NULL THEN
+      REVOKE ALL ON FUNCTION public.usuarios_por_negocio() FROM PUBLIC;
+      GRANT EXECUTE ON FUNCTION public.usuarios_por_negocio() TO ventas_app;
+    END IF;
     GRANT USAGE ON SCHEMA public TO ventas_app;
     GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ventas_app;
   END IF;
