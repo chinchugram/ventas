@@ -80,7 +80,10 @@
     "test:qr": "tsx scripts/verificar-qr.ts",
     "test:facturar": "tsx scripts/verificar-facturar.ts",
     "test:facturar:db": "tsx scripts/test-facturar.ts",
-    "test:notas-credito": "tsx scripts/test-notas-credito.ts"
+    "test:notas-credito": "tsx scripts/test-notas-credito.ts",
+    "test:cierre": "npm run typecheck && npm run build && npm run test:costeo && npm run test:stock && npm run test:permisos && npm run test:rls && npm run test:negocios && npm run test:respaldo:negocio && npm run test:acceso && npm audit",
+    "ensayo:despliegue": "sh scripts/ensayo-despliegue.sh",
+    "smoke:despliegue": "tsx scripts/smoke-despliegue.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",
