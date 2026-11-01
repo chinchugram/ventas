@@ -6,8 +6,6 @@
  *   DATABASE_URL_MIGRACIONES="postgresql://ventas_migrador:ventas_migrador@localhost:5477/ventas_vta15?host=/tmp/pgsock7" \
  *   npx tsx scripts/test-login-negocios.ts
  *
- * (Falta el script `"test:login-negocios": "tsx scripts/test-login-negocios.ts"` en package.json.)
- *
  * Comprueba, con el rol sujeto a RLS y sin Next (salvo el proxy, que se llama como funcion con un
  * `NextRequest` armado a mano):
  *   - sin contexto de negocio `usuarios` y `sesiones` no muestran nada (por eso el login declara el negocio);
@@ -18,7 +16,11 @@
  *   - el alta de usuarios escribe `negocioId` (y RLS rechaza un negocio ajeno);
  *   - el dueño administra solo los usuarios de su negocio;
  *   - `getNegocioId()` sale de la sesion y no de lo que mande el cliente;
- *   - el proxy: sin sesion → /login, cookie trucha → /login y se borra, `/admin/**` no es de los roles de un negocio.
+ *   - el proxy: sin sesion → /login, cookie trucha → /login y se borra, `/admin/**` responde 403 a los roles de un negocio;
+ *   - el SUPERADMIN (F4.3): entra con el "negocio" `admin`, su cookie es `admin.<token>`, su sesion no tiene negocio,
+ *     no entra a un negocio ni un usuario de negocio entra como `admin`, no ve ni toca usuarios/sesiones de un
+ *     negocio (ni al reves), el proxy lo encierra en `/admin/**` y `getNegocioId()` lanza con su cookie;
+ *   - la clave inicial con cambio obligatorio (`debeCambiarClave`): el proxy solo deja entrar a `/usuarios/mi-clave`.
  * Limpia todo lo que siembra en un `finally`.
  */
 import "dotenv/config";
@@ -102,7 +104,7 @@ async function rechazaConRls(etiqueta: string, fn: () => Promise<unknown>) {
     comprobar(etiqueta, "aceptada", "rechazada por RLS");
   } catch (error) {
     const texto = String(error instanceof Error ? error.message : error);
-    comprobar(etiqueta, /row-level security|violates/i.test(texto) ? "rechazada por RLS" : texto, "rechazada por RLS");
+    comprobar(etiqueta, /row-level security|violates|usuario que no existe o es de otro negocio/i.test(texto) ? "rechazada por RLS" : texto, "rechazada por RLS");
   }
 }
 
@@ -181,7 +183,7 @@ async function main() {
 
   // ─── Administracion de usuarios del dueno ───────────────────────────────────
   console.log("--- El dueno administra solo los usuarios de su negocio ---");
-  const dueñoA = enA.usuario;
+  const dueñoA = enA.usuario as import("../src/lib/auth-pura").UsuarioSesion;
   const ajeno = async (etiqueta: string, fn: (tx: Parameters<Parameters<typeof conNegocio>[1]>[0]) => Promise<unknown>) => {
     try {
       await conNegocio(negA.id, fn);
@@ -257,16 +259,106 @@ async function main() {
   comprobar("server action con cookie trucha → 401", String(accionTrucha.status), "401");
 
   // /admin/** no es de los roles de un negocio.
-  comprobar("dueno de A en /admin/negocios → su inicio", destino(await pedir("/admin/negocios", enA.valorCookie)), "307 /");
+  comprobar("dueno de A en /admin/negocios → 403", destino(await pedir("/admin/negocios", enA.valorCookie)), "403");
   const enEmp = await dominio.iniciarSesion(app, SLUG_A, "mostrador", CLAVE_A, new Date(Date.now() + 3_600_000));
   if (enEmp.ok) {
-    comprobar("empleado de A en /admin → su inicio", destino(await pedir("/admin", enEmp.valorCookie)), "307 /ventas/nueva");
+    comprobar("empleado de A en /admin → 403", destino(await pedir("/admin", enEmp.valorCookie)), "403");
     comprobar("empleado de A en /ventas/nueva pasa", String(pasa(await pedir("/ventas/nueva", enEmp.valorCookie))), "true");
   } else {
     comprobar("login de mostrador/A (tras su pausa simulada)", "no entro", "entro");
   }
   const accionAdmin = await pedir("/admin/negocios", enA.valorCookie, { method: "POST", headers: { "next-action": "abc" } });
   comprobar("server action sobre /admin/** de un dueno → 403", String(accionAdmin.status), "403");
+
+  // ─── SUPERADMIN ─────────────────────────────────────────────────────────────
+  console.log("--- SUPERADMIN: sin negocio, solo /admin/** ---");
+  const CLAVE_S = "clave-del-superadmin-789";
+  const USUARIO_S = `${MARCA}-root`;
+  const sup = await admin.usuario.create({
+    data: { negocioId: null, usuario: USUARIO_S, nombre: "Super", rol: "SUPERADMIN", hashClave: await hashearClave(CLAVE_S) },
+    select: { id: true },
+  });
+  const violaCheck = (e: unknown) => {
+    throw new Error(/usuarios_superadmin_sin_negocio/.test(String(e)) ? "violates check" : String(e));
+  };
+  const violaTrigger = (e: unknown) => {
+    throw new Error(/tiene que ser el negocio del usuario/.test(String(e)) ? "violates trigger" : String(e));
+  };
+  await rechazaConRls("un usuario SUPERADMIN con negocio lo rechaza el CHECK", () =>
+    admin.usuario.create({ data: { negocioId: negA.id, usuario: `${MARCA}-malo`, nombre: "x", rol: "SUPERADMIN", hashClave: hashA } }).catch(violaCheck),
+  );
+  await rechazaConRls("un dueno sin negocio lo rechaza el CHECK", () =>
+    admin.usuario.create({ data: { negocioId: null, usuario: `${MARCA}-malo2`, nombre: "x", rol: "DUENO", hashClave: hashA } }).catch(violaCheck),
+  );
+  comprobar("sin contexto, la app no ve al SUPERADMIN", String(await app.usuario.count({ where: { rol: "SUPERADMIN" } })), "0");
+
+  const enS = await dominio.iniciarSesion(app, " Admin ", USUARIO_S.toUpperCase(), CLAVE_S);
+  comprobar("el SUPERADMIN entra con el negocio «admin»", String(enS.ok && enS.negocioId === null && enS.usuario.rol === "SUPERADMIN" && enS.usuario.id === sup.id), "true");
+  if (!enS.ok) throw new Error("no entro el SUPERADMIN");
+  comprobar("su cookie es admin.<token>", String(enS.valorCookie === `admin.${enS.token}`), "true");
+  comprobar("su sesion no tiene negocio", String((await admin.sesion.findFirstOrThrow({ where: { usuarioId: sup.id } })).negocioId === null), "true");
+  comprobar("clave mala = no entra", JSON.stringify(await dominio.iniciarSesion(app, "admin", USUARIO_S, "clave-mala-0123456789")), '{"ok":false}');
+  comprobar("un usuario de un negocio no entra como «admin»", JSON.stringify(await dominio.iniciarSesion(app, "admin", "laura", CLAVE_A)), '{"ok":false}');
+  comprobar("el SUPERADMIN no entra a un negocio", JSON.stringify(await dominio.iniciarSesion(app, SLUG_A, USUARIO_S, CLAVE_S)), '{"ok":false}');
+  const resS = await dominio.resolverSesion(app, enS.valorCookie);
+  comprobar("resolverSesion da un SUPERADMIN sin negocio", `${resS?.usuario.rol}/${resS?.usuario.negocioId}`, "SUPERADMIN/null");
+  comprobar("token del SUPERADMIN con un negocio en la cookie → null", String(await dominio.resolverSesion(app, armarValorDeCookie(negA.id, enS.token))), "null");
+  comprobar("token de A con «admin» en la cookie → null", String(await dominio.resolverSesion(app, `admin.${enA.token}`)), "null");
+  comprobar("cookie «admin.» con basura → null", String(await dominio.resolverSesion(app, "admin.xxxx")), "null");
+  comprobar("la sesion del SUPERADMIN no la ve un contexto de negocio", String(await conNegocio(negA.id, (tx) => tx.sesion.count({ where: { usuarioId: sup.id } }))), "0");
+  comprobar("ni su cuenta", String(await conNegocio(negA.id, (tx) => tx.usuario.count({ where: { rol: "SUPERADMIN" } }))), "0");
+  comprobar(
+    "el contexto de SUPERADMIN no ve usuarios ni sesiones de ningun negocio",
+    String(await dominio.conSuperadminEn(app, async (tx) => (await tx.usuario.count({ where: { negocioId: { not: null } } })) + (await tx.sesion.count({ where: { negocioId: { not: null } } })))),
+    "0",
+  );
+  await rechazaConRls("el contexto de SUPERADMIN no puede crear un usuario de un negocio", () =>
+    dominio.conSuperadminEn(app, (tx) => tx.usuario.create({ data: { negocioId: negA.id, usuario: "no-deberia", nombre: "x", rol: "EMPLEADO", hashClave: hashA } })),
+  );
+  await rechazaConRls("un contexto de negocio no puede crear un SUPERADMIN", () =>
+    conNegocio(negA.id, (tx) => tx.usuario.create({ data: { negocioId: null, usuario: "no-deberia", nombre: "x", rol: "SUPERADMIN", hashClave: hashA } })),
+  );
+  await rechazaConRls("ni una sesion sin negocio", () =>
+    conNegocio(negA.id, (tx) => tx.sesion.create({ data: { negocioId: null, usuarioId: sup.id, tokenHash: randomBytes(32).toString("hex"), expiraEn: new Date(Date.now() + 60_000) } })),
+  );
+  await rechazaConRls("una sesion de un negocio para el SUPERADMIN la rechaza el trigger", () =>
+    admin.sesion.create({ data: { negocioId: negA.id, usuarioId: sup.id, tokenHash: randomBytes(32).toString("hex"), expiraEn: new Date(Date.now() + 60_000) } }).catch(violaTrigger),
+  );
+  await rechazaConRls("y una sesion sin negocio para un dueno", () =>
+    admin.sesion.create({ data: { negocioId: null, usuarioId: dueA.id, tokenHash: randomBytes(32).toString("hex"), expiraEn: new Date(Date.now() + 60_000) } }).catch(violaTrigger),
+  );
+  await lanza("getNegocioId con la cookie del SUPERADMIN (no tiene negocio)", enS.valorCookie);
+
+  console.log("--- SUPERADMIN: el proxy ---");
+  comprobar("SUPERADMIN en /admin/negocios pasa", String(pasa(await pedir("/admin/negocios", enS.valorCookie))), "true");
+  comprobar("SUPERADMIN en /ventas → /admin/negocios", destino(await pedir("/ventas", enS.valorCookie)), "307 /admin/negocios");
+  comprobar("SUPERADMIN en / → /admin/negocios", destino(await pedir("/", enS.valorCookie)), "307 /admin/negocios");
+  comprobar("server action del SUPERADMIN sobre un negocio → 403", String((await pedir("/ventas", enS.valorCookie, { method: "POST", headers: { "next-action": "abc" } })).status), "403");
+  comprobar("la cookie del SUPERADMIN, alterada, no entra", destino(await pedir("/admin/negocios", `admin.${enA.token}`)), "307 /login?siguiente=%2Fadmin%2Fnegocios");
+  await dominio.cerrarSesion(app, enS.valorCookie);
+  comprobar("cerrar sesion la borra", String(await dominio.resolverSesion(app, enS.valorCookie)), "null");
+
+  console.log("--- Clave inicial con cambio obligatorio ---");
+  const hashN = await hashearClave(CLAVE_A);
+  const nuevoDueno = await admin.usuario.create({
+    data: { negocioId: negA.id, usuario: "nuevo.dueno", nombre: "Nuevo", rol: "DUENO", hashClave: hashN, debeCambiarClave: true },
+    select: { id: true },
+  });
+  const enN = await dominio.iniciarSesion(app, SLUG_A, "nuevo.dueno", CLAVE_A);
+  if (!enN.ok) throw new Error("no entro nuevo.dueno");
+  comprobar("resolverSesion informa debeCambiarClave", String((await dominio.resolverSesion(app, enN.valorCookie))?.debeCambiarClave), "true");
+  comprobar("GET /ventas → /usuarios/mi-clave", destino(await pedir("/ventas", enN.valorCookie)), "307 /usuarios/mi-clave");
+  comprobar("GET / → /usuarios/mi-clave", destino(await pedir("/", enN.valorCookie)), "307 /usuarios/mi-clave");
+  comprobar("/usuarios/mi-clave pasa", String(pasa(await pedir("/usuarios/mi-clave", enN.valorCookie))), "true");
+  comprobar("la accion de cambiar la clave (POST a esa ruta) pasa", String(pasa(await pedir("/usuarios/mi-clave", enN.valorCookie, { method: "POST", headers: { "next-action": "abc" } }))), "true");
+  comprobar("otra accion (POST a /ventas) → 403", String((await pedir("/ventas", enN.valorCookie, { method: "POST", headers: { "next-action": "abc" } })).status), "403");
+  const cambio = await usuariosDominio.cambiarClavePropia(
+    app,
+    { id: nuevoDueno.id, negocioId: negA.id, usuario: "nuevo.dueno", nombre: "Nuevo", rol: "DUENO" },
+    { actual: CLAVE_A, nueva: "otra-clave-nueva-0123", repetir: "otra-clave-nueva-0123" },
+  );
+  comprobar("al cambiar la clave se apaga el cambio obligatorio", String((await dominio.resolverSesion(app, cambio.valorCookie))?.debeCambiarClave), "false");
+  comprobar("y ya navega: /ventas pasa", String(pasa(await pedir("/ventas", cambio.valorCookie))), "true");
 
   // Negocio suspendido.
   console.log("--- Negocio suspendido ---");
@@ -283,6 +375,9 @@ async function main() {
 async function limpiar() {
   const negocios = await admin.negocio.findMany({ where: { slug: { startsWith: MARCA } }, select: { id: true } });
   const ids = negocios.map((n) => n.id);
+  const sups = (await admin.usuario.findMany({ where: { negocioId: null, usuario: { startsWith: MARCA } }, select: { id: true } })).map((u) => u.id);
+  await admin.sesion.deleteMany({ where: { usuarioId: { in: sups } } });
+  await admin.usuario.deleteMany({ where: { id: { in: sups } } });
   await admin.sesion.deleteMany({ where: { negocioId: { in: ids } } });
   await admin.usuario.deleteMany({ where: { negocioId: { in: ids } } });
   await admin.negocio.deleteMany({ where: { id: { in: ids } } });

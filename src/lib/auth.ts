@@ -3,13 +3,13 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { dbDisponible, prisma } from "@/lib/prisma";
 import { resolverSesion } from "@/lib/dominio/auth";
-import { nombreCookie, opcionesCookie, type UsuarioSesion } from "@/lib/auth-pura";
+import { nombreCookie, opcionesCookie, type SesionDeUsuario, type SuperadminSesion, type UsuarioSesion } from "@/lib/auth-pura";
 
 // Capa de Next sobre el nucleo de `src/lib/dominio/auth.ts`: cookie, cache por
 // pedido y redirecciones. Solo se importa desde codigo de servidor (paginas,
 // layouts, server actions, route handlers). Ver docs/seguridad-ola-4-auth.md.
 
-export type { Rol, UsuarioSesion } from "@/lib/auth-pura";
+export type { Rol, SesionDeUsuario, SuperadminSesion, UsuarioSesion } from "@/lib/auth-pura";
 
 const PRODUCCION = process.env.NODE_ENV === "production";
 
@@ -49,7 +49,7 @@ async function demoSiNoHayBase(): Promise<UsuarioSesion | null> {
  * Devuelve solo `{ id, negocioId, usuario, nombre, rol }`: nunca el hash ni datos de la
  * sesion. `negocioId` es el de la fila de la sesion (ver `getNegocioId` en `negocio.ts`).
  */
-export const usuarioActual = cache(async (): Promise<UsuarioSesion | null> => {
+export const sesionActual = cache(async (): Promise<SesionDeUsuario | null> => {
   const valorCookie = (await cookies()).get(COOKIE_SESION)?.value;
   if (!valorCookie) return demoSiNoHayBase();
   try {
@@ -60,6 +60,22 @@ export const usuarioActual = cache(async (): Promise<UsuarioSesion | null> => {
     if (!demo) console.error("[auth] No se pudo verificar la sesion:", error);
     return demo;
   }
+});
+
+/**
+ * El usuario de un NEGOCIO de este pedido, o `null`. Es `sesionActual` sin el SUPERADMIN: toda la
+ * app de un negocio (paginas, acciones, `getNegocioId`) ve a un SUPERADMIN como "sin sesion", asi no
+ * puede llegar a datos de un negocio ni por error. El SUPERADMIN se obtiene con `superadminActual`.
+ */
+export const usuarioActual = cache(async (): Promise<UsuarioSesion | null> => {
+  const sesion = await sesionActual();
+  return sesion && sesion.rol !== "SUPERADMIN" ? sesion : null;
+});
+
+/** El SUPERADMIN de este pedido (sesion sin negocio), o `null`. */
+export const superadminActual = cache(async (): Promise<SuperadminSesion | null> => {
+  const sesion = await sesionActual();
+  return sesion && sesion.rol === "SUPERADMIN" ? sesion : null;
 });
 
 /**

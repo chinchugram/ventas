@@ -1,5 +1,5 @@
 import { ErrorDeNegocio } from "@/lib/acciones";
-import { hashearClave, problemaDeClave, type Rol, type UsuarioSesion } from "@/lib/auth-pura";
+import { hashearClave, problemaDeClave, rolDeNegocio, type Rol, type UsuarioSesion } from "@/lib/auth-pura";
 import { puede } from "@/lib/permisos-pura";
 import {
   cerrarSesionesDeUsuario,
@@ -74,7 +74,7 @@ type Objetivo = { id: string; usuario: string; nombre: string; rol: Rol; activo:
 async function cargarObjetivo(tx: Tx, actor: UsuarioSesion, id: string): Promise<Objetivo> {
   const fila = await tx.usuario.findFirst({ where: { id, negocioId: actor.negocioId }, select: CAMPOS_OBJETIVO });
   if (!fila) throw new ErrorDeNegocio("Ese usuario no existe.");
-  return fila;
+  return { ...fila, rol: rolDeNegocio(fila.rol) };
 }
 
 /** Hay al menos otro dueno activo ademas de `objetivo`. Se llama con el lock tomado. */
@@ -251,7 +251,8 @@ export async function cambiarClavePropia(
   const escribir = async (tx: Tx): Promise<SesionNueva> => {
     const { count } = await tx.usuario.updateMany({
       where: { id: usuario.id, negocioId: usuario.negocioId, activo: true },
-      data: { hashClave, intentosFallidos: 0, ultimoFalloEn: null, bloqueadoHasta: null },
+      // Ya puso su propia clave: se apaga el cambio obligatorio de la clave inicial.
+      data: { hashClave, intentosFallidos: 0, ultimoFalloEn: null, bloqueadoHasta: null, debeCambiarClave: false },
     });
     if (count === 0) throw new ErrorDeNegocio("Tu usuario ya no está activo.");
     await cerrarSesionesDeUsuario(tx, usuario.id);

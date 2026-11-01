@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { inicioDeRol } from "../src/lib/auth-pura";
-import { ACCIONES, PERMISOS, puede, puedeTodo, rutaDeInicio, type Accion } from "../src/lib/permisos-pura";
+import { ACCIONES, ACCIONES_SUPERADMIN, PERMISOS, PERMISOS_SUPERADMIN, puede, puedeTodo, rutaDeInicio, type Accion } from "../src/lib/permisos-pura";
 import {
   analizarActions,
   auditarAcciones,
@@ -194,6 +194,18 @@ function main() {
   comprobar("puedeTodo: todas permitidas", String(puedeTodo({ rol: "EMPLEADO" }, ["verStock", "verReposicion"])), "true");
   comprobar("las listas de la tabla son solo roles conocidos", String(Object.values(PERMISOS).every((rs) => rs.every((r) => r === "DUENO" || r === "EMPLEADO"))), "true");
 
+  console.log("--- Acciones del SUPERADMIN (F4.3) ---");
+  comprobar("hay una sola: administrarNegocios", lista(ACCIONES_SUPERADMIN), "administrarNegocios");
+  comprobar("la tabla dice: solo SUPERADMIN", lista(PERMISOS_SUPERADMIN.administrarNegocios), "SUPERADMIN");
+  comprobar("SUPERADMIN puede administrarNegocios", String(puede({ rol: "SUPERADMIN" }, "administrarNegocios")), "true");
+  comprobar("DUENO NO (el dueno no puede todo: solo lo de su negocio)", String(puede({ rol: "DUENO" }, "administrarNegocios")), "false");
+  comprobar("EMPLEADO no", String(puede({ rol: "EMPLEADO" }, "administrarNegocios")), "false");
+  comprobar("sin sesion no", String(puede(null, "administrarNegocios") || puede(undefined, "administrarNegocios")), "false");
+  comprobar("un rol inventado no", String(puede({ rol: "ADMIN" as never }, "administrarNegocios")), "false");
+  comprobar("no esta mezclada con las de un negocio (ACCIONES)", String((ACCIONES as string[]).includes("administrarNegocios")), "false");
+  comprobar("puedeTodo la acepta para el SUPERADMIN y no para el dueno", `${puedeTodo({ rol: "SUPERADMIN" }, ["administrarNegocios"])}/${puedeTodo({ rol: "DUENO" }, ["administrarNegocios"])}`, "true/false");
+  comprobar("el SUPERADMIN sigue sin poder nada de un negocio", String(puedeTodo({ rol: "SUPERADMIN" }, ["verStock"]) || ACCIONES.some((a) => puede({ rol: "SUPERADMIN" }, a))), "false");
+
   console.log("--- Inicio de cada rol ---");
   comprobar("rutaDeInicio(DUENO) = inicioDeRol", rutaDeInicio("DUENO"), inicioDeRol("DUENO"));
   comprobar("rutaDeInicio(EMPLEADO) = inicioDeRol", rutaDeInicio("EMPLEADO"), inicioDeRol("EMPLEADO"));
@@ -211,7 +223,13 @@ function main() {
   // `src/app/usuarios/**` (tarea 4.4) no tiene una fila por ruta: la regla es que TODO lo que haya ahi
   // exige `gestionarUsuarios`. Asi esta prueba sigue valiendo cuando se integre esa tarea.
   const deUsuarios = (clave: string) => clave.startsWith("usuarios/");
-  comprobar("acciones auditadas", lista([...acciones.exigidas.keys()].filter((c) => !deUsuarios(c))), lista(Object.keys(ACCIONES_ESPERADAS)));
+  // `src/app/admin/**` (F4.3): lo que haya ahi exige `administrarNegocios` (solo el SUPERADMIN).
+  const deAdmin = (clave: string) => clave.startsWith("admin/");
+  comprobar("acciones auditadas", lista([...acciones.exigidas.keys()].filter((c) => !deUsuarios(c) && !deAdmin(c))), lista(Object.keys(ACCIONES_ESPERADAS)));
+  comprobar("acciones de /admin", lista([...acciones.exigidas.keys()].filter(deAdmin)), lista(["admin/negocios/actions.ts#cambiarActivoNegocio", "admin/negocios/actions.ts#crearNegocio", "admin/negocios/actions.ts#crearPrimerDueno"]));
+  for (const [clave, exigida] of acciones.exigidas) {
+    if (deAdmin(clave)) comprobar(`${clave} (administracion de negocios)`, String(exigida), "administrarNegocios");
+  }
   for (const [clave, esperada] of Object.entries(ACCIONES_ESPERADAS)) {
     comprobar(`${clave}`, String(acciones.exigidas.get(clave)), esperada);
   }
@@ -225,7 +243,15 @@ function main() {
   console.log("--- Permiso que exige cada pagina ---");
   const todas = paginas();
   const esDeUsuarios = (ruta: string) => ruta === "/usuarios" || ruta.startsWith("/usuarios/");
-  comprobar("paginas auditadas", lista(todas.filter((p) => !esDeUsuarios(p.ruta)).map((p) => p.ruta)), lista(Object.keys(PAGINAS_ESPERADAS)));
+  const esDeAdmin = (ruta: string) => ruta === "/admin" || ruta.startsWith("/admin/");
+  comprobar("paginas auditadas", lista(todas.filter((p) => !esDeUsuarios(p.ruta) && !esDeAdmin(p.ruta)).map((p) => p.ruta)), lista(Object.keys(PAGINAS_ESPERADAS)));
+  comprobar("paginas de /admin", lista(todas.filter((p) => esDeAdmin(p.ruta)).map((p) => p.ruta)), lista(["/admin", "/admin/negocios"]));
+  for (const p of todas.filter((x) => esDeAdmin(x.ruta))) {
+    comprobar(`${p.ruta} (administracion de negocios) exige solo administrarNegocios`, lista(permisosDePagina(p.texto) ?? ["(ninguno)"]), "administrarNegocios");
+    comprobar(`${p.ruta}: verifica antes de leer datos`, String(verificaAntesDeLeer(p.texto)), "true");
+  }
+  const layoutAdmin = readFileSync(join(__dirname, "..", "src", "app", "admin", "layout.tsx"), "utf8");
+  comprobar("/admin/layout.tsx exige administrarNegocios", String(permisosDePagina(layoutAdmin)?.join(",")), "administrarNegocios");
   for (const p of todas.filter((x) => esDeUsuarios(x.ruta))) {
     const exigida = p.ruta === "/usuarios/mi-clave" ? "cambiarClavePropia" : "gestionarUsuarios";
     comprobar(`${p.ruta} (administracion de usuarios) exige ${exigida}`, String((permisosDePagina(p.texto) ?? []).includes(exigida as Accion)), "true");

@@ -83,7 +83,9 @@ const DIA = 24 * 60 * 60 * 1000;
 // de cada pagina y de la tabla de `src/lib/permisos-pura.ts`.
 // /listas-precios/** es solo del dueno; /presupuestos/**, /comprobantes/** y /cobranzas/hoy, de ambos.
 
-type Clase = "publica" | "dueno" | "ambos";
+// `superadmin` (F4.3): `/admin/**`. Solo lo abre una sesion de SUPERADMIN (sin negocio); un dueno o un empleado
+// reciben 403 y sin sesion se va a /login.
+type Clase = "publica" | "dueno" | "ambos" | "superadmin";
 
 const CLASIFICACION: Record<string, Clase> = {
   // Publicas: el login y lo que el `matcher` del proxy deja pasar (manifiesto, iconos, logo).
@@ -92,6 +94,9 @@ const CLASIFICACION: Record<string, Clase> = {
   "/icon.png": "publica",
   "/apple-icon.png": "publica",
   "/marca/*": "publica",
+  // Solo SUPERADMIN (F4.3).
+  "/admin": "superadmin",
+  "/admin/negocios": "superadmin",
   // Solo dueno.
   "/": "dueno",
   "/catalogo": "dueno",
@@ -862,15 +867,16 @@ const aLogin = (r: Respuesta) => (destinoDe(r) === "/login") || r.status === 401
 
 // ─── Sesiones de prueba ───────────────────────────────────────────────────────
 
-type Sesiones = { dueno: string; empleado: string; duenoId: string; empleadoId: string; bajaId: string; baja: string };
+type Sesiones = { dueno: string; empleado: string; duenoId: string; empleadoId: string; bajaId: string; baja: string; superadmin: string; superadminId: string };
 
-async function crearSesionDirecta(prisma: Prisma, usuarioId: string, opciones: { vencida?: boolean } = {}): Promise<string> {
+async function crearSesionDirecta(prisma: Prisma, usuarioId: string, opciones: { vencida?: boolean; sinNegocio?: boolean } = {}): Promise<string> {
   const token = generarToken();
   const ahora = Date.now();
   // CHECK de la base: el vencimiento es posterior a la creacion. Una sesion vencida se crea "en el pasado".
   const creadaEn = new Date(opciones.vencida ? ahora - 40 * DIA : ahora);
   const expiraEn = new Date(opciones.vencida ? ahora - 10 * DIA : ahora + 30 * DIA);
-  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
+  // La sesion del SUPERADMIN no tiene negocio (cookie `admin.<token>`).
+  const negocioId = opciones.sinNegocio ? null : (await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } })).id;
   await prisma.sesion.create({ data: { negocioId, tokenHash: hashDeToken(token), usuarioId, creadaEn, renovadaEn: creadaEn, expiraEn } });
   return armarValorDeCookie(negocioId, token); // la cookie lleva `<negocioId>.<token>`
 }
@@ -906,6 +912,50 @@ function sinFugas(f: Fila, columna: Columna, etiqueta: string, cuerpo: string, c
   );
 }
 
+/** Las rutas de `/admin/**` (clase `superadmin`). */
+async function probarRutaAdmin(f: Fila, url: string, ctx: Contexto) {
+  const { ses } = ctx;
+  for (const rsc of [false, true]) {
+    const r = await pedir(url, { rsc });
+    registrar(f, "sinCookie", aLogin(r), `redireccion a /login o 401 sin cookie${rsc ? " (RSC)" : ""}`, evidencia(r));
+    sinFugas(f, "sinCookie", `la respuesta sin cookie${rsc ? " (RSC)" : ""}`, r.cuerpo, ctx);
+  }
+  for (const [cookie, quien, columna] of [[ses.empleado, "empleado", "empleado"], [ses.dueno, "dueno", "dueno"]] as const) {
+    for (const rsc of [false, true]) {
+      const r = await pedir(url, { cookie, rsc });
+      registrar(f, columna, r.status === 403, `${quien}${rsc ? " (RSC)" : ""}: 403 en /admin/**`, evidencia(r));
+      sinFugas(f, "fugas", `lo que recibe el ${quien} en /admin`, r.cuerpo, ctx);
+    }
+  }
+  // El SUPERADMIN abre (o, en /admin, lo lleva a /admin/negocios) y no recibe ningun costo, margen ni valorizacion.
+  for (const rsc of [false, true]) {
+    const r = await pedir(url, { cookie: ses.superadmin, rsc });
+    const destino = rsc ? redireccionRsc(r) : destinoDe(r);
+    const abre = rsc ? r.status === 200 && (destino === null || destino === "/admin/negocios") : r.status === 200 || destino === "/admin/negocios";
+    registrar(f, "dueno", abre, `SUPERADMIN${rsc ? " (RSC)" : ""}: 200 (o /admin → /admin/negocios)`, evidencia(r));
+    sinFugas(f, "fugas", `lo que recibe el SUPERADMIN${rsc ? " (RSC)" : ""}`, r.cuerpo, ctx);
+    if (r.status === 200 && url === "/admin/negocios" && !rsc) {
+      // Ve nombre, estado y cantidad de usuarios del negocio sembrado, y nada de sus datos.
+      comprobarSuelta("/admin/negocios muestra el negocio sembrado (nombre y cantidad de usuarios)", /hl-laser/.test(r.cuerpo) && /usuarios/.test(r.cuerpo), evidencia(r));
+    }
+  }
+  // Sesion expirada y SUPERADMIN dado de baja: como no tener sesion.
+  const vencida = await crearSesionDirecta(ctx.prisma, ses.superadminId, { vencida: true, sinNegocio: true });
+  const rVencida = await pedir(url, { cookie: vencida });
+  registrar(f, "expirada", aLogin(rVencida), "sesion de SUPERADMIN expirada: redireccion a /login o 401", evidencia(rVencida));
+  const rTrucha = await pedir(url, { cookie: `admin.${generarToken()}` });
+  registrar(f, "sinCookie", aLogin(rTrucha), "cookie admin.<token> inventada: redireccion a /login o 401", evidencia(rTrucha));
+  // El token del SUPERADMIN con un negocio en la cookie no sirve (y viceversa).
+  const [, token] = ses.superadmin.split(".");
+  const rCruzada = await pedir(url, { cookie: await cookieInventada(ctx.prisma).then((c) => `${c.split(".")[0]}.${token}`) });
+  registrar(f, "sinCookie", aLogin(rCruzada), "token del SUPERADMIN con el negocio en la cookie: redireccion a /login o 401", evidencia(rCruzada));
+  // POST sin cookie: ni la server action ni el formulario corren.
+  const accion = await pedir(url, { metodo: "POST", cabeceras: { "Next-Action": ACCION_FALSA, "Content-Type": "text/plain;charset=UTF-8" }, cuerpo: "[]" });
+  registrar(f, "post", accion.status === 401 || destinoDe(accion) === "/login", "POST de server action sin cookie: 401 o redireccion a /login", evidencia(accion));
+  const form = await pedir(url, { metodo: "POST", cabeceras: { "Content-Type": "application/x-www-form-urlencoded" }, cuerpo: "a=b" });
+  registrar(f, "post", form.status === 401 || destinoDe(form) === "/login", "POST de formulario sin cookie: 401 o redireccion a /login", evidencia(form));
+}
+
 async function probarRuta(patron: string, clase: Clase, url: string, ctx: Contexto) {
   const f = fila(patron, clase, url);
   const { ses } = ctx;
@@ -914,6 +964,12 @@ async function probarRuta(patron: string, clase: Clase, url: string, ctx: Contex
   if (clase === "publica") {
     const r = await pedir(url);
     registrar(f, "sinCookie", r.status === 200, "200 sin cookie (ruta publica)", evidencia(r));
+    return;
+  }
+
+  // 1b. /admin/**: solo el SUPERADMIN. Dueno y empleado reciben 403 (HTML y RSC); sin sesion, /login.
+  if (clase === "superadmin") {
+    await probarRutaAdmin(f, url, ctx);
     return;
   }
 
@@ -1006,6 +1062,9 @@ function diferencias(antes: Record<string, string>, despues: Record<string, stri
 const CLASIFICACION_ACCIONES: Record<string, Clase> = {
   "login/actions.ts#entrar": "publica",
   "login/actions.ts#salir": "publica", // sin sesion no hay nada que cerrar
+  "admin/negocios/actions.ts#crearNegocio": "superadmin",
+  "admin/negocios/actions.ts#crearPrimerDueno": "superadmin",
+  "admin/negocios/actions.ts#cambiarActivoNegocio": "superadmin",
   "catalogo/actions.ts#guardarArticulo": "dueno",
   "catalogo/actions.ts#cambiarActivoArticulo": "dueno",
   "clientes/actions.ts#crearCliente": "ambos",
@@ -1110,11 +1169,16 @@ async function probarAcciones(ctx: Contexto, instancias: Record<string, string[]
     // Empleado: las de dueno se rechazan; las de ambos no se rechazan por permiso. El cuerpo es basura a proposito:
     // la verificacion de permiso va antes que la validacion, asi que una accion prohibida contesta "No tenes permiso".
     const re = await hacer(a.id, destino, ses.empleado);
-    if (clase === "dueno") registrar(f, "empleado", rechazada(re), "empleado: 401, 403 o \"No tenés permiso\" (no corre)", evidencia(re));
+    if (clase === "dueno" || clase === "superadmin") registrar(f, "empleado", rechazada(re), "empleado: 401, 403 o \"No tenés permiso\" (no corre)", evidencia(re));
     else registrar(f, "empleado", !rechazada(re), "empleado: la accion no se rechaza por permiso", evidencia(re));
-    // Dueno: nunca se rechaza por permiso (control de que el mensaje de rechazo se distingue del resto).
+    // Dueno: nunca se rechaza por permiso (control de que el mensaje de rechazo se distingue del resto)...
+    // salvo las del SUPERADMIN, que el dueno tampoco puede (el proxy le contesta 403).
     const rd = await hacer(a.id, destino, ses.dueno);
-    registrar(f, "dueno", !rechazada(rd), "dueno: la accion no se rechaza por permiso", evidencia(rd));
+    if (clase === "superadmin") registrar(f, "dueno", rechazada(rd), "dueno: una accion del SUPERADMIN se rechaza (403)", evidencia(rd));
+    else registrar(f, "dueno", !rechazada(rd), "dueno: la accion no se rechaza por permiso", evidencia(rd));
+    // El SUPERADMIN: las suyas no se rechazan por permiso (control positivo); las de un negocio, siempre (403 del proxy).
+    const rs = await hacer(a.id, destino, ses.superadmin);
+    if (clase === "superadmin") registrar(f, "dueno", !rechazada(rs), "SUPERADMIN: su accion no se rechaza por permiso", evidencia(rs));
   }
 }
 
@@ -1157,7 +1221,12 @@ async function main() {
     const dueno = await crear("acceso.dueno", "Dueño de prueba (acceso)", "DUENO");
     const empleado = await crear("acceso.empleado", "Empleado de prueba (acceso)", "EMPLEADO");
     const baja = await crear("acceso.baja", "Dueño dado de baja (acceso)", "DUENO", false);
+    const superadmin = await prisma.usuario.create({
+      data: { negocioId: null, usuario: "acceso.superadmin", nombre: "Superadmin de prueba (acceso)", rol: "SUPERADMIN", hashClave },
+    });
     const ses: Sesiones = {
+      superadmin: await crearSesionDirecta(prisma, superadmin.id, { sinNegocio: true }),
+      superadminId: superadmin.id,
       dueno: await crearSesionDirecta(prisma, dueno.id),
       empleado: await crearSesionDirecta(prisma, empleado.id),
       baja: await crearSesionDirecta(prisma, baja.id),

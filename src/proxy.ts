@@ -3,8 +3,8 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import { dbDisponible } from "@/lib/prisma";
 import { destinoSeguro, nombreCookie, opcionesCookie } from "@/lib/auth-pura";
-import { hayNegocios, resolverSesion, type Db, type SesionResuelta } from "@/lib/dominio/auth";
-import { rutaDeInicio, rutaPermitidaParaRol } from "@/lib/permisos-pura";
+import { hayDondeEntrar, resolverSesion, type Db, type SesionResuelta } from "@/lib/dominio/auth";
+import { esRutaDeAdmin, rutaDeInicio, rutaPermitidaParaRol } from "@/lib/permisos-pura";
 
 /**
  * Primer filtro de acceso: corre antes de cada pagina, navegacion del cliente
@@ -21,10 +21,12 @@ import { rutaDeInicio, rutaPermitidaParaRol } from "@/lib/permisos-pura";
  * - Sin sesion: GET → /login?siguiente=<ruta>; server action → 401 (el cliente
  *   navega a /login); cualquier otro metodo → 303 a /login. Nada de eso ejecuta codigo.
  * - Sesion valida: sigue, y una vez por dia extiende el vencimiento (cookie nueva). Cada rol
- *   solo entra a su zona (`rutaPermitidaParaRol`): `/admin/**` es solo del SUPERADMIN, que a
- *   su vez no entra a ninguna pantalla de un negocio.
+ *   solo entra a su zona (`rutaPermitidaParaRol`): `/admin/**` es solo del SUPERADMIN (a un
+ *   dueno o empleado le contesta 403, sea GET o POST), que a su vez no entra a ninguna pantalla
+ *   de un negocio. Con una clave inicial sin cambiar (`debeCambiarClave`) solo se atiende
+ *   `/usuarios/mi-clave` (y salir): lo demas va ahi.
  * - Negocio suspendido (`activo = false`): sus sesiones dejan de valer.
- * - Sin ningun negocio en la base: 503 con instrucciones (nunca queda abierto).
+ * - Sin ningun negocio ni SUPERADMIN en la base: 503 con instrucciones (nunca queda abierto).
  * - Sin base: en desarrollo sigue (modo demo, "Demo" como dueno); en produccion 503.
  */
 
@@ -43,12 +45,15 @@ function db(): Db {
   return globalProxy.prismaDelProxy;
 }
 
-// Los negocios nunca se borran (baja logica): una vez que hay uno, siempre hay.
+// Los negocios y los superadmin nunca se borran (baja logica): una vez que hay uno, siempre hay.
 let hayNegociosConfirmado = false;
 async function hayAlgunNegocio(): Promise<boolean> {
-  if (!hayNegociosConfirmado) hayNegociosConfirmado = await hayNegocios(db());
+  if (!hayNegociosConfirmado) hayNegociosConfirmado = await hayDondeEntrar(db());
   return hayNegociosConfirmado;
 }
+
+/** Con la clave inicial sin cambiar solo se atiende esta pagina (y su accion, que es un POST a la misma ruta). */
+const RUTA_CAMBIO_DE_CLAVE = "/usuarios/mi-clave";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -74,6 +79,9 @@ export async function proxy(request: NextRequest) {
   if (sesion) {
     // Aislamiento por ruta: /admin/** solo para el SUPERADMIN; el SUPERADMIN solo ahi.
     if (!rutaPermitidaParaRol(sesion.usuario.rol, pathname)) return conCabeceras(fueraDeZona(request, sesion));
+    if (sesion.debeCambiarClave && pathname !== RUTA_CAMBIO_DE_CLAVE && pathname !== "/login") {
+      return conCabeceras(hayQueCambiarLaClave(request));
+    }
     const respuesta = NextResponse.next();
     if (valorCookie && sesion.renovadaHasta) {
       respuesta.cookies.set(COOKIE, valorCookie, opcionesCookie(sesion.renovadaHasta, PRODUCCION));
@@ -88,15 +96,31 @@ export async function proxy(request: NextRequest) {
   return conCabeceras(respuesta);
 }
 
-/** Sesion valida pero en una zona que no es de su rol: a su inicio (GET) o 403 (acciones y demas). */
-function fueraDeZona(request: NextRequest, sesion: SesionResuelta): NextResponse {
-  if (request.method === "GET" || request.method === "HEAD") {
-    return NextResponse.redirect(new URL(rutaDeInicio(sesion.usuario.rol), request.url));
-  }
-  return new NextResponse("No tenés acceso a esta sección.", {
+const SIN_ACCESO = "No tenés acceso a esta sección.";
+
+function respuesta403(): NextResponse {
+  return new NextResponse(SIN_ACCESO, {
     status: 403,
     headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
   });
+}
+
+/** Clave inicial sin cambiar: a la pagina para cambiarla (GET) o 403 (acciones y demas). */
+function hayQueCambiarLaClave(request: NextRequest): NextResponse {
+  if (request.method === "GET" || request.method === "HEAD") return NextResponse.redirect(new URL(RUTA_CAMBIO_DE_CLAVE, request.url));
+  return respuesta403();
+}
+
+/**
+ * Sesion valida pero en una zona que no es de su rol. Un usuario de un negocio en `/admin/**` recibe
+ * 403 (cualquier metodo); el SUPERADMIN en una pantalla de un negocio va a su inicio (GET) o recibe 403.
+ */
+function fueraDeZona(request: NextRequest, sesion: SesionResuelta): NextResponse {
+  if (esRutaDeAdmin(request.nextUrl.pathname)) return respuesta403();
+  if (request.method === "GET" || request.method === "HEAD") {
+    return NextResponse.redirect(new URL(rutaDeInicio(sesion.usuario.rol), request.url));
+  }
+  return respuesta403();
 }
 
 function sinSesion(request: NextRequest): NextResponse {
@@ -137,7 +161,7 @@ function conCabeceras(respuesta: NextResponse): NextResponse {
 const SIN_NEGOCIOS = {
   titulo: "Falta crear el primer negocio",
   texto:
-    "Todavía no hay ningún negocio cargado, así que nadie puede entrar. Hay que dar de alta el negocio y su primer dueño: en el servidor, en la carpeta del proyecto, corré <code>npm run usuarios:crear-dueno</code> y seguí las instrucciones. Después recargá esta página.",
+    "Todavía no hay ningún negocio cargado, así que nadie puede entrar. Hay que crear el primer superadmin: en el servidor, en la carpeta del proyecto, corré <code>npm run usuarios:crear-superadmin</code>, entrá en /login con el negocio <code>admin</code> y creá el negocio y su dueño desde «Negocios». Después recargá esta página.",
 };
 const SIN_BASE = {
   titulo: "Sistema no disponible",
