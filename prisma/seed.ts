@@ -398,7 +398,145 @@ const TALLER_DEMO: NegocioDeEjemplo = {
   ajuste: { material: "papel", stockContado: "340", motivo: "Conteo: resma húmeda descartada" },
 };
 
-const NEGOCIOS: NegocioDeEjemplo[] = [HL_LASER, TALLER_DEMO];
+// ─── Negocio 3 (perfil "nube"): Claude (impresion 3D y regalos personalizados) ─────
+// Solo se siembra con SEED_PERFIL=nube (staging en Neon). Rubro, nombres, precios y clientes propios.
+
+const CLAUDE: NegocioDeEjemplo = {
+  slug: "claude",
+  nombre: "Claude",
+  usuarios: [
+    { usuario: "dueno", clave: "dueno-claude", nombre: "Dueño de Claude", rol: "DUENO" },
+    { usuario: "empleado", clave: "empleado-claude", nombre: "Empleado de Claude", rol: "EMPLEADO" },
+  ],
+  costoHoraManoObra: "4000",
+  margenObjetivo: "50",
+  fiscal: {
+    razonSocial: "Claude Impresiones 3D de Ejemplo S.A.S.",
+    cuit: "30701234568",
+    domicilio: "Av. Hipólito Yrigoyen 120, Córdoba",
+    inicioActividades: "2023-05-15",
+  },
+  maquinas: [
+    { clave: "impresora3d", nombre: "Impresora 3D FDM", costoHora: 1200 },
+    { clave: "resina", nombre: "Impresora de resina", costoHora: 2000 },
+    { clave: "lijado", nombre: "Estación de lijado y pintura", costoHora: 900 },
+  ],
+  materiales: [
+    { clave: "pla", nombre: "Filamento PLA 1,75 mm", unidad: "KG", stockMinimo: "3", precioVenta: "28000" },
+    { clave: "petg", nombre: "Filamento PETG 1,75 mm", unidad: "KG", stockMinimo: "2" },
+    { clave: "resina", nombre: "Resina fotosensible", unidad: "L", stockMinimo: "1" },
+    { clave: "pintura", nombre: "Pintura acrílica", unidad: "L", stockMinimo: "1" },
+    { clave: "imanes", nombre: "Imanes de neodimio 10 mm", unidad: "U", stockMinimo: "50" },
+  ],
+  clientes: [
+    { nombre: "Juguetería Mundo Chico", cuit: "30644556677", telefono: "3516001122", email: "pedidos@mundochico.com.ar", direccion: "Av. Vélez Sarsfield 321, Córdoba" },
+    { nombre: "Estudio de Arquitectura Pinto", telefono: "3516334455", email: "estudio@pintoarq.com.ar" },
+    { nombre: "Mariana López", telefono: "3516778899" },
+    { nombre: "Agencia Eventos Cordobeses", cuit: "30688990013", telefono: "3516445566", email: "ventas@eventoscba.com" },
+  ],
+  articulos: [
+    {
+      clave: "llavero",
+      nombre: "Llavero impreso 3D",
+      descripcion: "Llavero personalizado en PLA con imán. Precio por unidad.",
+      precioVenta: "2800",
+      receta: {
+        componentes: [
+          { material: "pla", cantidad: "0.015" },
+          { material: "imanes", cantidad: "1" },
+          { maquina: "impresora3d", cantidad: "0.4" },
+          { manoDeObra: "0.05" },
+        ],
+      },
+    },
+    {
+      clave: "figura",
+      nombre: "Figura de resina 10 cm",
+      descripcion: "Figura de alto detalle, curada y pintada. Precio por unidad.",
+      precioVenta: "24000",
+      receta: {
+        componentes: [
+          { material: "resina", cantidad: "0.08" },
+          { material: "pintura", cantidad: "0.02" },
+          { maquina: "resina", cantidad: "1.5" },
+          { maquina: "lijado", cantidad: "0.5" },
+          { manoDeObra: "0.8" },
+        ],
+      },
+    },
+    {
+      clave: "maqueta",
+      nombre: "Maqueta de arquitectura",
+      descripcion: "Maqueta en PETG a escala. Precio por unidad.",
+      precioVenta: "95000",
+      receta: {
+        componentes: [
+          { material: "petg", cantidad: "0.6" },
+          { maquina: "impresora3d", cantidad: "9" },
+          { maquina: "lijado", cantidad: "1.5" },
+          { manoDeObra: "2" },
+        ],
+      },
+    },
+    {
+      clave: "soporte",
+      nombre: "Soporte de escritorio",
+      descripcion: "Soporte para celular y auriculares en PLA. Precio por unidad.",
+      precioVenta: "9500",
+      receta: {
+        componentes: [
+          { material: "pla", cantidad: "0.12" },
+          { maquina: "impresora3d", cantidad: "2.5" },
+          { manoDeObra: "0.15" },
+        ],
+      },
+    },
+    // Servicio sin receta a proposito (alerta "articulo sin receta" del dashboard).
+    {
+      clave: "modelado",
+      nombre: "Modelado 3D (por hora)",
+      descripcion: "Diseño de piezas a medida.",
+      precioVenta: "14000",
+      esServicio: true,
+    },
+  ],
+  compras: [
+    {
+      offset: 28,
+      proveedor: "Filamentos del Sur",
+      comprobante: "FC A 0002-00009120",
+      notas: "Stock inicial",
+      items: [
+        { material: "pla", cantidad: 12, costoUnitario: 15000 },
+        { material: "petg", cantidad: 6, costoUnitario: 17500 },
+        { material: "resina", cantidad: 3, costoUnitario: 32000 },
+        { material: "pintura", cantidad: 2, costoUnitario: 9000 },
+        { material: "imanes", cantidad: 600, costoUnitario: 120 },
+      ],
+    },
+    // Reposicion con aumento del PLA.
+    {
+      offset: 10,
+      proveedor: "Filamentos del Sur",
+      comprobante: "FC A 0002-00009544",
+      notas: null,
+      items: [{ material: "pla", cantidad: 6, costoUnitario: 16200 }],
+    },
+  ],
+  ventas: [
+    { cliente: 0, items: [["llavero", 150]], cobro: "total", offset: 19 },
+    { cliente: 1, items: [["maqueta", 2]], cobro: "mitad", offset: 14 },
+    { cliente: 2, items: [["figura", 3]], cobro: "total", offset: 9 },
+    { cliente: 3, items: [["llavero", 300], ["soporte", 20]], cobro: "nada", offset: 6 },
+    { cliente: 0, items: [["soporte", 12], ["figura", 2]], cobro: "total", offset: 3 },
+  ],
+  ajuste: { material: "petg", stockContado: "4.5", motivo: "Conteo: bobina con humedad descartada" },
+};
+
+// Perfil por defecto (tests y desarrollo local): dos negocios. Perfil "nube" (SEED_PERFIL=nube,
+// para la base de staging en Neon): HL Laser, Claude y Demo (el Taller Demo con otro slug y nombre).
+const DEMO: NegocioDeEjemplo = { ...TALLER_DEMO, slug: "demo", nombre: "Demo" };
+const NEGOCIOS: NegocioDeEjemplo[] = process.env.SEED_PERFIL === "nube" ? [HL_LASER, CLAUDE, DEMO] : [HL_LASER, TALLER_DEMO];
 
 // ─── Siembra ───────────────────────────────────────────────────────────────────
 
