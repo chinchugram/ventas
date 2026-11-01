@@ -361,3 +361,82 @@ export function routeHandlers(): { archivo: string; texto: string }[] {
 export function verificaRouteHandler(texto: string): boolean {
   return /\b(requierePermiso|verificarPermiso)\s*\(/.test(texto) || (/\busuarioActual\s*\(/.test(texto) && /\bpuede\s*\(/.test(texto));
 }
+
+// ─── Clasificacion de rutas por zona (VTA-20) ─────────────────────────────────
+// Tres zonas, y cada archivo de `src/app` cae en una:
+//  - publica:    sin sesion (login y su accion, y los route handlers de HANDLERS_PUBLICOS);
+//  - superadmin: todo lo que cuelga de `src/app/admin/**`: solo el SUPERADMIN (`administrarNegocios`);
+//  - negocio:    el resto: exige la sesion de un negocio y sus permisos.
+// `scripts/test-acceso.ts` compara esta clasificacion con la suya (la que usa por HTTP) y falla si no coinciden.
+
+/**
+ * Route handlers publicos A PROPOSITO (sin sesion). `marca/logo/[slug]` (F4.2) sirve el logo de un negocio a la pantalla de
+ * /login: el proxy excluye `marca/` y la ruta no lee la sesion. Cualquier otro route handler tiene que verificar sesion y permisos.
+ */
+export const HANDLERS_PUBLICOS = new Set(["marca/logo/[slug]/route.ts"]);
+
+/** Los route handlers que SI tienen que verificar sesion y permisos (`verificaRouteHandler`). */
+export function routeHandlersProtegidos(): { archivo: string; texto: string }[] {
+  return routeHandlers().filter((h) => !HANDLERS_PUBLICOS.has(h.archivo));
+}
+
+export type ClaseDeArchivo = "publica" | "superadmin" | "negocio";
+
+const esDeAdmin = (archivoRel: string) => archivoRel === "admin" || archivoRel.startsWith("admin/");
+
+/** Zona de un archivo de `src/app` (ruta relativa a `src/app`, con "/"). */
+export function claseDeArchivo(archivoRel: string): ClaseDeArchivo {
+  if (PUBLICAS.has(archivoRel) || HANDLERS_PUBLICOS.has(archivoRel)) return "publica";
+  if (esDeAdmin(archivoRel)) return "superadmin";
+  return "negocio";
+}
+
+const ACCION_ADMIN = "administrarNegocios";
+const exigeAdmin = (texto: string) => new RegExp(`\\b(requierePermiso|verificarPermiso|requierePermisoPagina|puede)\\s*\\([^)]*"${ACCION_ADMIN}"`).test(texto);
+
+/**
+ * Todo lo de `src/app/admin/**` (layout, paginas, acciones, route handlers) exige SOLO `administrarNegocios`, y nada fuera
+ * de `admin/` la exige: la zona del SUPERADMIN no se mezcla con la de un negocio, para ningun lado.
+ */
+export function auditarAdmin(): Hallazgo[] {
+  const hallazgos: Hallazgo[] = [];
+
+  for (const p of paginas()) {
+    const permisos = permisosDePagina(p.texto);
+    if (esDeAdmin(p.archivo)) {
+      if (!permisos || permisos.length !== 1 || permisos[0] !== ACCION_ADMIN) {
+        hallazgos.push({ archivo: p.archivo, detalle: `una pagina de /admin tiene que exigir solo ${ACCION_ADMIN} (exige: ${permisos?.join(", ") ?? "nada"})` });
+      }
+    } else if (permisos?.includes(ACCION_ADMIN)) {
+      hallazgos.push({ archivo: p.archivo, detalle: `una pagina fuera de /admin no puede exigir ${ACCION_ADMIN}` });
+    }
+  }
+
+  // El layout de /admin es la primera barrera: tiene que existir y exigir lo mismo.
+  const layouts = archivosDe(/^layout\.tsx$/).filter((a) => esDeAdmin(rel(a)));
+  if (layouts.length === 0) hallazgos.push({ archivo: "admin/layout.tsx", detalle: "falta el layout de /admin (primera barrera de la zona del SUPERADMIN)" });
+  for (const layout of layouts) {
+    const permisos = permisosDePagina(readFileSync(layout, "utf8"));
+    if (!permisos || permisos.length !== 1 || permisos[0] !== ACCION_ADMIN) {
+      hallazgos.push({ archivo: rel(layout), detalle: `el layout de /admin tiene que exigir solo ${ACCION_ADMIN} (exige: ${permisos?.join(", ") ?? "nada"})` });
+    }
+  }
+
+  for (const [clave, accion] of auditarAcciones().exigidas) {
+    const archivo = clave.split("#")[0]!;
+    if (esDeAdmin(archivo) && accion !== ACCION_ADMIN) {
+      hallazgos.push({ archivo, detalle: `${clave.split("#")[1]}: una accion de /admin tiene que exigir ${ACCION_ADMIN} (exige: ${accion ?? "nada"})` });
+    } else if (!esDeAdmin(archivo) && accion === ACCION_ADMIN) {
+      hallazgos.push({ archivo, detalle: `${clave.split("#")[1]}: una accion fuera de /admin no puede exigir ${ACCION_ADMIN}` });
+    }
+  }
+
+  for (const h of routeHandlers()) {
+    if (esDeAdmin(h.archivo) && !exigeAdmin(h.texto)) {
+      hallazgos.push({ archivo: h.archivo, detalle: `un route handler de /admin tiene que exigir ${ACCION_ADMIN}` });
+    } else if (!esDeAdmin(h.archivo) && exigeAdmin(h.texto)) {
+      hallazgos.push({ archivo: h.archivo, detalle: `un route handler fuera de /admin no puede exigir ${ACCION_ADMIN}` });
+    }
+  }
+  return hallazgos;
+}

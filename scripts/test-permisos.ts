@@ -632,10 +632,30 @@ async function main() {
     const malas = [...k].filter((c) => COSTOS.includes(c) || (tambienPrecio && c === "precioVenta"));
     comprobar(`${etiqueta}: sin claves de costo`, malas.join(",") || "ninguna", "ninguna");
   };
-  const costosEnBase = [
+  const costosCandidatos = [
     ...(await prisma.venta.findMany({ where: { negocioId }, select: { costoTotal: true } })).map((v) => v.costoTotal.toFixed(2)),
     ...(await prisma.material.findMany({ where: { negocioId }, select: { costoUnitario: true, precioVenta: true } })).flatMap((m) => [m.costoUnitario.toFixed(2), m.costoUnitario.toFixed(4), m.precioVenta?.toFixed(2) ?? "", m.precioVenta?.toFixed(4) ?? ""]),
   ].filter((c) => c.split(".")[0]!.length >= 4); // montos de 1000 para arriba: los chicos chocan con cantidades cualquiera
+  // Colision numerica (VTA-25): un valor de costo que vale lo mismo que un precio o un monto que el empleado SI puede ver no es
+  // una fuga, es el mismo numero. Pasaba con el precio de venta del material "Vinil adhesivo brillante" de HL Laser (9500), que es
+  // tambien el precio de un articulo de Taller Demo: este script corre con un rol que se salta RLS (necesita sembrar fixtures) y
+  // las consultas del empleado que no filtran por `negocioId` en el `where` (confian en RLS) ven los articulos de TODOS los
+  // negocios. Con el rol de la app (`ventas_app`) eso no pasa: lo prueba `npm run test:acceso`, por HTTP, con dos negocios. Por eso
+  // los precios y montos "publicos" se juntan de TODA la base, sin filtrar por negocio, y los costos que coinciden se descartan
+  // (y se avisan). Las claves de costo ("sin claves de costo") siguen verificandose por separado, sin excepciones.
+  const publicos = new Set<string>();
+  const publico = (v: { toFixed(n: number): string } | null | undefined) => {
+    if (v) for (const n of [2, 4]) publicos.add(v.toFixed(n));
+  };
+  for (const a of await prisma.articulo.findMany({ select: { precioVenta: true } })) publico(a.precioVenta);
+  for (const i of await prisma.listaPrecioItem.findMany({ select: { precio: true } })) publico(i.precio);
+  for (const i of await prisma.ventaItem.findMany({ select: { precioUnitario: true, subtotalNeto: true, subtotalBruto: true } })) [i.precioUnitario, i.subtotalNeto, i.subtotalBruto].forEach(publico);
+  for (const v of await prisma.venta.findMany({ select: { totalNeto: true, totalBruto: true, totalIVA: true } })) [v.totalNeto, v.totalBruto, v.totalIVA].forEach(publico);
+  for (const i of await prisma.presupuestoItem.findMany({ select: { precioUnitario: true } })) publico(i.precioUnitario);
+  for (const p of await prisma.pago.findMany({ select: { monto: true } })) publico(p.monto);
+  const costosEnBase = costosCandidatos.filter((c) => !publicos.has(c));
+  const descartados = [...new Set(costosCandidatos.filter((c) => publicos.has(c)))];
+  if (descartados.length > 0) console.log(`AVISO ${descartados.length} valor(es) de costo coinciden con un precio o monto visible para el empleado y no se buscan: ${descartados.join(", ")}`);
   const sinValoresDeCosto = (etiqueta: string, valor: unknown) => {
     const t = texto(valor);
     // un valor de costo es "24000.00" / "24000" / 24000: se busca el entero con borde de numero.
