@@ -143,6 +143,9 @@ const ACCIONES_ESPERADAS: Record<string, Accion> = {
   "configuracion/actions.ts#crearMaquina": "configuracion",
   "configuracion/actions.ts#editarMaquina": "configuracion",
   "configuracion/actions.ts#cambiarActivoMaquina": "configuracion",
+  // F4.2: el logo del negocio lo sube y lo quita el dueño.
+  "configuracion/actions.ts#subirLogo": "configuracion",
+  "configuracion/actions.ts#quitarLogo": "configuracion",
   "listas-precios/actions.ts#crearLista": "gestionarListasPrecios",
   "listas-precios/actions.ts#editarLista": "gestionarListasPrecios",
   "listas-precios/actions.ts#cambiarActivoLista": "gestionarListasPrecios",
@@ -239,8 +242,19 @@ function main() {
   }
 
   console.log("--- Route handlers ---");
-  const handlers = routeHandlers();
+  // `marca/logo/[slug]/route.ts` (F4.2) es PUBLICO a proposito: sirve el logo de un negocio a la
+  // pantalla de /login, que no tiene sesion (el proxy excluye `marca/`). No lee datos del negocio mas
+  // alla del logo y se protege de otra forma: se comprueba aparte que no use sesion y que el logo se sirva
+  // con CSP `sandbox` y `nosniff`.
+  const RUTA_PUBLICA = "marca/logo/[slug]/route.ts";
+  const todosLosHandlers = routeHandlers();
+  const handlers = todosLosHandlers.filter((h) => h.archivo !== RUTA_PUBLICA);
   comprobar("route handlers", lista(handlers.map((h) => h.archivo)), lista(["reportes/export/[reporte]/route.ts", "reportes/margen-real/export/route.ts"]));
+  const publica = todosLosHandlers.find((h) => h.archivo === RUTA_PUBLICA);
+  comprobar(`${RUTA_PUBLICA}: existe (ruta publica del logo)`, String(Boolean(publica)), "true");
+  comprobar(`${RUTA_PUBLICA}: solo GET`, String(/export async function (POST|PUT|PATCH|DELETE)\b/.test(publica?.texto ?? "")), "false");
+  comprobar(`${RUTA_PUBLICA}: CSP sandbox y nosniff`, String(/Content-Security-Policy[^\n]*sandbox/.test(publica?.texto ?? "") && /nosniff/.test(publica?.texto ?? "")), "true");
+  comprobar(`${RUTA_PUBLICA}: no usa la sesion (no hay datos de usuario)`, String(/usuarioActual|getNegocioId/.test(publica?.texto ?? "")), "false");
   for (const h of handlers) {
     comprobar(`${h.archivo}: verifica sesion y permisos`, String(verificaRouteHandler(h.texto)), "true");
     for (const accion of ["exportarCsv", "verReportes", "verCostos", "verMargenes"]) {
