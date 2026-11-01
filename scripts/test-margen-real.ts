@@ -67,10 +67,10 @@ async function main() {
   const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
   usarNegocioDePrueba(negocioId); // las consultas leen el negocio de la sesion: aca no hay pedido
 
-  const cliente = await prisma.cliente.findFirstOrThrow();
-  const [artX, artY] = await prisma.articulo.findMany({ orderBy: { nombre: "asc" }, take: 2 });
-  const [mat1, mat2] = await prisma.material.findMany({ orderBy: { nombre: "asc" }, take: 2 });
-  const [maq1, maq2] = await prisma.maquina.findMany({ orderBy: { nombre: "asc" }, take: 2 });
+  const cliente = await prisma.cliente.findFirstOrThrow({ where: { negocioId } });
+  const [artX, artY] = await prisma.articulo.findMany({ where: { negocioId }, orderBy: { nombre: "asc" }, take: 2 });
+  const [mat1, mat2] = await prisma.material.findMany({ where: { negocioId }, orderBy: { nombre: "asc" }, take: 2 });
+  const [maq1, maq2] = await prisma.maquina.findMany({ where: { negocioId }, orderBy: { nombre: "asc" }, take: 2 });
   if (!artX || !artY || !mat1 || !mat2 || !maq1 || !maq2) throw new Error("Falta el seed: hacen falta 2 articulos, 2 materiales y 2 maquinas.");
   original = {
     materiales: [mat1, mat2].map((m) => ({ id: m.id, costoUnitario: m.costoUnitario.toString() })),

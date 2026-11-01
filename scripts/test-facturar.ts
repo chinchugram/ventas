@@ -233,9 +233,9 @@ async function main() {
   const base = await foto();
   console.log(`     foto inicial de ${base.size} tablas`);
 
-  const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-emp`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
-  const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-due`, nombre: "Dueno de prueba", rol: "DUENO", clave: CLAVE }));
-  const baja = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `${MARCA}-baja`, nombre: "Empleado dado de baja", rol: "EMPLEADO", clave: CLAVE }));
+  const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { negocioId, usuario: `${MARCA}-emp`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
+  const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { negocioId, usuario: `${MARCA}-due`, nombre: "Dueno de prueba", rol: "DUENO", clave: CLAVE }));
+  const baja = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { negocioId, usuario: `${MARCA}-baja`, nombre: "Empleado dado de baja", rol: "EMPLEADO", clave: CLAVE }));
   const tEmp = (await crearSesion(prisma, negocioId, emp.id)).valorCookie;
   const tDue = (await crearSesion(prisma, negocioId, due.id)).valorCookie;
   const tBaja = (await crearSesion(prisma, negocioId, baja.id)).valorCookie;

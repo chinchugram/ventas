@@ -370,7 +370,7 @@ async function main() {
     // Sin datos fiscales no se emite (y no queda nada guardado).
     await configurarFiscal(tx, { umbralIdentificacion: "" });
     const sinDatos = await venta(tx, t.final.id, [{ articuloId: t.x.id, cantidad: 1 }]);
-    await tx.configuracion.deleteMany({ where: { clave: { startsWith: "fiscal" } } });
+    await tx.configuracion.deleteMany({ where: { negocioId, clave: { startsWith: "fiscal" } } });
     await rechaza("sin datos fiscales", "completá los datos fiscales", () => emitirFacturaEnTx(tx, negocioId, sinDatos, null, e()));
     await configurarFiscal(tx, { puntoVenta: "" });
     await rechaza("sin punto de venta: lo dice", "Falta el punto de venta", () => emitirFacturaEnTx(tx, negocioId, sinDatos, null, e()));
@@ -682,7 +682,7 @@ async function limpiarConcurrencia() {
   await prisma.articulo.deleteMany({ where: { nombre: { startsWith: PREFIJO } } });
   await prisma.cliente.deleteMany({ where: { id: { in: clienteIds } } });
   if (configuracionOriginal) {
-    await prisma.configuracion.deleteMany({ where: { clave: { startsWith: "fiscal" } } });
+    await prisma.configuracion.deleteMany({ where: { negocioId, clave: { startsWith: "fiscal" } } });
     for (const c of configuracionOriginal) await prisma.configuracion.create({ data: c });
   }
 }
@@ -690,7 +690,7 @@ async function limpiarConcurrencia() {
 async function concurrencia() {
   console.log("--- Concurrencia (transacciones reales, ventas de 2099, se limpia al terminar) ---");
   const b = nuevoCliente();
-  configuracionOriginal = await prisma.configuracion.findMany({ where: { clave: { startsWith: "fiscal" } } });
+  configuracionOriginal = await prisma.configuracion.findMany({ where: { negocioId, clave: { startsWith: "fiscal" } } });
   try {
     await limpiarConcurrencia(); // restos de una corrida interrumpida
     await prisma.$transaction((tx) => configurarFiscal(tx, { puntoVenta: String(PV_CONCURRENCIA) }));

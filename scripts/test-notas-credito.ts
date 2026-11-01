@@ -172,7 +172,7 @@ async function configurarFiscal(db: Tx | PrismaClient, valores: Partial<Record<k
   };
   for (const [campo, valor] of Object.entries(todos) as [keyof typeof CLAVES_FISCALES, string][]) {
     const clave = CLAVES_FISCALES[campo];
-    if (valor === "") await db.configuracion.deleteMany({ where: { clave } });
+    if (valor === "") await db.configuracion.deleteMany({ where: { negocioId, clave } });
     else await db.configuracion.upsert({ where: { negocioId_clave: { negocioId, clave } }, update: { valor }, create: { negocioId, clave, valor } });
   }
 }
@@ -504,7 +504,7 @@ async function contarTodo(cliente: PrismaClient): Promise<Cuentas> {
     cliente.articulo.count(),
     cliente.usuario.count(),
     cliente.sesion.count(),
-    cliente.configuracion.findMany({ orderBy: { clave: "asc" } }),
+    cliente.configuracion.findMany({ orderBy: [{ negocioId: "asc" }, { clave: "asc" }] }),
   ]);
   return {
     comprobantes,
@@ -543,7 +543,7 @@ async function limpiarReal() {
   await prisma.sesion.deleteMany({ where: { usuarioId: { in: usuarios.map((u) => u.id) } } });
   await prisma.usuario.deleteMany({ where: { id: { in: usuarios.map((u) => u.id) } } });
   if (configuracionOriginal) {
-    await prisma.configuracion.deleteMany({ where: { clave: { startsWith: "fiscal" } } });
+    await prisma.configuracion.deleteMany({ where: { negocioId, clave: { startsWith: "fiscal" } } });
     for (const c of configuracionOriginal) await prisma.configuracion.create({ data: c });
   }
 }
@@ -551,7 +551,7 @@ async function limpiarReal() {
 async function parteReal() {
   console.log("--- Transacciones reales (ventas de 2099, se limpia al terminar) ---");
   const b = nuevoCliente();
-  configuracionOriginal = await prisma.configuracion.findMany({ where: { clave: { startsWith: "fiscal" } } });
+  configuracionOriginal = await prisma.configuracion.findMany({ where: { negocioId, clave: { startsWith: "fiscal" } } });
   try {
     await limpiarReal(); // restos de una corrida interrumpida
     const t = await preparar(prisma, PREFIJO, PV_REAL);
@@ -688,8 +688,8 @@ async function parteReal() {
     // 8. La server action REAL, con sesiones reales.
     console.log("  Server action emitirNotaCredito (real, con sesión)");
     const CLAVE = "clave-de-prueba-123";
-    const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `zz-nc-emp-${randomBytes(3).toString("hex")}`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
-    const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { usuario: `zz-nc-due-${randomBytes(3).toString("hex")}`, nombre: "Dueño de prueba", rol: "DUENO", clave: CLAVE }));
+    const emp = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { negocioId, usuario: `zz-nc-emp-${randomBytes(3).toString("hex")}`, nombre: "Empleado de prueba", rol: "EMPLEADO", clave: CLAVE }));
+    const due = await prisma.$transaction((tx) => crearUsuarioEnTx(tx, { negocioId, usuario: `zz-nc-due-${randomBytes(3).toString("hex")}`, nombre: "Dueño de prueba", rol: "DUENO", clave: CLAVE }));
     const tEmp = (await crearSesion(prisma, negocioId, emp.id)).valorCookie;
     const tDue = (await crearSesion(prisma, negocioId, due.id)).valorCookie;
     const invocar = async (token: string | undefined, datos: unknown) => {
