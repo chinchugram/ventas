@@ -25,13 +25,15 @@
  *   - un INSERT con el `negocioId` del contexto no lo rechaza la politica;
  *   - sin contexto no se ve ni se escribe nada.
  * Ademas: toda tabla con `negocioId` tiene RLS ENABLE + FORCE y su politica; `negocios` es la
- * unica global (sin RLS, la app solo la lee); el rol de la app no se salta RLS; el contexto no
- * se filtra entre conexiones ni entre transacciones. Cada comprobacion de escritura se deshace
+ * unica global (la lee cualquiera; solo el SUPERADMIN la escribe, y nunca se borra); el SUPERADMIN
+ * (`app.superadmin = 'on'`, filas con `negocioId` NULL en `usuarios` y `sesiones`) no ve ni escribe
+ * datos de ningun negocio y ningun contexto de negocio ve al SUPERADMIN; el rol de la app no se
+ * salta RLS; el contexto no se filtra entre conexiones ni entre transacciones. Cada comprobacion de escritura se deshace
  * (rollback) y al final se borran los dos negocios sembrados.
  */
 import "dotenv/config";
 import { Client, Pool } from "pg";
-import { conNegocio, verificarRolDeLaApp } from "../src/lib/negocio";
+import { conNegocio, conSuperadmin, verificarRolDeLaApp } from "../src/lib/negocio";
 import { prisma } from "../src/lib/prisma";
 
 let fallos = 0;
@@ -200,6 +202,8 @@ async function main() {
 
   const limpiar = async () => {
     const ids = (await fila<{ id: string }>(`SELECT id FROM negocios WHERE slug IN ('test-rls-a', 'test-rls-b')`)).map((x) => x.id);
+    await mig.query(`DELETE FROM sesiones WHERE "usuarioId" IN (SELECT id FROM usuarios WHERE "negocioId" IS NULL AND usuario LIKE 'test-rls-super%')`);
+    await mig.query(`DELETE FROM usuarios WHERE "negocioId" IS NULL AND usuario LIKE 'test-rls-super%'`);
     if (ids.length === 0) return;
     await mig.query("BEGIN");
     try {
@@ -246,8 +250,31 @@ async function main() {
       JSON.stringify(ps),
     );
   }
+  // usuarios y sesiones: ademas de su negocio, el SUPERADMIN (marca de la transaccion) ve las filas sin negocio.
+  for (const t of ["usuarios", "sesiones"]) {
+    const p = politicas.find((x) => x.tablename === t);
+    comprobar(
+      !!p && /app\.superadmin/.test(p.qual) && /"negocioId" IS NULL/.test(p.qual) && p.qual === p.with_check,
+      `${t}: la politica admite las filas sin negocio solo con app.superadmin = 'on'`,
+      JSON.stringify(p),
+    );
+  }
   const neg = rls.find((x) => x.relname === "negocios");
-  comprobar(!!neg && !neg.relrowsecurity && !politicas.some((p) => p.tablename === "negocios"), "negocios es global: sin RLS ni politicas");
+  comprobar(!!neg && neg.relrowsecurity && neg.relforcerowsecurity, "negocios: ENABLE + FORCE ROW LEVEL SECURITY");
+  const polNeg = politicas.filter((p) => p.tablename === "negocios");
+  comprobar(
+    polNeg.length === 3 &&
+      polNeg.some((p) => p.cmd === "SELECT" && p.qual === "true") &&
+      polNeg.some((p) => p.cmd === "INSERT" && /app\.superadmin/.test(p.with_check)) &&
+      polNeg.some((p) => p.cmd === "UPDATE" && /app\.superadmin/.test(p.qual) && /app\.superadmin/.test(p.with_check)) &&
+      !polNeg.some((p) => p.cmd === "DELETE" || p.cmd === "ALL"),
+    "negocios: lectura libre, alta y cambio solo con app.superadmin = 'on', sin politica de borrado",
+    JSON.stringify(polNeg),
+  );
+  const restriccion = await fila<{ def: string }>(
+    `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'usuarios_superadmin_sin_negocio'`,
+  );
+  comprobar(restriccion.length === 1, "usuarios: CHECK rol SUPERADMIN <=> sin negocio", restriccion[0]?.def ?? "no existe");
 
   const rol = (await prisma.$queryRaw<{ rolname: string; rolsuper: boolean; rolbypassrls: boolean }[]>`
     SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`)[0];
@@ -460,20 +487,140 @@ async function main() {
     console.log("\n── Tabla global negocios ──");
     const lee = await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM negocios WHERE slug IN ('test-rls-a', 'test-rls-b')`;
     comprobar(lee[0]?.n === 2, "la app lee negocios sin contexto (login: slug -> id)");
-    let insNeg = "";
-    try {
-      await prisma.$executeRawUnsafe(`INSERT INTO negocios (id, nombre, slug, "actualizadoEn") VALUES (gen_random_uuid(), 'x', 'x-rls', now())`);
-    } catch (e) {
-      insNeg = mensajeDe(e);
+    const leeDesdeA = await probar(ids.A, (tx) => tx.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM negocios WHERE slug IN ('test-rls-a', 'test-rls-b')`));
+    comprobar(leeDesdeA.ok && leeDesdeA.valor[0]?.n === 2, "y tambien desde un contexto de negocio");
+    const rechazo = async (sql: string, ...args: unknown[]) => {
+      let msg = "";
+      try {
+        await prisma.$executeRawUnsafe(sql, ...args);
+      } catch (e) {
+        msg = mensajeDe(e);
+      }
+      return msg;
+    };
+    const INS_NEG = `INSERT INTO negocios (id, nombre, slug, "actualizadoEn") VALUES (gen_random_uuid(), 'x', 'x-rls', now())`;
+    comprobar(/row-level security/i.test(await rechazo(INS_NEG)), "sin contexto la app no puede crear negocios (RLS)");
+    const insDesdeA = await probar(ids.A, (tx) => tx.$executeRawUnsafe(INS_NEG));
+    comprobar(esRls(insDesdeA), "desde un contexto de negocio tampoco", JSON.stringify(insDesdeA));
+    const updDesdeA = await probar(ids.A, (tx) => tx.$executeRawUnsafe(`UPDATE negocios SET activo = false WHERE id = $1::uuid`, ids.A));
+    comprobar(updDesdeA.ok && updDesdeA.valor === 0, "un negocio no puede darse de baja (ni modificar) desde su contexto: 0 filas", JSON.stringify(updDesdeA));
+    const updSinCtx = await prisma.$executeRawUnsafe(`UPDATE negocios SET activo = activo WHERE slug IN ('test-rls-a', 'test-rls-b')`);
+    comprobar(updSinCtx === 0, "sin contexto UPDATE sobre negocios no toca nada", String(updSinCtx));
+    comprobar(/permission denied/i.test(await rechazo(`DELETE FROM negocios WHERE slug = 'x-rls'`)), "la app no puede borrar negocios (sin permiso de DELETE)");
+    const delSup = await probar(ids.A, (tx) => tx.$executeRawUnsafe(`SET LOCAL app.superadmin = 'on'`).then(() => tx.$executeRawUnsafe(`DELETE FROM negocios WHERE slug = 'x-rls'`)));
+    comprobar(!delSup.ok && /permission denied/i.test(delSup.error), "ni el SUPERADMIN: los negocios no se borran (baja logica)", JSON.stringify(delSup));
+
+    // ─── SUPERADMIN ───
+    console.log("\n── SUPERADMIN (app.superadmin = 'on', sin negocio) ──");
+    // Cuenta y sesion del SUPERADMIN, sembradas con el migrador (se borran en `limpiar`).
+    const supId = (await fila<{ id: string }>(
+      `INSERT INTO usuarios (id, "negocioId", usuario, nombre, rol, "hashClave", "actualizadoEn")
+       VALUES (gen_random_uuid(), NULL, 'test-rls-super', 'Super', 'SUPERADMIN', 'scrypt$ln=14,r=8,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', now()) RETURNING id`,
+    ))[0]!.id;
+    await mig.query(`INSERT INTO sesiones (id, "negocioId", "tokenHash", "usuarioId", "expiraEn") VALUES (gen_random_uuid(), NULL, md5(random()::text) || md5(random()::text), $1::uuid, now() + interval '1 day')`, [supId]);
+
+    // 1. Ningun contexto de negocio ve al SUPERADMIN, ni sin contexto.
+    for (const [k, id] of [["A", ids.A], ["B", ids.B]] as const) {
+      for (const t of ["usuarios", "sesiones"]) {
+        const r = await probar(id, (tx) => tx.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM ${q(t)} WHERE "negocioId" IS NULL`));
+        comprobar(r.ok && r.valor[0]?.n === 0, `[${k}] ${t}: un contexto de negocio no ve las filas sin negocio (SUPERADMIN)`, JSON.stringify(r));
+      }
     }
-    comprobar(/permission denied/i.test(insNeg), "la app no puede crear negocios (solo SELECT)", insNeg || "no fallo");
-    let updNeg = "";
-    try {
-      await prisma.$executeRawUnsafe(`UPDATE negocios SET activo = activo`);
-    } catch (e) {
-      updNeg = mensajeDe(e);
+    for (const t of ["usuarios", "sesiones"]) {
+      const n = await prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM ${q(t)} WHERE "negocioId" IS NULL`);
+      comprobar(n[0]?.n === 0, `${t}: sin contexto tampoco se ven las filas sin negocio`, JSON.stringify(n));
     }
-    comprobar(/permission denied/i.test(updNeg), "la app no puede modificar negocios", updNeg || "no fallo");
+
+    // 2. El contexto de SUPERADMIN solo ve filas sin negocio: de ninguna tabla con negocioId ve datos de un negocio.
+    for (const t of tablas) {
+      const r = await conSuperadmin(async (tx) => {
+        const todo = await tx.$queryRawUnsafe<{ n: number; propias: number }[]>(`SELECT count(*)::int AS n, count(*) FILTER (WHERE "negocioId" IS NOT NULL)::int AS propias FROM ${q(t)}`);
+        return todo[0]!;
+      });
+      comprobar(r.propias === 0, `${t}: el SUPERADMIN no ve ninguna fila de un negocio`, JSON.stringify(r));
+      comprobar(["usuarios", "sesiones"].includes(t) ? r.n >= 1 : r.n === 0, `${t}: ${["usuarios", "sesiones"].includes(t) ? "ve su propia cuenta/sesion" : "no ve nada"}`, JSON.stringify(r));
+    }
+
+    // 3. No escribe en ninguna tabla de un negocio (solo RLS: triggers apagados).
+    for (const t of tablas) await mig.query(`ALTER TABLE ${q(t)} DISABLE TRIGGER USER`);
+    try {
+      for (const t of tablas) {
+        const r = await conSuperadmin(async (tx) => {
+          try {
+            await tx.$executeRawUnsafe(INSERT_PLANTILLA(t), plantillas.get(t)!.A, ids.A);
+            return "inserto";
+          } catch (e) {
+            return mensajeDe(e);
+          }
+        }).catch((e) => mensajeDe(e));
+        comprobar(/row-level security/i.test(r), `${t}: el SUPERADMIN no puede insertar filas de un negocio`, r);
+        const upd = await conSuperadmin((tx) => tx.$executeRawUnsafe(`UPDATE ${q(t)} SET "negocioId" = "negocioId" WHERE "negocioId" = $1::uuid`, ids.A));
+        const del = await conSuperadmin((tx) => tx.$executeRawUnsafe(`DELETE FROM ${q(t)} WHERE "negocioId" = $1::uuid`, ids.A));
+        comprobar(upd === 0 && del === 0, `${t}: ni modificar ni borrar las de un negocio`, `${upd}/${del}`);
+      }
+      // Control positivo: una cuenta y una sesion sin negocio SI las acepta (se deshace).
+      let ctrl = "";
+      try {
+        await conSuperadmin(async (tx) => {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO usuarios (id, "negocioId", usuario, nombre, rol, "hashClave", "actualizadoEn") VALUES (gen_random_uuid(), NULL, 'test-rls-super2', 'S2', 'SUPERADMIN', 'scrypt$ln=14,r=8,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', now())`,
+          );
+          await tx.$executeRawUnsafe(
+            `INSERT INTO sesiones (id, "negocioId", "tokenHash", "usuarioId", "expiraEn") VALUES (gen_random_uuid(), NULL, md5(random()::text) || md5(random()::text), $1::uuid, now() + interval '1 day')`,
+            supId,
+          );
+          throw new Deshacer();
+        });
+      } catch (e) {
+        ctrl = e instanceof Deshacer ? "ok" : mensajeDe(e);
+      }
+      comprobar(ctrl === "ok", "control positivo: el SUPERADMIN puede crear su cuenta y su sesion (sin negocio)", ctrl);
+    } finally {
+      for (const t of tablas) await mig.query(`ALTER TABLE ${q(t)} ENABLE TRIGGER USER`);
+    }
+
+    // 4. Escribe negocios (alta y cambio) y los lee todos.
+    let alta: { baja: number; todos: number } | string = "";
+    try {
+      await conSuperadmin(async (tx) => {
+        await tx.$executeRawUnsafe(INS_NEG);
+        const baja = await tx.$executeRawUnsafe(`UPDATE negocios SET activo = false WHERE id = $1::uuid`, ids.A);
+        const todos = await tx.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM negocios WHERE slug IN ('test-rls-a', 'test-rls-b', 'x-rls')`);
+        throw Object.assign(new Deshacer(), { baja, todos: todos[0]!.n });
+      });
+    } catch (e) {
+      alta = e instanceof Deshacer ? (e as unknown as { baja: number; todos: number }) : mensajeDe(e);
+    }
+    const quedoX = await fila<{ n: string }>(`SELECT count(*) AS n FROM negocios WHERE slug = 'x-rls'`);
+    comprobar(typeof alta !== "string" && alta.baja === 1 && alta.todos === 3 && quedoX[0]?.n === "0", "el SUPERADMIN crea un negocio, da de baja otro y ve todos (se deshace)", JSON.stringify(alta));
+
+    // 5. Cantidad de usuarios por negocio: solo conteos y solo para el SUPERADMIN.
+    const cuentasReales = Object.fromEntries(
+      await Promise.all(
+        (["A", "B"] as const).map(async (k) => [k, Number((await fila<{ n: string }>(`SELECT count(*) AS n FROM usuarios WHERE "negocioId" = $1`, [ids[k]]))[0]!.n)] as const),
+      ),
+    );
+    const porNegocio = await conSuperadmin((tx) => tx.$queryRaw<{ negocioId: string; usuarios: number; activos: number }[]>`SELECT * FROM usuarios_por_negocio()`);
+    const deA = porNegocio.find((x) => x.negocioId === ids.A);
+    const deB = porNegocio.find((x) => x.negocioId === ids.B);
+    comprobar(deA?.usuarios === cuentasReales.A && deB?.usuarios === cuentasReales.B && deA?.activos === cuentasReales.A, "usuarios_por_negocio() da la cantidad de usuarios de cada negocio", JSON.stringify(porNegocio));
+    comprobar(porNegocio.every((x) => x.negocioId !== null), "...y nunca cuenta al SUPERADMIN (sin negocio)");
+    const desdeNegocio = await probar(ids.A, (tx) => tx.$queryRawUnsafe<unknown[]>(`SELECT * FROM usuarios_por_negocio()`));
+    comprobar(desdeNegocio.ok && desdeNegocio.valor.length === 0, "desde un contexto de negocio no devuelve nada", JSON.stringify(desdeNegocio));
+    const sinCtx = await prisma.$queryRawUnsafe<unknown[]>(`SELECT * FROM usuarios_por_negocio()`);
+    comprobar(sinCtx.length === 0, "sin contexto no devuelve nada", JSON.stringify(sinCtx));
+    const publico = await fila<{ n: string }>(`SELECT count(*) AS n FROM information_schema.routine_privileges WHERE routine_name = 'usuarios_por_negocio' AND grantee = 'PUBLIC'`);
+    comprobar(publico[0]?.n === "0", "usuarios_por_negocio() no es ejecutable por PUBLIC");
+
+    // 6. Con ambas marcas (alta de un negocio nuevo) ve el negocio declarado + las cuentas sin negocio, nada de los otros.
+    const ambos = await conSuperadmin(
+      async (tx) => (await tx.$queryRawUnsafe<{ propias: number; ajenas: number; sin: number }[]>(
+        `SELECT count(*) FILTER (WHERE "negocioId" = $1::uuid)::int AS propias, count(*) FILTER (WHERE "negocioId" <> $1::uuid)::int AS ajenas, count(*) FILTER (WHERE "negocioId" IS NULL)::int AS sin FROM usuarios`,
+        ids.A,
+      ))[0]!,
+      { negocioId: ids.A },
+    );
+    comprobar(ambos.propias === cuentasReales.A && ambos.ajenas === 0 && ambos.sin >= 1, "con el negocio declarado ademas, ve ese negocio y las cuentas sin negocio, no otros", JSON.stringify(ambos));
   } finally {
     await limpiar().catch((e) => {
       fallos += 1;

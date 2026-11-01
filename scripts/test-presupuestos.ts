@@ -163,7 +163,7 @@ const HASH_DE_PRUEBA = `scrypt$ln=14,r=8,p=1$${"a".repeat(22)}$${"b".repeat(43)}
 /** Usuario real de prueba (dentro de la transaccion del escenario: se deshace con ella). */
 async function usuarioDePrueba(tx: Tx, nombre: string) {
   return tx.usuario.create({
-    data: { usuario: `zz-${Math.random().toString(36).slice(2, 10)}`, nombre, rol: "EMPLEADO", hashClave: HASH_DE_PRUEBA },
+    data: { negocioId, usuario: `zz-${Math.random().toString(36).slice(2, 10)}`, nombre, rol: "EMPLEADO", hashClave: HASH_DE_PRUEBA },
   });
 }
 

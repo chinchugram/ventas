@@ -197,6 +197,7 @@ async function preparar(db: Tx | PrismaClient, prefijo: string, puntoVenta = PV)
 async function usuarioDePrueba(tx: Tx) {
   return tx.usuario.create({
     data: {
+      negocioId,
       usuario: `zz-${randomBytes(4).toString("hex")}`,
       nombre: "Dueña de prueba",
       rol: "DUENO",

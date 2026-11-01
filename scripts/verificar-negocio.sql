@@ -15,11 +15,12 @@ BEGIN
            WHERE table_schema = 'public' AND column_name = 'negocioId' ORDER BY table_name LOOP
     total := total + 1;
     IF c.column_default IS NOT NULL THEN RAISE EXCEPTION '% tiene DEFAULT en negocioId', c.table_name; END IF;
-    IF c.is_nullable = 'YES' AND c.table_name <> 'usuarios' THEN
+    -- usuarios y sesiones admiten NULL: es la cuenta (y la sesion) del SUPERADMIN, que no tiene negocio.
+    IF c.is_nullable = 'YES' AND c.table_name NOT IN ('usuarios', 'sesiones') THEN
       RAISE EXCEPTION '% deberia tener negocioId NOT NULL', c.table_name;
     END IF;
-    IF c.is_nullable = 'NO' AND c.table_name = 'usuarios' THEN
-      RAISE EXCEPTION 'usuarios.negocioId tiene que ser nullable (SUPERADMIN)';
+    IF c.is_nullable = 'NO' AND c.table_name IN ('usuarios', 'sesiones') THEN
+      RAISE EXCEPTION '%.negocioId tiene que ser nullable (SUPERADMIN)', c.table_name;
     END IF;
     -- Ninguna fila sin negocio (hoy ni siquiera usuarios) y todas de HL Laser.
     EXECUTE format('SELECT count(*) FROM %I WHERE "negocioId" IS DISTINCT FROM $1', c.table_name) INTO n USING nid;

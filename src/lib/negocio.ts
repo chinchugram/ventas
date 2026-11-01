@@ -55,6 +55,30 @@ export async function conNegocio<T>(
   }, opciones);
 }
 
+// ─── Contexto de SUPERADMIN (F4.3) ───────────────────────────────────────────
+/**
+ * Igual que `conNegocio` pero para el SUPERADMIN: declara `app.superadmin = 'on'`
+ * (`set_config(..., true)`, solo dentro de la transaccion). Sin `negocioId` el contexto solo
+ * ve y escribe filas SIN negocio (cuentas y sesiones de SUPERADMIN) y puede dar de alta y
+ * cambiar `negocios`; NO ve datos de ningun negocio. `negocioId` (opcional) declara ADEMAS ese
+ * negocio: solo para el alta de uno recien creado (config por defecto y primer dueno). Nunca
+ * recibe un id que mande el cliente sin haberlo validado contra `negocios`.
+ */
+export async function conSuperadmin<T>(
+  fn: (tx: TxNegocio) => Promise<T>,
+  { negocioId, ...opciones }: OpcionesConNegocio & { negocioId?: string } = {},
+): Promise<T> {
+  if (negocioId !== undefined && !UUID.test(negocioId)) {
+    throw new Error("conSuperadmin: negocioId invalido (se espera un UUID).");
+  }
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT set_config('app.superadmin', 'on', true)`;
+    if (negocioId !== undefined) await tx.$queryRaw`SELECT set_config('app.negocio_id', ${negocioId}, true)`;
+    await verificarRolDeLaApp(tx);
+    return fn(tx);
+  }, opciones);
+}
+
 // ─── Negocio de la sesion (F4.1) ─────────────────────────────────────────────
 /**
  * El negocio del pedido: sale SIEMPRE de la fila de la sesion (cookie → `sesiones` →
