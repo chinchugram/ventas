@@ -43,7 +43,7 @@ import {
   auditarAcciones,
   paginas,
   permisosDePagina,
-  routeHandlers,
+  routeHandlersProtegidos,
   verificaAntesDeLeer,
   verificaRouteHandler,
 } from "./auditoria-permisos";
@@ -297,7 +297,7 @@ function auditarRutas() {
     if (permisosDePagina(p.texto) === null) hallazgos.push(`src/app/${p.archivo}: no llama a requierePermisoPagina(...)`);
     else if (!verificaAntesDeLeer(p.texto)) hallazgos.push(`src/app/${p.archivo}: lee datos antes de requierePermisoPagina(...)`);
   }
-  const handlers = routeHandlers();
+  const handlers = routeHandlersProtegidos();
   for (const h of handlers) {
     if (!verificaRouteHandler(h.texto)) hallazgos.push(`src/app/${h.archivo}: el route handler no verifica sesion y permisos`);
   }
