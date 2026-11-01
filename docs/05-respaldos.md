@@ -16,7 +16,7 @@ dónde quedan, cómo se restauran y cómo se prueba que la restauración funcion
 | Exportar UN negocio | `sh scripts/exportar-negocio.sh <slug>` |
 | Importar UN negocio | `sh scripts/importar-negocio.sh ARCHIVO --base NOMBRE` |
 | Probar el respaldo por negocio | `npm run test:respaldo:negocio` |
-| Aviso en pantalla | El inicio muestra un cartel si el último respaldo tiene más de 48 h o si no hay ninguno |
+| Estado del último respaldo | `src/lib/respaldo-estado.ts` (verificado por `npm run test:respaldo`). **Hoy ninguna pantalla lo muestra** (ver "Estado del último respaldo (sin aviso en pantalla)") |
 
 ## Respaldo programado
 
@@ -83,7 +83,8 @@ etapa.
    # escribir "ventas" cuando lo pida
    ```
 6. Si el respaldo es de antes de una migración nueva, aplicarla: `npm run db:deploy`.
-7. Levantar la app y mirar el inicio y una venta conocida.
+7. **Re-correr los roles** (ver "Después de restaurar un respaldo completo" abajo) y verificarlos.
+8. Levantar la app y mirar el inicio y una venta conocida.
 
 Detalles de `scripts/restaurar.sh`:
 
@@ -176,7 +177,29 @@ Los scripts usan `DATABASE_URL_MIGRACIONES` (rol `ventas_migrador`, con `BYPASSR
 `DATABASE_URL` si no. Con el rol de la app (`ventas_app`) las políticas RLS dejan ver una fila de
 nada y `pg_dump` ni siquiera puede leer las tablas: por eso exportar/importar se niegan con ese rol.
 Al restaurar el completo, `restaurar.sh` le vuelve a dar sus permisos a `ventas_app` (el volcado va
-`--no-privileges`).
+`--no-privileges`), pero **solo los básicos**: ver "Después de restaurar un respaldo completo".
+
+### Después de restaurar un respaldo completo
+
+El volcado no guarda permisos, y lo que `restaurar.sh` devuelve (`sql_permisos_app` en `scripts/respaldo-comun.sh`) es
+`SELECT/INSERT/UPDATE/DELETE` en las tablas de datos y solo `SELECT` en `negocios`. Falta, y hay que reponer a mano:
+
+1. `ventas_app` necesita `INSERT` y `UPDATE` sobre `negocios` (el SUPERADMIN da de alta y de baja negocios) y `EXECUTE` sobre
+   `usuarios_por_negocio()`: **re-correr `scripts/crear-roles-db.sql`** como superusuario sobre esa base.
+2. La función `usuarios_por_negocio()` tiene `EXECUTE` revocado a `PUBLIC` en la migración, y un volcado sin privilegios lo pierde
+   (queda ejecutable por todos; solo devuelve conteos y solo si el contexto es de SUPERADMIN, pero `npm run test:rls` lo marca como falla):
+   `REVOKE ALL ON FUNCTION public.usuarios_por_negocio() FROM PUBLIC;` y volver a dar `EXECUTE` a `ventas_app` (lo hace `crear-roles-db.sql`).
+3. Comprobar: `psql "$DATABASE_URL_MIGRACIONES" -X -v ON_ERROR_STOP=1 -f scripts/verificar-roles-db.sql` (solo lee; falla con un mensaje
+   claro si falta algo, incluido que el migrador tenga `BYPASSRLS`, de lo que depende esa función).
+
+Visto en el ensayo del despliegue (VTA-21, `docs/07-multitenant-despliegue.md`): tras `restaurar.sh` de un volcado multi-tenant,
+`ventas_app` quedó sin `INSERT` sobre `negocios` y `test:rls` falló en una comprobación (956 de 957 antes del `REVOKE`; 956 de 956 después).
+
+**Un volcado anterior al multi-tenant no se restaura con `restaurar.sh`.** Al final el script hace
+`GRANT … ON public."negocios"`; en un volcado de antes de la migración `negocio` esa tabla no existe, el `GRANT` falla y, como todo va en
+una transacción, la restauración entera se deshace (no deja nada a medias, pero no restaura). Es el caso de la vuelta atrás de un despliegue:
+se restaura con el `psql` de `docs/07-multitenant-despliegue.md` ("Vuelta atrás"). Mejora pendiente de `sql_permisos_app`: no dar permisos
+sobre `negocios` si la tabla no existe, y reponer los de `negocios` (INSERT/UPDATE), la función y el `REVOKE`.
 
 ### Exportar un negocio
 
@@ -256,20 +279,22 @@ que exportar se niega con `ventas_app`. Local sin Docker: Postgres en el puerto 
 `pg_dump`/`psql`/`node` en el PATH. Lo mismo vale para `npm run test:respaldo:restaurar`, que crea
 una base de prueba: correrlo con un rol con `CREATEDB` (en el compose, el superusuario del contenedor).
 
-## Aviso en pantalla
+## Estado del último respaldo (sin aviso en pantalla)
 
-`src/components/aviso-respaldo.tsx` (en el inicio) muestra un cartel ámbar si el último respaldo
-tiene más de 48 h o si no hay ninguno. Con varios negocios el aviso es **de la base** (el respaldo
-completo cubre a todos), no de un negocio, y **no cuenta** las exportaciones `*.negocio.sql.gz`. La lógica está en `src/lib/respaldo-estado.ts` (verificada
-por `npm run test:respaldo`): mira la fecha de modificación del `.sql.gz` más nuevo de `BACKUP_DIR`.
+`src/lib/respaldo-estado.ts` calcula si el último respaldo completo es viejo: mira la fecha de modificación del `.sql.gz` más nuevo de
+`BACKUP_DIR` y lo compara con un umbral (48 h). Con varios negocios el estado es **de la base** (el respaldo completo cubre a todos),
+no de un negocio, y **no cuenta** las exportaciones `*.negocio.sql.gz`. La lógica está verificada por `npm run test:respaldo`.
 
-| Variable (de la app) | Por defecto | Para qué |
+**Hoy no hay ninguna pantalla que lo muestre:** el cartel ámbar del inicio que existía antes ya no está en el código, y nada importa
+`respaldo-estado.ts`. Hasta que se vuelva a mostrar (queda como mejora), el control es mirar a mano: `ls -lt backups/ | head` y
+`docker compose logs --tail 20 backup`.
+
+| Variable (de la lógica) | Por defecto | Para qué |
 |---|---|---|
 | `BACKUP_DIR` | `./backups` | Directorio que mira (relativo a donde corre la app) |
-| `RESPALDO_AVISO_HORAS` | `48` | Antigüedad a partir de la cual avisa; `0` apaga el aviso |
+| `RESPALDO_AVISO_HORAS` | `48` | Antigüedad a partir de la cual el estado es "viejo"; `0` lo apaga |
 
-- Sin directorio de respaldos: cuenta como "nunca hubo respaldo" y avisa.
-- Directorio ilegible (permisos): estado "desconocido", no avisa y la página funciona igual.
-- En modo demostración (sin base) no avisa: no hay nada que respaldar.
-- Si la app corre en un contenedor, montarle `./backups` (solo lectura alcanza) y apuntar
+- Sin directorio de respaldos: cuenta como "nunca hubo respaldo".
+- Directorio ilegible (permisos): estado "desconocido".
+- Si la app corre en un contenedor y se vuelve a mostrar el estado, montarle `./backups` (solo lectura alcanza) y apuntar
   `BACKUP_DIR` ahí.

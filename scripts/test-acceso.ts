@@ -1681,10 +1681,7 @@ async function aislamientoParametros(ai: Aislamiento, sesiones: Record<Lado, { d
 
 // ─── 5. Server actions con ids del otro negocio ───────────────────────────────
 
-const hoyISO = () => {
-  const hoy = new Date();
-  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
-};
+const hoyISO = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 
 /**
  * Una accion y los argumentos con los que se la invoca sobre las filas de un negocio. El mismo pedido, hecho por el dueño

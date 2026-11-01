@@ -293,7 +293,7 @@ foto "$COPIA" "$SLUG_A" > "$DIR_TMP/A.completo"
 foto "$COPIA" "$SLUG_B" > "$DIR_TMP/B.completo"
 comprobar "y los datos de A y B son exactos" "$(diff "$DIR_TMP/A.antes" "$DIR_TMP/A.completo" >/dev/null && diff "$DIR_TMP/B.antes" "$DIR_TMP/B.completo" >/dev/null && echo 1 || echo 0)"
 if [ "$(valor_sql "$COPIA" "SELECT count(*) FROM pg_roles WHERE rolname = 'ventas_app'")" = 1 ]; then
-  comprobar "la restauracion completa le devuelve sus permisos a ventas_app" "$([ "$(valor_sql "$COPIA" "SELECT has_table_privilege('ventas_app', 'ventas', 'INSERT') AND has_table_privilege('ventas_app', 'negocios', 'SELECT') AND NOT has_table_privilege('ventas_app', 'negocios', 'INSERT')")" = t ] && echo 1 || echo 0)"
+  comprobar "la restauracion completa le devuelve sus permisos a ventas_app" "$([ "$(valor_sql "$COPIA" "SELECT has_table_privilege('ventas_app', 'ventas', 'INSERT') AND has_table_privilege('ventas_app', 'negocios', 'SELECT') AND has_table_privilege('ventas_app', 'negocios', 'INSERT') AND NOT has_table_privilege('ventas_app', 'negocios', 'DELETE')")" = t ] && echo 1 || echo 0)"
 fi
 
 echo ""
