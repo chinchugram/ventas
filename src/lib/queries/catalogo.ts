@@ -16,7 +16,7 @@ export const getConfig = cache(
   (): Promise<Record<string, string>> =>
     conRespaldo(
       async () => {
-        const filas = await conNegocio(await negocioActual(), (tx) => tx.configuracion.findMany());
+        const filas = await conNegocio(await negocioActual(), (tx) => tx.configuracion.findMany({ where: { clave: { notIn: ["logoDatos"] } } }));
         return Object.fromEntries(filas.map((f) => [f.clave, f.valor]));
       },
       () => DEMO_CONFIG,

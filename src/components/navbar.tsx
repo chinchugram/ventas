@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icono, type NombreIcono } from "@/components/iconos";
+import { LogoMarca } from "@/components/logo-marca";
 import { salir } from "@/app/login/actions";
 import type { Rol } from "@/lib/auth-pura";
 import { puedeTodo, rutaDeInicio, type Accion } from "@/lib/permisos-pura";
@@ -103,7 +104,7 @@ function inicial(nombre: string): string {
   return ([...nombre.trim()][0] ?? "?").toLocaleUpperCase("es-AR");
 }
 
-export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string; usuario: UsuarioNavbar }) {
+export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string | null; usuario: UsuarioNavbar }) {
   const pathname = usePathname() ?? "/";
   const principales = entradasVisibles(usuario.rol, PRINCIPALES);
   const secundarias = entradasVisibles(usuario.rol, SECUNDARIAS);
@@ -171,8 +172,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
               className="flex shrink-0 items-center rounded-lg p-1"
               aria-label={`${nombre}, ir al inicio`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logo} alt={nombre} className="h-10 w-auto" />
+              <LogoMarca nombre={nombre} logo={logo} alto="h-10" />
             </Link>
 
             {/* Desde md: las principales y "Más" (hoja); desde lg, las secciones sueltas y los menús
