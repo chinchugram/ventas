@@ -92,6 +92,8 @@ const CLASIFICACION: Record<string, Clase> = {
   "/icon.png": "publica",
   "/apple-icon.png": "publica",
   "/marca/*": "publica",
+  // F4.2: logo de un negocio por slug (lo necesita /login sin sesion; el proxy excluye `marca/`).
+  "/marca/logo/[slug]": "publica",
   // Solo dueno.
   "/": "dueno",
   "/catalogo": "dueno",
@@ -458,7 +460,26 @@ const MARGEN_OBJETIVO = "47.3";
 type Prisma = PrismaClient;
 
 /** Pisa los costos del seed con valores unicos y con centavos, y deja ventas y compras coherentes con ellos. */
+/**
+ * Negocio aparte con un logo propio, para la ruta publica `/marca/logo/[slug]`. Es otro negocio a
+ * proposito: `quitarLogo` se invoca de verdad como DUENO de hl-laser (cuerpo vacio) y no debe tocar
+ * ni cambiar nada de un negocio ajeno (la huella de la base lo comprueba).
+ */
+const SLUG_CON_LOGO = "acceso-logo";
+async function sembrarLogoDeOtroNegocio(prisma: Prisma) {
+  const negocio = await prisma.negocio.create({ data: { nombre: "Negocio con logo (acceso)", slug: SLUG_CON_LOGO } });
+  const png = readFileSync(join(RAIZ, "public", "marca", "logo.png"));
+  await prisma.configuracion.createMany({
+    data: [
+      { negocioId: negocio.id, clave: "logoMime", valor: "image/png" },
+      { negocioId: negocio.id, clave: "logoDatos", valor: png.toString("base64") },
+      { negocioId: negocio.id, clave: "logoVersion", valor: "0123456789abcdef" },
+    ],
+  });
+}
+
 async function sembrarDistintivos(prisma: Prisma) {
+  await sembrarLogoDeOtroNegocio(prisma);
   for (const [nombre, costo] of Object.entries(COSTOS_MATERIAL)) {
     await prisma.material.updateMany({ where: { nombre }, data: { costoUnitario: costo } });
   }
@@ -587,6 +608,7 @@ function ejemplares(ids: Ids): Record<string, string[]> {
     "/comprobantes/[id]/imprimir": [ids.comprobante],
     "/configuracion/maquinas/[id]": [ids.maquina],
     "/listas-precios/[id]": [ids.lista],
+    "/marca/logo/[slug]": [SLUG_CON_LOGO],
     "/materiales/[id]": [ids.material],
     "/materiales/[id]/editar": [ids.material],
     "/presupuestos/[id]": [ids.presupuesto],
@@ -1020,6 +1042,8 @@ const CLASIFICACION_ACCIONES: Record<string, Clase> = {
   "configuracion/actions.ts#crearMaquina": "dueno",
   "configuracion/actions.ts#editarMaquina": "dueno",
   "configuracion/actions.ts#cambiarActivoMaquina": "dueno",
+  "configuracion/actions.ts#subirLogo": "dueno",
+  "configuracion/actions.ts#quitarLogo": "dueno",
   "listas-precios/actions.ts#crearLista": "dueno",
   "listas-precios/actions.ts#editarLista": "dueno",
   "listas-precios/actions.ts#cambiarActivoLista": "dueno",

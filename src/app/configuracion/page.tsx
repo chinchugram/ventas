@@ -9,16 +9,19 @@ import { Seccion, Vacio } from "@/components/ui";
 import { ConfiguracionForm } from "./_componentes/configuracion-form";
 import { DatosFiscalesForm, type ValoresDatosFiscales } from "./_componentes/datos-fiscales-form";
 import { requierePermisoPagina } from "@/lib/permisos";
+import { getMarca } from "@/lib/marca";
+import { LogoForm } from "./_componentes/logo-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConfiguracionPage() {
   await requierePermisoPagina("configuracion");
-  const [config, maquinas, articulosConManoObra, configCruda] = await Promise.all([
+  const [config, maquinas, articulosConManoObra, configCruda, marca] = await Promise.all([
     getConfiguracion(),
     getMaquinas(),
     getArticulosConManoObra(),
     getConfig(),
+    getMarca(),
   ]);
 
   const fiscal = entradaDesdeConfiguracion(configCruda);
@@ -39,7 +42,9 @@ export default async function ConfiguracionPage() {
       <div className="mb-6">
         <ConfiguracionForm
           inicial={{
-            nombreNegocio: config.nombreNegocio,
+            // El nombre que ve el negocio (el de su configuracion o, si nunca lo guardo, `Negocio.nombre`):
+            // asi guardar este formulario sin tocarlo no le cambia la marca por un valor por defecto.
+            nombreNegocio: marca.nombre,
             costoHoraManoObra: config.costoHoraManoObra.toString(),
             ivaPorDefecto: config.ivaPorDefecto.toString(),
             margenObjetivo: config.margenObjetivo.toString(),
@@ -47,6 +52,10 @@ export default async function ConfiguracionPage() {
           articulosConManoObra={articulosConManoObra}
           esModoDemo={estadoDemo().activo}
         />
+      </div>
+
+      <div className="mb-6">
+        <LogoForm nombre={marca.nombre} logo={marca.logo} logoPropio={marca.logoPropio} esModoDemo={estadoDemo().activo} />
       </div>
 
       <div className="mb-6">

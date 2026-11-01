@@ -1,4 +1,6 @@
+import { LogoMarca } from "@/components/logo-marca";
 import { formatearCuit } from "@/lib/cuit";
+import { getMarca } from "@/lib/marca";
 import { discriminaIva, esNotaCredito, letraDe, NOMBRE_TIPO, numeroFormateado } from "@/lib/comprobantes";
 import { aCosto, fmtFecha, fmtNumero, fmtPorcentaje } from "@/lib/money";
 import { svgQr } from "@/lib/qr-fiscal";
@@ -26,7 +28,8 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
   const discrimina = discriminaIva(c.tipo);
   const esNc = esNotaCredito(c.tipo);
   const emitido = c.estado === "EMITIDO" && c.cae !== null && c.caeVencimiento !== null;
-  const marca = sinValidezFiscal(c.ambiente);
+  const marca = await getMarca();
+  const sinValidez = sinValidezFiscal(c.ambiente);
 
   let qr: string | null = null;
   let qrError = false;
@@ -62,6 +65,10 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
       {/* Encabezado: tipo y letra, datos del comprobante. */}
       <header className="grid gap-0 border-b border-slate-400 sm:grid-cols-[1fr_auto_1fr]">
         <div className="p-3 sm:order-1">
+          {/* Marca visual del negocio: solo cosmetica. El emisor fiscal es la foto (`c.emisor`), no la marca. */}
+          <div data-marca-visual className="mb-2 inline-block rounded-lg bg-tinta px-2 py-1">
+            <LogoMarca nombre={marca.nombre} logo={marca.logo} alto="h-10" />
+          </div>
           <p className="text-lg leading-tight font-bold">{c.emisor.razonSocial}</p>
           <p className="mt-1 text-slate-700">{c.emisor.domicilio}</p>
           <p className="mt-1 font-medium">{ETIQUETA_CONDICION_IVA[c.emisor.condicionIva]}</p>
@@ -233,7 +240,7 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
         )}
       </section>
 
-      {marca ? (
+      {sinValidez ? (
         <FranjaSinValidez ambiente={c.ambiente} className="pie-sin-validez" />
       ) : null}
 

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dbDisponible } from "@/lib/prisma";
 import { conNegocio, negocioActual } from "@/lib/negocio";
+import { guardarLogoEnTx, quitarLogoEnTx } from "@/lib/marca";
+import { MAX_LOGO_BYTES, validarLogo } from "@/lib/marca-pura";
 import { verificarPermiso } from "@/lib/permisos";
 import { mensajeDeError, primerError, SIN_BASE, type Resultado } from "@/lib/acciones";
 import { esquemaConfiguracion, esquemaMaquina, type DatosConfiguracion, type DatosMaquina } from "@/lib/configuracion";
@@ -36,6 +38,71 @@ export async function guardarConfiguracion(datos: DatosConfiguracion): Promise<R
   } catch (error) {
     console.error("[guardarConfiguracion]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar la configuración.") };
+  }
+
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+// ─── Logo del negocio (F4.2) ──────────────────────────────────────────────────
+// Lo sube el dueño (permiso `configuracion`). El archivo se vuelve a validar aca, por contenido
+// (`validarLogo`): el `type` y el nombre que manda el navegador no cuentan. Va al negocio de la
+// SESION, nunca a uno que mande el cliente. Es solo cosmetico: el emisor fiscal de los
+// comprobantes sigue siendo la foto de los datos fiscales.
+
+/**
+ * Lo que llega en el campo `logo`: un archivo (los campos de texto son `string`). Se reconoce por
+ * lo que sabe hacer y no con `instanceof File`: el `File` que arma el servidor de Next al
+ * decodificar el formulario no siempre es la misma clase que el global.
+ */
+type ArchivoSubido = { size: number; arrayBuffer(): Promise<ArrayBuffer> };
+const esArchivo = (v: unknown): v is ArchivoSubido =>
+  typeof v === "object" &&
+  v !== null &&
+  typeof (v as ArchivoSubido).arrayBuffer === "function" &&
+  typeof (v as ArchivoSubido).size === "number";
+
+const esquemaLogo = z.object({
+  logo: z
+    .custom<ArchivoSubido>(esArchivo, "Elegí un archivo de imagen.")
+    .refine((f) => f.size > 0, "El archivo está vacío.")
+    .refine((f) => f.size <= MAX_LOGO_BYTES, "El logo pesa más de 1 MB, que es el máximo. Probá con una imagen más liviana."),
+});
+
+/** Sube o reemplaza el logo del negocio. Acepta PNG, JPG o SVG simple, hasta 1 MB. */
+export async function subirLogo(datos: FormData): Promise<Resultado> {
+  const permiso = await verificarPermiso("configuracion");
+  if (!permiso.ok) return permiso;
+  const parsed = esquemaLogo.safeParse({ logo: typeof datos?.get === "function" ? datos.get("logo") : null });
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  const validado = validarLogo(new Uint8Array(await parsed.data.logo.arrayBuffer()));
+  if (!validado.ok) return { ok: false, error: validado.error };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+
+  try {
+    const negocioId = await negocioActual();
+    await conNegocio(negocioId, (tx) => guardarLogoEnTx(tx, negocioId, validado.logo));
+  } catch (error) {
+    console.error("[subirLogo]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo guardar el logo.") };
+  }
+
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Quita el logo subido: el negocio vuelve a su logo por defecto o a las iniciales. */
+export async function quitarLogo(): Promise<Resultado> {
+  const permiso = await verificarPermiso("configuracion");
+  if (!permiso.ok) return permiso;
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+
+  try {
+    const negocioId = await negocioActual();
+    await conNegocio(negocioId, (tx) => quitarLogoEnTx(tx, negocioId));
+  } catch (error) {
+    console.error("[quitarLogo]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo quitar el logo.") };
   }
 
   revalidatePath("/", "layout");
