@@ -10,26 +10,61 @@
  * pagina, route handler) y, sobre todo, lo que ninguna prueba en proceso puede
  * ver: lo que realmente viaja en el HTML y en el flujo RSC.
  *
- * COMO CORRE (todo propio, no toca tus datos)
- *  1. Toma `DATABASE_URL` (de .env o del entorno) SOLO para saber servidor,
- *     usuario y clave. Crea una base PROPIA llamada `ventas_acceso` en ese
- *     servidor (la borra primero si habia una vieja), le aplica las migraciones
- *     (`prisma migrate deploy`) y el seed, y la destruye al terminar. Se niega a
- *     correr si `DATABASE_URL` ya apunta a `ventas_acceso`. `ACCESO_BASE=ventas_acceso_x`
- *     cambia el nombre (siempre empieza con `ventas_acceso`); `ACCESO_CONSERVAR=1`
- *     no la borra (queda con los usuarios de prueba borrados) para investigar.
- *  2. Siembra costos DISTINTIVOS (p. ej. el vinil cuesta 7.531,27) para que un
- *     costo filtrado no se confunda con un precio de venta.
- *  3. Hace `next build` (siempre, para probar el codigo actual; `ACCESO_SIN_BUILD=1`
- *     reutiliza `.next`) y arranca `next start -p 3103` como proceso hijo (se lo
- *     mata por PID al final, nunca por nombre). Si el puerto esta ocupado, aborta:
- *     liberalo con `fuser -k 3103/tcp`.
- *  4. Crea en la base usuarios de prueba (dueno, empleado, dueno dado de baja) y
- *     sus sesiones con las funciones de `src/lib/auth-pura.ts` (token aleatorio +
- *     SHA-256 en `sesiones`), y las manda en la cabecera `Cookie`. Con `next start`
- *     NODE_ENV es production: la cookie se llama `__Host-ventas_sesion`; se envia a
- *     mano por HTTP plano contra 127.0.0.1. El login por HTTP plano NO se prueba
- *     (el navegador descartaria la cookie `Secure`); lo cubre `test:auth:db`.
+ * COMO CORRE (todo propio, no toca tus datos; solo Postgres LOCAL)
+ *  1. Toma `DATABASE_URL` (de .env o del entorno; o `ACCESO_URL_ADMIN`) SOLO para
+ *     saber servidor y un rol con CREATEDB (p. ej. `postgres`). Crea una base
+ *     PROPIA llamada `ventas_acceso` (dueña: `ventas_migrador`) en ese servidor (la
+ *     borra primero si habia una vieja), le aplica las migraciones y el seed con el
+ *     rol MIGRADOR, y la destruye al terminar. Se niega a correr si `DATABASE_URL` ya
+ *     apunta a `ventas_acceso` o no es local. `ACCESO_BASE=ventas_acceso_x` cambia
+ *     el nombre (siempre empieza con `ventas_acceso`); `ACCESO_CONSERVAR=1` no la
+ *     borra para investigar.
+ *  2. LA APP CORRE CON EL ROL `ventas_app` (SUJETO a RLS: ni superusuario ni BYPASSRLS),
+ *     no con el superusuario: sin eso, el aislamiento entre negocios no se prueba.
+ *     Los dos roles (`ventas_app` / `ventas_migrador`, claves iguales al nombre salvo
+ *     `ACCESO_CLAVE_APP` / `ACCESO_CLAVE_MIGRADOR`) tienen que existir en el servidor
+ *     (scripts/crear-roles-db.sql); si no, la prueba FALLA en vez de caer a un superusuario.
+ *     A la app no se le pasa `DATABASE_URL_MIGRACIONES` ni `PERMITIR_ROL_CON_BYPASS_RLS`.
+ *  3. El seed deja DOS negocios (A = `hl-laser`, B = `taller-demo`). Se siembran costos
+ *     DISTINTIVOS en A (p. ej. el vinil cuesta 7.531,27) para que un costo filtrado no se
+ *     confunda con un precio de venta, y en CADA negocio ventas, factura, presupuestos,
+ *     produccion y usuarios de prueba. Todo lo que busca la prueba se acota por `negocioId`.
+ *  4. Hace `next build` (siempre, para probar el codigo actual; `ACCESO_SIN_BUILD=1`
+ *     reutiliza `.next`) y arranca `next start -p 3103` (`ACCESO_PUERTO`) como proceso
+ *     hijo (se lo mata por PID al final, nunca por nombre), con el emisor fiscal
+ *     simulado permitido (facturar de verdad por HTTP). Si el puerto esta ocupado,
+ *     aborta: liberalo con `fuser -k 3103/tcp`.
+ *  5. Crea en la base usuarios de prueba (dueno, empleado, dueno dado de baja; y dueno y
+ *     empleado del negocio B) y sus sesiones con las funciones de `src/lib/auth-pura.ts`
+ *     (token aleatorio + SHA-256 en `sesiones`), y las manda en la cabecera `Cookie`.
+ *     Con `next start` NODE_ENV es production: la cookie se llama `__Host-ventas_sesion`;
+ *     se envia a mano por HTTP plano contra 127.0.0.1. El login por HTTP plano NO se
+ *     prueba (el navegador descartaria la cookie `Secure`); lo cubre `test:auth:db`.
+ *  6. Al final corre `npm run test:rls` sobre la misma base (con los dos roles); salvo
+ *     `ACCESO_SIN_RLS=1`. Con eso, esta prueba es la suite de cierre del aislamiento.
+ *
+ * AISLAMIENTO ENTRE NEGOCIOS (VTA-20) — sin esto no se despliega
+ *  Logueado como dueño y como empleado de CADA negocio (cuatro personas), se intenta ver
+ *  y tocar lo del OTRO negocio con ids reales. Una respuesta destinada a un negocio no puede
+ *  traer ni un rastro del otro: ni la MARCA que se agrega a los nombres de sus clientes,
+ *  materiales, articulos, maquinas, listas y usuarios, ni CUALQUIER id (uuid) de cualquiera
+ *  de sus filas. Cada familia tiene su control positivo (lo propio SI funciona).
+ *   - urls-ajenas:  detalle por URL (venta, cliente, comprobante, presupuesto, trabajo de
+ *     produccion, material, articulo, lista, maquina, usuario...; HTML y RSC) → 404/403/redireccion.
+ *   - listados:     listados, tablero y reportes (tambien con un rango de fechas amplio).
+ *   - csv:          las exportaciones CSV de reportes traen solo filas del negocio propio.
+ *   - parametros:   `?negocio=`, `?negocioId=`, cabeceras `X-Negocio*`, cookies extra y cookies de
+ *     sesion manipuladas no cambian el negocio.
+ *   - acciones:     server actions con ids del otro negocio (pagar, anular, facturar, nota de
+ *     credito, presupuestos, clientes, stock, produccion, usuarios...; y claves foraneas cruzadas)
+ *     fallan y no escriben nada; el mismo pedido sobre lo propio funciona. Un `negocioId` en el
+ *     pedido no cambia donde se escribe.
+ *   - estructura:   toda tabla con `negocioId` tiene RLS activo y forzado y una politica en
+ *     `pg_policies`; una tabla nueva sin politica hace fallar la prueba.
+ *   - rol-de-la-app, clasificacion (con scripts/auditoria-permisos.ts: /admin/** es del SUPERADMIN).
+ *  Comprobar que la suite sirve: `ACCESO_ROMPER=ventas` apaga RLS en esa tabla y
+ *  `ACCESO_ROMPER=clientes:politica` la deja con una politica que deja pasar todo; la prueba
+ *  TIENE que salir con codigo 1 (lo avisa al final).
  *
  * QUE VERIFICA
  *  1. Inventario: cada `page.tsx`, `route.ts`, ruta de metadatos y archivo de
@@ -64,6 +99,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { armarValorDeCookie, generarToken, hashDeToken, hashearClave, nombreCookie } from "../src/lib/auth-pura";
 import { accesoSimulado, emitirFactura } from "../src/lib/dominio/comprobantes";
 import { crearEmisorSimulado } from "../src/lib/fiscal/emisor-simulado";
+import { auditarAdmin, claseDeArchivo } from "./auditoria-permisos";
 
 // ─── Configuracion ────────────────────────────────────────────────────────────
 
@@ -75,6 +111,22 @@ const NOMBRE_BASE = process.env.ACCESO_BASE ?? "ventas_acceso";
 const COOKIE = nombreCookie(true); // __Host-ventas_sesion: la que usa `next start`
 const CLAVE_DE_PRUEBA = "clave-de-prueba-acceso-83";
 const DIA = 24 * 60 * 60 * 1000;
+
+// Los dos negocios que siembra `db:seed` (VTA-19): A = HL Laser, B = Taller Demo. Sus ids se resuelven despues del seed.
+const SLUG_A = "hl-laser";
+const SLUG_B = "taller-demo";
+let NEG_A = "";
+let NEG_B = "";
+// Roles de base de datos (scripts/crear-roles-db.sql). La app corre con `ventas_app` (SUJETO a RLS); el migrador (dueño de las
+// tablas, BYPASSRLS) migra, siembra y deja las sesiones de prueba. Las claves por defecto son las de desarrollo (= el nombre).
+const ROL_APP = process.env.ACCESO_ROL_APP ?? "ventas_app";
+const CLAVE_APP = process.env.ACCESO_CLAVE_APP ?? ROL_APP;
+const ROL_MIGRADOR = process.env.ACCESO_ROL_MIGRADOR ?? "ventas_migrador";
+const CLAVE_MIGRADOR = process.env.ACCESO_CLAVE_MIGRADOR ?? ROL_MIGRADOR;
+// Texto que se agrega al nombre de lo que cada negocio tiene (clientes, materiales, ...): si aparece en una respuesta destinada al
+// OTRO negocio, es una fuga. Sin digitos, para no chocar con el detector de importes.
+const MARCA_A = "ZZAISLAMIENTOA";
+const MARCA_B = "ZZAISLAMIENTOB";
 
 // ─── Clasificacion de rutas ───────────────────────────────────────────────────
 // A mano, a proposito: si se derivara del codigo, un permiso mal puesto pasaria
@@ -414,12 +466,60 @@ function urlDeBase(original: string, nombre: string, conSchema: boolean): string
   return u.toString();
 }
 
+/** Solo Postgres local: localhost o un socket unix (`?host=/ruta`). */
+function esLocal(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const socket = u.searchParams.get("host");
+    if (socket) return socket.startsWith("/");
+    return ["localhost", "127.0.0.1", "::1", "[::1]", ""].includes(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** La misma URL con otro usuario y clave (servidor y base no cambian). */
+function urlConRol(url: string, rol: string, clave: string): string {
+  const u = new URL(url);
+  u.username = rol;
+  u.password = clave;
+  return u.toString();
+}
+
+/**
+ * La prueba de aislamiento solo vale si la app corre con un rol SUJETO a RLS: si los roles no existen o la app se
+ * saltara las politicas, la prueba daria verde sin probar nada. Falla fuerte, en vez de caer a un superusuario.
+ */
+async function verificarRoles(adminUrl: string) {
+  const admin = new Client({ connectionString: adminUrl });
+  await admin.connect();
+  try {
+    const { rows } = await admin.query<{ rolname: string; rolsuper: boolean; rolbypassrls: boolean; rolcanlogin: boolean }>(
+      `SELECT rolname, rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = ANY($1::text[])`,
+      [[ROL_APP, ROL_MIGRADOR]],
+    );
+    const app = rows.find((r) => r.rolname === ROL_APP);
+    const migrador = rows.find((r) => r.rolname === ROL_MIGRADOR);
+    if (!app || !migrador) {
+      throw new Error(
+        `Faltan los roles de base de datos (${ROL_APP} / ${ROL_MIGRADOR}) en el servidor de DATABASE_URL: sin ellos la app no puede correr con RLS real. ` +
+          "Crealos con scripts/crear-roles-db.sql (o indica otros con ACCESO_ROL_APP / ACCESO_ROL_MIGRADOR y sus claves con ACCESO_CLAVE_APP / ACCESO_CLAVE_MIGRADOR).",
+      );
+    }
+    if (app.rolsuper || app.rolbypassrls) throw new Error(`El rol de la app (${ROL_APP}) es superusuario o tiene BYPASSRLS: la prueba de aislamiento no probaria nada.`);
+    if (!migrador.rolbypassrls) throw new Error(`El rol migrador (${ROL_MIGRADOR}) necesita BYPASSRLS para sembrar los dos negocios.`);
+  } finally {
+    await admin.end();
+  }
+}
+
 async function recrearBase(adminUrl: string, nombre: string) {
   const admin = new Client({ connectionString: adminUrl });
   await admin.connect();
   try {
     await admin.query(`DROP DATABASE IF EXISTS "${nombre}" WITH (FORCE)`);
-    await admin.query(`CREATE DATABASE "${nombre}"`);
+    // Dueña de la base y de las tablas: el migrador (como en produccion). La app no es dueña de nada.
+    await admin.query(`CREATE DATABASE "${nombre}" OWNER "${ROL_MIGRADOR}"`);
   } finally {
     await admin.end();
   }
@@ -485,23 +585,24 @@ async function sembrarLogoDeOtroNegocio(prisma: Prisma) {
 
 async function sembrarDistintivos(prisma: Prisma) {
   await sembrarLogoDeOtroNegocio(prisma);
+  // Todo lo de aca es del negocio A (hl-laser): con dos negocios sembrados, un `findMany` sin filtro tomaria filas de B.
+  const negocioId = NEG_A;
   for (const [nombre, costo] of Object.entries(COSTOS_MATERIAL)) {
-    await prisma.material.updateMany({ where: { nombre }, data: { costoUnitario: costo } });
+    await prisma.material.updateMany({ where: { negocioId, nombre }, data: { costoUnitario: costo } });
   }
   for (const [nombre, costoHora] of Object.entries(COSTO_HORA_MAQUINA)) {
-    await prisma.maquina.updateMany({ where: { nombre }, data: { costoHora } });
+    await prisma.maquina.updateMany({ where: { negocioId, nombre }, data: { costoHora } });
   }
-  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
   for (const [clave, valor] of [["costoHoraManoObra", COSTO_HORA_MANO_OBRA], ["margenObjetivo", MARGEN_OBJETIVO]] as const) {
     await prisma.configuracion.upsert({ where: { negocioId_clave: { negocioId, clave } }, update: { valor }, create: { negocioId, clave, valor } });
   }
   // Dos materiales bajo el minimo: asi la lista de reposicion tiene renglones con costo estimado para el dueno.
-  await prisma.material.updateMany({ where: { nombre: "Acrílico opalino 3mm" }, data: { stockActual: "1.5" } });
-  await prisma.material.updateMany({ where: { nombre: "Transportador (vinil transfer)" }, data: { stockActual: "8" } });
-  const materiales = new Map((await prisma.material.findMany()).map((m) => [m.id, m]));
+  await prisma.material.updateMany({ where: { negocioId, nombre: "Acrílico opalino 3mm" }, data: { stockActual: "1.5" } });
+  await prisma.material.updateMany({ where: { negocioId, nombre: "Transportador (vinil transfer)" }, data: { stockActual: "8" } });
+  const materiales = new Map((await prisma.material.findMany({ where: { negocioId } })).map((m) => [m.id, m]));
 
   // Compras: el costo de cada renglon es el del material (asi el costo "de compra" tambien es distintivo).
-  for (const compra of await prisma.compra.findMany({ include: { items: true } })) {
+  for (const compra of await prisma.compra.findMany({ where: { negocioId }, include: { items: true } })) {
     let total = new Decimal(0);
     for (const item of compra.items) {
       const costo = new Decimal(materiales.get(item.materialId)!.costoUnitario.toString());
@@ -514,7 +615,7 @@ async function sembrarDistintivos(prisma: Prisma) {
 
   // Ventas: costo congelado distinto en cada renglon, y el costo total de la venta es su suma.
   let k = 0;
-  for (const venta of await prisma.venta.findMany({ orderBy: { numero: "asc" }, include: { items: { orderBy: { id: "asc" } } } })) {
+  for (const venta of await prisma.venta.findMany({ where: { negocioId }, orderBy: { numero: "asc" }, include: { items: { orderBy: { id: "asc" } } } })) {
     let costoTotal = new Decimal(0);
     for (const item of venta.items) {
       const unitario = new Decimal("1234.56").plus(new Decimal("321.19").times(k++));
@@ -526,22 +627,25 @@ async function sembrarDistintivos(prisma: Prisma) {
   }
 }
 
+type MatRow = { id: string; costoUnitario: { toString(): string } };
+type MaqRow = { id: string; costoHora: { toString(): string } };
+
 /**
  * Ola 6: dos trabajos de produccion VIGENTES (de hoy: caen en el mes que muestra el margen real por defecto) con
  * costos congelados distintivos y con centavos, mas uno ANULADO (que no cuenta y tiene su propio costo distintivo).
  * Asi el margen real tiene numeros que se pueden buscar si se filtraran al empleado.
+ *
+ * Se siembra en CADA negocio (el B con materiales y maquinas propios): el tercer renglon queda con un trabajo anulado,
+ * es decir "sin cargar", y es el blanco de `cargarTrabajo` en la prueba de aislamiento.
  */
-async function sembrarProduccion(prisma: Prisma, usuarioId: string) {
+async function sembrarProduccion(prisma: Prisma, negocioId: string, usuarioId: string, vinil: MatRow, transportador: MatRow, plotter: MaqRow, laser: MaqRow) {
   const hoy = new Date();
   const fecha = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()));
-  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
-  const material = (nombre: string) => prisma.material.findFirstOrThrow({ where: { nombre } });
-  const maquina = (nombre: string) => prisma.maquina.findFirstOrThrow({ where: { nombre } });
-  const vinil = await material("Vinil adhesivo brillante");
-  const transportador = await material("Transportador (vinil transfer)");
-  const plotter = await maquina("Plotter de impresión");
-  const laser = await maquina("Láser CO2");
-  const items = await prisma.ventaItem.findMany({ where: { venta: { estado: { not: "ANULADA" } } }, orderBy: [{ venta: { numero: "asc" } }, { id: "asc" }], take: 3 });
+  const items = await prisma.ventaItem.findMany({
+    where: { negocioId, venta: { estado: { not: "ANULADA" } } },
+    orderBy: [{ venta: { numero: "asc" } }, { id: "asc" }],
+    take: 3,
+  });
   if (items.length < 3) throw new Error("El seed no trae 3 renglones de ventas para sembrar produccion.");
   const [i1, i2, i3] = items as [(typeof items)[number], (typeof items)[number], (typeof items)[number]];
   // 1: consumo + maquinas + mano de obra.
@@ -568,39 +672,97 @@ async function sembrarProduccion(prisma: Prisma, usuarioId: string) {
   });
 }
 
-type Ids = { articulo: string; cliente: string; maquina: string; lista: string; material: string; presupuesto: string; venta: string; usuario: string; comprobante: string; ventaItem: string; trabajo: string };
+/** Los ids de un negocio con los que se instancian las rutas dinamicas y se arman los pedidos de la prueba de aislamiento. */
+type Ids = {
+  articulo: string; cliente: string; maquina: string; lista: string; material: string; presupuesto: string; venta: string; usuario: string;
+  comprobante: string; ventaItem: string; trabajo: string;
+  // Blancos de las server actions (cada uno se usa en UNA accion, para que el control del dueño propio pueda repetirla).
+  presupuestoAnular: string; presupuestoConvertir: string; ventaPagar: string; ventaEntregar: string; ventaFacturar: string; ventaAnular: string;
+  pago: string; trabajoAnular: string; ventaItemLibre: string; usuarioVictima: string;
+  clienteActivo: string; materialActivo: string; maquinaActivo: string; articuloActivo: string; listaActiva: string;
+};
 
-/** Lo que el seed no trae (lista de precios y presupuesto) y los ids para instanciar las rutas dinamicas. */
-async function prepararEjemplares(prisma: Prisma, usuarioId: string): Promise<Ids> {
-  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
-  const articulo = (await prisma.articulo.findFirst({ where: { nombre: { startsWith: "Sticker" } } }))!;
-  const cliente = (await prisma.cliente.findFirst({ orderBy: { nombre: "asc" } }))!;
-  const maquina = (await prisma.maquina.findFirst({ orderBy: { nombre: "asc" } }))!;
-  const material = (await prisma.material.findFirst({ where: { nombre: { startsWith: "Vinil" } } }))!;
+type Preferencias = { articuloEmpieza?: string; materialEmpieza?: string };
+
+/** Lo que el seed no trae (lista de precios, presupuestos y factura) y los ids para instanciar las rutas dinamicas. */
+async function prepararEjemplares(prisma: Prisma, negocioId: string, usuarioId: string, usuarioVictimaId: string, pref: Preferencias = {}): Promise<Ids> {
+  const articulos = await prisma.articulo.findMany({ where: { negocioId }, orderBy: { nombre: "asc" } });
+  const articulo = (pref.articuloEmpieza ? articulos.find((a) => a.nombre.startsWith(pref.articuloEmpieza!)) : undefined) ?? articulos[0]!;
+  const articuloActivo = articulos.find((a) => a.id !== articulo.id)!;
+  const clientes = await prisma.cliente.findMany({ where: { negocioId }, orderBy: { nombre: "asc" } });
+  const cliente = clientes[0]!;
+  const clienteActivo = clientes[1]!;
+  const maquinas = await prisma.maquina.findMany({ where: { negocioId }, orderBy: { nombre: "asc" } });
+  const maquina = maquinas[0]!;
+  const maquinaActivo = maquinas[1]!;
+  const materiales = await prisma.material.findMany({ where: { negocioId }, orderBy: { nombre: "asc" } });
+  const material = (pref.materialEmpieza ? materiales.find((m) => m.nombre.startsWith(pref.materialEmpieza!)) : undefined) ?? materiales[0]!;
+  const materialActivo = materiales.find((m) => m.id !== material.id)!;
   const lista = await prisma.listaPrecio.create({
     data: { negocioId, nombre: "Lista de prueba (acceso)", descuentoPct: "10", items: { create: [{ negocioId, articuloId: articulo.id, precio: "3100" }] } },
   });
-  const presupuesto = await prisma.presupuesto.create({
-    data: {
-      negocioId,
-      numero: 1,
-      anio: new Date().getFullYear(),
-      clienteId: cliente.id,
-      fecha: new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())),
-      items: { create: [{ negocioId, articuloId: articulo.id, descripcion: articulo.nombre, cantidad: "10", precioUnitario: "3500", ivaPct: "21" }] },
-    },
+  const listaActiva = await prisma.listaPrecio.create({ data: { negocioId, nombre: "Lista a dar de baja (acceso)", descuentoPct: "5" } });
+
+  // Presupuestos: uno para las pantallas, uno que se anula y uno que se convierte en venta.
+  const anio = new Date().getFullYear();
+  const fecha = new Date(Date.UTC(anio, new Date().getMonth(), new Date().getDate()));
+  let numero = ((await prisma.presupuesto.aggregate({ where: { negocioId, anio }, _max: { numero: true } }))._max.numero ?? 0);
+  const presupuesto = async () =>
+    (
+      await prisma.presupuesto.create({
+        data: {
+          negocioId,
+          numero: (numero += 1),
+          anio,
+          clienteId: cliente.id,
+          fecha,
+          items: { create: [{ negocioId, articuloId: articulo.id, descripcion: articulo.nombre, cantidad: "10", precioUnitario: "3500", ivaPct: "21" }] },
+        },
+      })
+    ).id;
+  const presupuestoId = await presupuesto();
+  const presupuestoAnular = await presupuesto();
+  const presupuestoConvertir = await presupuesto();
+
+  // Ventas: se reparten los renglones entre las pantallas y las acciones (cada una necesita una venta distinta).
+  const ventas = await prisma.venta.findMany({
+    where: { negocioId, estado: { not: "ANULADA" } },
+    include: { _count: { select: { items: true } }, pagos: { where: { anuladoEn: null } } },
+    orderBy: { numero: "asc" },
   });
+  const conTrabajo = new Set((await prisma.trabajoProduccion.findMany({ where: { negocioId }, select: { ventaItem: { select: { ventaId: true } } } })).map((t) => t.ventaItem.ventaId));
+  const pagado = (v: (typeof ventas)[number]) => v.pagos.reduce((a, p) => a.plus(p.monto.toString()), new Decimal(0));
   // La venta con mas renglones: la pantalla de detalle muestra mas cosas.
-  const ventas = await prisma.venta.findMany({ include: { _count: { select: { items: true } } }, orderBy: { numero: "asc" } });
-  const venta = ventas.sort((a, b) => b._count.items - a._count.items)[0]!;
-  // Una factura EMITIDA (simulada) de esa venta: la usan /comprobantes/[id] y su vista imprimible.
+  const venta = [...ventas].sort((a, b) => b._count.items - a._count.items)[0]!;
+  const usadas = new Set([venta.id]);
+  const tomar = (cond: (v: (typeof ventas)[number]) => boolean, descripcion: string) => {
+    const v = ventas.find((x) => !usadas.has(x.id) && cond(x)) ?? ventas.find((x) => !usadas.has(x.id));
+    if (!v) throw new Error(`No hay una venta libre para ${descripcion} en el negocio ${negocioId}.`);
+    usadas.add(v.id);
+    return v;
+  };
+  const ventaEntregar = tomar((v) => v.estado === "PENDIENTE", "marcar entregada");
+  const ventaPagar = tomar((v) => new Decimal(v.totalBruto.toString()).minus(pagado(v)).gt(10), "registrar un pago");
+  const ventaFacturar = tomar((v) => !conTrabajo.has(v.id), "facturar");
+  const ventaAnular = tomar((v) => !conTrabajo.has(v.id) && v.pagos.length === 0, "anular");
+  const pago = ventas.find((v) => v.id !== ventaAnular.id && v.id !== ventaFacturar.id && v.id !== ventaPagar.id && v.pagos.length > 0)?.pagos[0];
+  if (!pago) throw new Error(`No hay un pago para anular en el negocio ${negocioId}.`);
+
+  // Una factura EMITIDA (simulada) de la venta del detalle: la usan /comprobantes/[id] y su vista imprimible.
   // El seed deja los datos fiscales de ejemplo fuera de produccion; si faltaran, la emision falla fuerte.
   const emisor = crearEmisorSimulado(accesoSimulado(prisma, negocioId));
   const emitida = await emitirFactura(prisma, negocioId, venta.id, usuarioId, { emisor });
   if (emitida.estado !== "EMITIDO") throw new Error(`No se pudo sembrar la factura de prueba: ${emitida.mensaje}`);
   // Ola 6: un renglon cualquiera (para la pantalla de carga) y un trabajo vigente (para su detalle), sembrados antes.
-  const trabajo = await prisma.trabajoProduccion.findFirstOrThrow({ where: { anuladoEn: null }, orderBy: { creadoEn: "asc" } });
-  return { articulo: articulo.id, cliente: cliente.id, maquina: maquina.id, lista: lista.id, material: material.id, presupuesto: presupuesto.id, venta: venta.id, usuario: usuarioId, comprobante: emitida.id, ventaItem: trabajo.ventaItemId, trabajo: trabajo.id };
+  const vigentes = await prisma.trabajoProduccion.findMany({ where: { negocioId, anuladoEn: null }, orderBy: { creadoEn: "asc" } });
+  const anulado = await prisma.trabajoProduccion.findFirstOrThrow({ where: { negocioId, anuladoEn: { not: null } } });
+  return {
+    articulo: articulo.id, cliente: cliente.id, maquina: maquina.id, lista: lista.id, material: material.id, presupuesto: presupuestoId, venta: venta.id,
+    usuario: usuarioId, comprobante: emitida.id, ventaItem: vigentes[0]!.ventaItemId, trabajo: vigentes[0]!.id,
+    presupuestoAnular, presupuestoConvertir, ventaPagar: ventaPagar.id, ventaEntregar: ventaEntregar.id, ventaFacturar: ventaFacturar.id, ventaAnular: ventaAnular.id,
+    pago: pago.id, trabajoAnular: vigentes[1]!.id, ventaItemLibre: anulado.ventaItemId, usuarioVictima: usuarioVictimaId,
+    clienteActivo: clienteActivo.id, materialActivo: materialActivo.id, maquinaActivo: maquinaActivo.id, articuloActivo: articuloActivo.id, listaActiva: listaActiva.id,
+  };
 }
 
 /** Ids con los que se instancia cada segmento dinamico. */
@@ -639,7 +801,7 @@ async function valoresSensibles(prisma: Prisma): Promise<{ sensibles: Sensible[]
   const lista: (Sensible | null)[] = [];
   const inocentesDec: Decimal[] = [];
 
-  const materiales = await prisma.material.findMany();
+  const materiales = await prisma.material.findMany({ where: { negocioId: NEG_A } });
   let valorizacion = new Decimal(0);
   for (const m of materiales) {
     lista.push(sensible("costo de material", m.nombre, D(m.costoUnitario)));
@@ -663,16 +825,16 @@ async function valoresSensibles(prisma: Prisma): Promise<{ sensibles: Sensible[]
   }
   if (!totalReposicion.isZero()) lista.push(sensible("costo estimado de reposicion", "total de la compra sugerida", totalReposicion));
 
-  for (const ci of await prisma.compraItem.findMany()) {
+  for (const ci of await prisma.compraItem.findMany({ where: { negocioId: NEG_A } })) {
     lista.push(sensible("costo de compra", `renglon ${ci.id.slice(0, 8)}`, D(ci.costoUnitario)));
     lista.push(sensible("costo de compra", `subtotal ${ci.id.slice(0, 8)}`, D(ci.subtotal)));
     inocentesDec.push(D(ci.cantidad));
   }
-  for (const c of await prisma.compra.findMany()) lista.push(sensible("costo de compra", `total ${c.id.slice(0, 8)}`, D(c.total)));
+  for (const c of await prisma.compra.findMany({ where: { negocioId: NEG_A } })) lista.push(sensible("costo de compra", `total ${c.id.slice(0, 8)}`, D(c.total)));
 
   let costoTodas = new Decimal(0);
   let brutoTodas = new Decimal(0);
-  for (const v of await prisma.venta.findMany({ include: { items: true } })) {
+  for (const v of await prisma.venta.findMany({ where: { negocioId: NEG_A }, include: { items: true } })) {
     const costo = D(v.costoTotal);
     const bruto = D(v.totalBruto);
     const neto = D(v.totalNeto);
@@ -695,8 +857,8 @@ async function valoresSensibles(prisma: Prisma): Promise<{ sensibles: Sensible[]
   lista.push(sensible("ganancia", "suma de todas", brutoTodas.minus(costoTodas)));
   if (!brutoTodas.isZero()) lista.push(sensible("margen", "global", brutoTodas.minus(costoTodas).div(brutoTodas).times(100), "pct"));
 
-  for (const p of await prisma.pago.findMany()) inocentesDec.push(D(p.monto));
-  const maquinas = await prisma.maquina.findMany();
+  for (const p of await prisma.pago.findMany({ where: { negocioId: NEG_A } })) inocentesDec.push(D(p.monto));
+  const maquinas = await prisma.maquina.findMany({ where: { negocioId: NEG_A } });
   for (const m of maquinas) lista.push(sensible("costo de maquina", m.nombre, D(m.costoHora)));
   lista.push(sensible("costo de mano de obra", "hora", new Decimal(COSTO_HORA_MANO_OBRA)));
   lista.push(sensible("margen", "objetivo configurado", new Decimal(MARGEN_OBJETIVO), "pct"));
@@ -704,7 +866,7 @@ async function valoresSensibles(prisma: Prisma): Promise<{ sensibles: Sensible[]
   // Costo teorico y margen de cada articulo, a partir de la receta (misma cuenta que `costearReceta`, sin overrides).
   const costoMaquina = new Map(maquinas.map((m) => [m.id, D(m.costoHora)]));
   const costoMaterial = new Map(materiales.map((m) => [m.id, D(m.costoUnitario)]));
-  for (const a of await prisma.articulo.findMany({ include: { receta: { include: { componentes: true } } } })) {
+  for (const a of await prisma.articulo.findMany({ where: { negocioId: NEG_A }, include: { receta: { include: { componentes: true } } } })) {
     inocentesDec.push(D(a.precioVenta), D(a.ivaPct));
     if (!a.receta) continue;
     let costo = new Decimal(0);
@@ -727,7 +889,7 @@ async function valoresSensibles(prisma: Prisma): Promise<{ sensibles: Sensible[]
   let recetaTodos = new Decimal(0);
   let netoTodos = new Decimal(0);
   const trabajos = await prisma.trabajoProduccion.findMany({
-    where: { anuladoEn: null, ventaItem: { venta: { estado: { not: "ANULADA" } } } },
+    where: { negocioId: NEG_A, anuladoEn: null, ventaItem: { venta: { estado: { not: "ANULADA" } } } },
     include: { consumos: true, tiempos: true, ventaItem: true },
   });
   for (const t of trabajos) {
@@ -839,11 +1001,13 @@ async function detenerServidor() {
 
 type Respuesta = { status: number; location: string | null; tipo: string; cuerpo: string; cabeceras: Headers };
 
-type Pedido = { cookie?: string; rsc?: boolean; metodo?: string; cabeceras?: Record<string, string>; cuerpo?: string };
+/** `cookie` = valor de la cookie de sesion; `cookiesExtra` = otras cookies crudas ("a=1; b=2") que viajan junto a ella. */
+type Pedido = { cookie?: string; cookiesExtra?: string; rsc?: boolean; metodo?: string; cabeceras?: Record<string, string>; cuerpo?: string };
 
 async function pedir(ruta: string, p: Pedido = {}): Promise<Respuesta> {
   const cabeceras: Record<string, string> = { ...p.cabeceras };
-  if (p.cookie) cabeceras["Cookie"] = `${COOKIE}=${p.cookie}`;
+  const cookies = [p.cookie ? `${COOKIE}=${p.cookie}` : "", p.cookiesExtra ?? ""].filter(Boolean).join("; ");
+  if (cookies) cabeceras["Cookie"] = cookies;
   if (p.rsc) cabeceras["RSC"] = "1";
   // Una navegacion RSC de verdad lleva `?_rsc=<hash>` (el hash sale de las cabeceras de navegacion;
   // sin ellas es vacio). Sin el parametro, Next contesta 307 para agregarlo.
@@ -891,22 +1055,22 @@ const aLogin = (r: Respuesta) => (destinoDe(r) === "/login") || r.status === 401
 
 type Sesiones = { dueno: string; empleado: string; duenoId: string; empleadoId: string; bajaId: string; baja: string; superadmin: string; superadminId: string };
 
-async function crearSesionDirecta(prisma: Prisma, usuarioId: string, opciones: { vencida?: boolean; sinNegocio?: boolean } = {}): Promise<string> {
+/** `negocioId` por defecto: el A (hl-laser). Los usuarios de prueba del B pasan el suyo. */
+async function crearSesionDirecta(prisma: Prisma, usuarioId: string, opciones: { vencida?: boolean; sinNegocio?: boolean; negocioId?: string } = {}): Promise<string> {
   const token = generarToken();
   const ahora = Date.now();
   // CHECK de la base: el vencimiento es posterior a la creacion. Una sesion vencida se crea "en el pasado".
   const creadaEn = new Date(opciones.vencida ? ahora - 40 * DIA : ahora);
   const expiraEn = new Date(opciones.vencida ? ahora - 10 * DIA : ahora + 30 * DIA);
   // La sesion del SUPERADMIN no tiene negocio (cookie `admin.<token>`).
-  const negocioId = opciones.sinNegocio ? null : (await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } })).id;
+  const negocioId = opciones.sinNegocio ? null : (opciones.negocioId ?? NEG_A);
   await prisma.sesion.create({ data: { negocioId, tokenHash: hashDeToken(token), usuarioId, creadaEn, renovadaEn: creadaEn, expiraEn } });
   return armarValorDeCookie(negocioId, token); // la cookie lleva `<negocioId>.<token>`
 }
 
 /** Cookie con la forma valida pero sin fila en la base (token inventado, negocio existente). */
-async function cookieInventada(prisma: Prisma): Promise<string> {
-  const { id: negocioId } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
-  return armarValorDeCookie(negocioId, generarToken());
+async function cookieInventada(_prisma: Prisma): Promise<string> {
+  return armarValorDeCookie(NEG_A, generarToken());
 }
 
 // ─── Prueba de cada ruta ──────────────────────────────────────────────────────
@@ -1206,45 +1370,607 @@ async function probarAcciones(ctx: Contexto, instancias: Record<string, string[]
   }
 }
 
+// ─── Aislamiento entre negocios por HTTP (VTA-20) ─────────────────────────────
+// Dos negocios sembrados (A = hl-laser, B = taller-demo), la app corriendo con el rol SUJETO a RLS y cuatro personas
+// logueadas (dueño y empleado de cada uno). Cada una intenta, por todas las rutas, ver o tocar lo del OTRO negocio con
+// ids reales de ese negocio. Se busca de dos maneras: la MARCA que se agrego a los nombres del otro negocio y CUALQUIER
+// id (uuid) de cualquier fila del otro negocio. Un solo rastro en una respuesta ya es una fuga. Cada familia de pruebas
+// trae su control positivo (lo mismo, sobre lo propio, SI funciona): sin el, "no veo nada" podria ser "no veo nada de nada".
+
+type Lado = "A" | "B";
+type Negocio = { lado: Lado; id: string; slug: string; marca: string; ids: Ids; uuids: Set<string> };
+type Actor = { etiqueta: string; lado: Lado; rol: "dueno" | "empleado"; cookie: string };
+type Aislamiento = {
+  prisma: Prisma;
+  negocios: Record<Lado, Negocio>;
+  actores: Actor[];
+  objetivos: { patron: string; clase: Clase; url: string }[];
+};
+
+const otro = (l: Lado): Lado => (l === "A" ? "B" : "A");
+
+// Resultado por familia de pruebas (para el resumen) y fallas con el mismo formato que el resto de la suite.
+const familias = new Map<string, { n: number; fallas: number }>();
+function chequear(familia: string, ok: boolean, esperado: string, evidencia: string, url = familia) {
+  comprobaciones += 1;
+  const f = familias.get(familia) ?? { n: 0, fallas: 0 };
+  f.n += 1;
+  if (!ok) {
+    f.fallas += 1;
+    fallas.push({ url, columna: familia, esperado, evidencia });
+  }
+  familias.set(familia, f);
+}
+
+const RE_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** Todos los ids (uuid) de todas las filas de un negocio, de todas las tablas con `negocioId`, mas el id del negocio. */
+async function uuidsDe(prisma: Prisma, negocioId: string): Promise<Set<string>> {
+  const tablas = await prisma.$queryRaw<{ t: string }[]>`
+    SELECT c.table_name AS t FROM information_schema.columns c
+      JOIN information_schema.tables tb USING (table_schema, table_name)
+     WHERE c.table_schema = 'public' AND tb.table_type = 'BASE TABLE' AND c.column_name = 'negocioId'
+       AND EXISTS (SELECT 1 FROM information_schema.columns i WHERE i.table_schema = 'public' AND i.table_name = c.table_name AND i.column_name = 'id')`;
+  const ids = new Set<string>([negocioId.toLowerCase()]);
+  for (const { t } of tablas) {
+    const filas = await prisma.$queryRawUnsafe<{ id: string }[]>(`SELECT id::text AS id FROM "${t}" WHERE "negocioId" = $1::uuid`, negocioId);
+    for (const f of filas) ids.add(f.id.toLowerCase());
+  }
+  return ids;
+}
+
+/**
+ * Rastros del negocio `ajeno` en un cuerpo. `ignorar`: ids que el pedido mismo trae (la URL con el id del otro negocio puede
+ * volver escrita en el flujo RSC de un 404 sin que sea una fuga; si la pagina mostrara algo de esa fila, igual apareceria su marca).
+ */
+function fugasAjenas(cuerpo: string, ajeno: Negocio, ignorar: readonly string[] = []): string[] {
+  const salida: string[] = [];
+  if (cuerpo.includes(ajeno.marca)) salida.push(`la marca "${ajeno.marca}"`);
+  const omitir = new Set(ignorar.map((i) => i.toLowerCase()));
+  const vistos = new Set<string>();
+  for (const m of cuerpo.match(RE_UUID) ?? []) {
+    const id = m.toLowerCase();
+    if (ajeno.uuids.has(id) && !omitir.has(id) && !vistos.has(id)) {
+      vistos.add(id);
+      salida.push(`el id ${id}`);
+      if (salida.length >= 4) break;
+    }
+  }
+  return salida;
+}
+
+const idsDe = (texto: string) => (texto.match(RE_UUID) ?? []).map((x) => x.toLowerCase());
+const fragmento = (cuerpo: string, rastro: string) => {
+  const dato = rastro.replace(/^(la marca "|el id )/, "").replace(/"$/, "");
+  const i = cuerpo.indexOf(dato);
+  return cuerpo.slice(Math.max(0, i - 60), i + dato.length + 40).replace(/\s+/g, " ");
+};
+
+function autotestDelDetectorDeAislamiento() {
+  console.log("--- Auto-test del detector de aislamiento ---");
+  const ajeno: Negocio = { lado: "B", id: "bbbbbbbb-0000-4000-8000-000000000001", slug: "b", marca: MARCA_B, ids: {} as Ids, uuids: new Set(["bbbbbbbb-0000-4000-8000-000000000002"]) };
+  comprobarSuelta("detecta la marca del otro negocio", fugasAjenas(`<td>Cliente ${MARCA_B}</td>`, ajeno).length === 1);
+  comprobarSuelta("detecta un id del otro negocio (mayusculas incluidas)", fugasAjenas(`<a href="/ventas/BBBBBBBB-0000-4000-8000-000000000002">`, ajeno).length === 1);
+  comprobarSuelta("detecta el id del otro negocio dentro de un flujo RSC", fugasAjenas(`1:{"ventaId":"bbbbbbbb-0000-4000-8000-000000000002"}`, ajeno).length === 1);
+  comprobarSuelta("no marca ids propios ni la marca propia", fugasAjenas(`<td>Cliente ${MARCA_A}</td> aaaaaaaa-0000-4000-8000-000000000002`, ajeno).length === 0);
+  comprobarSuelta("`ignorar` omite el id que el pedido mismo trae", fugasAjenas(`"/ventas/bbbbbbbb-0000-4000-8000-000000000002"`, ajeno, ["bbbbbbbb-0000-4000-8000-000000000002"]).length === 0);
+  comprobarSuelta("`ignorar` no oculta la marca", fugasAjenas(`${MARCA_B} bbbbbbbb-0000-4000-8000-000000000002`, ajeno, ["bbbbbbbb-0000-4000-8000-000000000002"]).length === 1);
+  const resultado = resultadoDeAccion({ status: 200, location: null, tipo: "text/x-component", cuerpo: '0:{"a":"$@1","f":"","b":"x"}\n1:{"ok":false,"error":"No existe"}\n', cabeceras: new Headers() });
+  comprobarSuelta("lee el resultado de una server action del flujo RSC", resultado?.ok === false && resultado.error === "No existe");
+  comprobarSuelta("sin resultado en el flujo: null", resultadoDeAccion({ status: 500, location: null, tipo: "text/plain", cuerpo: "Internal Server Error", cabeceras: new Headers() }) === null);
+}
+
+/** `{ok, error}` que devuelve una server action, leido del flujo `text/x-component` ("1:{...}"). */
+function resultadoDeAccion(r: Respuesta): { ok?: boolean; error?: string } | null {
+  for (const linea of r.cuerpo.split("\n")) {
+    const m = /^[0-9a-f]+:(\{.*\})$/.exec(linea);
+    if (!m) continue;
+    try {
+      const o = JSON.parse(m[1]!) as unknown;
+      if (typeof o === "object" && o !== null && "ok" in o) return o as { ok?: boolean; error?: string };
+    } catch {
+      // no era JSON
+    }
+  }
+  return null;
+}
+
+const NO_ENCONTRADO_RSC = /NEXT_HTTP_ERROR_FALLBACK;40[134]|NEXT_NOT_FOUND/;
+/** "No se muestra": 401/403/404, una redireccion, o el 404 que viaja dentro del flujo RSC. */
+function denegada(r: Respuesta): boolean {
+  return [401, 403, 404].includes(r.status) || destinoDe(r) !== null || redireccionRsc(r) !== null || (r.status === 200 && NO_ENCONTRADO_RSC.test(r.cuerpo));
+}
+
+// ─── 0. Estructura: ninguna tabla con negocioId sin RLS ni politica ───────────
+
+async function aislamientoEstructura(ai: Aislamiento) {
+  console.log("--- Aislamiento: estructura (RLS por tabla, pg_policies) ---");
+  const tablas = await ai.prisma.$queryRaw<{ t: string; rls: boolean; forzada: boolean; politicas: number }[]>`
+    SELECT c.table_name AS t, cl.relrowsecurity AS rls, cl.relforcerowsecurity AS forzada,
+           (SELECT count(*)::int FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.table_name) AS politicas
+      FROM information_schema.columns c
+      JOIN information_schema.tables tb USING (table_schema, table_name)
+      JOIN pg_class cl ON cl.relname = c.table_name AND cl.relnamespace = 'public'::regnamespace
+     WHERE c.table_schema = 'public' AND tb.table_type = 'BASE TABLE' AND c.column_name = 'negocioId'
+     ORDER BY 1`;
+  chequear("estructura", tablas.length >= 20, "al menos 20 tablas con negocioId (la consulta no puede quedar vacia)", `${tablas.length} tablas`);
+  for (const t of tablas) {
+    chequear("estructura", t.rls && t.forzada && t.politicas >= 1, `${t.t}: RLS activo y forzado, con al menos una politica en pg_policies`, `rls=${t.rls}, forzada=${t.forzada}, politicas=${t.politicas}`, `tabla ${t.t}`);
+  }
+  // Una tabla de datos sin `negocioId` tampoco puede aparecer sin que alguien decida que no es de un negocio.
+  const sinNegocioId = await ai.prisma.$queryRaw<{ t: string }[]>`
+    SELECT tb.table_name AS t FROM information_schema.tables tb
+     WHERE tb.table_schema = 'public' AND tb.table_type = 'BASE TABLE' AND tb.table_name NOT IN ('negocios', '_prisma_migrations')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns c WHERE c.table_schema = 'public' AND c.table_name = tb.table_name AND c.column_name = 'negocioId')`;
+  chequear("estructura", sinNegocioId.length === 0, "toda tabla de datos tiene negocioId (salvo negocios)", sinNegocioId.map((x) => x.t).join(", "));
+}
+
+// ─── 1. Detalle por URL de lo del otro negocio ────────────────────────────────
+
+/** Rutas dinamicas con un id de negocio y la clave de `Ids` que las instancia. Cada ruta dinamica nueva tiene que estar aca. */
+const RUTAS_CON_ID: [string, keyof Ids][] = [
+  ["/ventas/[id]", "venta"],
+  ["/clientes/[id]", "cliente"],
+  ["/clientes/[id]/editar", "cliente"],
+  ["/comprobantes/[id]", "comprobante"],
+  ["/comprobantes/[id]/imprimir", "comprobante"],
+  ["/presupuestos/[id]", "presupuesto"],
+  ["/presupuestos/[id]/editar", "presupuesto"],
+  ["/presupuestos/[id]/imprimir", "presupuesto"],
+  ["/produccion/trabajo/[id]", "trabajo"],
+  ["/produccion/cargar/[ventaItemId]", "ventaItem"],
+  ["/materiales/[id]", "material"],
+  ["/materiales/[id]/editar", "material"],
+  ["/catalogo/[id]", "articulo"],
+  ["/listas-precios/[id]", "lista"],
+  ["/configuracion/maquinas/[id]", "maquina"],
+  ["/usuarios/[id]", "usuario"],
+];
+// Rutas dinamicas que no llevan un id de fila de un negocio: el logo por slug (publico) y las exportaciones (se prueban aparte).
+const DINAMICAS_SIN_ID = new Set(["/marca/logo/[slug]", "/reportes/export/[reporte]"]);
+
+async function aislamientoUrlsAjenas(ai: Aislamiento) {
+  console.log("--- Aislamiento: detalle por URL de lo del otro negocio ---");
+  const cubiertas = new Set(RUTAS_CON_ID.map(([p]) => p));
+  for (const o of ai.objetivos) {
+    if (o.patron.includes("[") && !cubiertas.has(o.patron) && !DINAMICAS_SIN_ID.has(o.patron) && o.clase !== "publica") {
+      chequear("urls-ajenas", false, "toda ruta dinamica con id de fila esta en RUTAS_CON_ID", `${o.patron} no esta cubierta`, o.patron);
+    }
+  }
+  for (const actor of ai.actores) {
+    const propio = ai.negocios[actor.lado];
+    const ajeno = ai.negocios[otro(actor.lado)];
+    for (const [patron, clave] of RUTAS_CON_ID) {
+      const clase = CLASIFICACION[patron];
+      for (const rsc of [false, true]) {
+        const etiqueta = `${actor.etiqueta}${rsc ? " (RSC)" : ""}`;
+        // Lo del otro negocio, con su id real: 404/403/redireccion, y ni un rastro en la respuesta.
+        const urlAjena = patron.replace(/\[[^\]]+\]/, ajeno.ids[clave]);
+        const r = await pedir(urlAjena, { cookie: actor.cookie, rsc });
+        chequear("urls-ajenas", denegada(r), `${etiqueta}: 404, 403 o redireccion al abrir ${patron} de ${ajeno.slug}`, evidencia(r), `${etiqueta} ${urlAjena}`);
+        const rastros = fugasAjenas(r.cuerpo, ajeno, idsDe(urlAjena));
+        chequear("urls-ajenas", rastros.length === 0, `${etiqueta}: la respuesta de ${patron} de ${ajeno.slug} no trae nada de ${ajeno.slug}`, rastros.map((x) => `${x} en …${fragmento(r.cuerpo, x)}…`).join(" | "), `${etiqueta} ${urlAjena}`);
+        // Control positivo: lo propio, con la misma forma de URL, SI abre (salvo las del dueño para el empleado).
+        const urlPropia = patron.replace(/\[[^\]]+\]/, propio.ids[clave]);
+        const rp = await pedir(urlPropia, { cookie: actor.cookie, rsc });
+        if (actor.rol === "dueno" || clase === "ambos") {
+          chequear("urls-ajenas-control", rp.status === 200 && redireccionRsc(rp) === null, `${etiqueta}: lo propio abre en ${patron}`, evidencia(rp), `${etiqueta} ${urlPropia}`);
+        } else {
+          chequear("urls-ajenas-control", denegada(rp), `${etiqueta}: ${patron} es del dueño: el empleado propio tampoco entra`, evidencia(rp), `${etiqueta} ${urlPropia}`);
+        }
+      }
+    }
+  }
+}
+
+// ─── 2. Listados, dashboard y reportes: ni una fila del otro negocio ──────────
+
+const RANGO_AMPLIO = "desde=2000-01-01&hasta=2100-12-31";
+const CON_RANGO = ["/", "/reportes", "/reportes/margen-real", "/reportes/stock", "/cobranzas", "/produccion", "/ventas", "/comprobantes", "/presupuestos", "/materiales"];
+
+async function aislamientoListados(ai: Aislamiento) {
+  console.log("--- Aislamiento: listados, tablero y reportes ---");
+  const urls = ai.objetivos
+    .filter((o) => o.clase !== "publica" && o.clase !== "superadmin" && !o.patron.includes("[") && !/\/export(\/|$)/.test(o.url))
+    .map((o) => o.url);
+  const todas = [...new Set([...urls, ...CON_RANGO.map((u) => `${u}${u.includes("?") ? "&" : "?"}${RANGO_AMPLIO}`)])];
+  chequear("listados", todas.length >= 15, "se recorren al menos 15 pantallas de listado", `${todas.length}`);
+  for (const actor of ai.actores) {
+    const propio = ai.negocios[actor.lado];
+    const ajeno = ai.negocios[otro(actor.lado)];
+    const conMarcaPropia = new Set<string>();
+    for (const url of todas) {
+      for (const rsc of [false, true]) {
+        const etiqueta = `${actor.etiqueta}${rsc ? " (RSC)" : ""}`;
+        const r = await pedir(url, { cookie: actor.cookie, rsc });
+        const rastros = fugasAjenas(r.cuerpo, ajeno);
+        chequear("listados", rastros.length === 0, `${etiqueta}: ${url} no trae nada de ${ajeno.slug}`, rastros.map((x) => `${x} en …${fragmento(r.cuerpo, x)}…`).join(" | "), `${etiqueta} ${url}`);
+        if (r.status === 200 && r.cuerpo.includes(propio.marca)) conMarcaPropia.add(url.split("?")[0]!);
+      }
+    }
+    // Control positivo: el negocio propio SI aparece en sus listados (si no, "nada del otro" no probaria nada).
+    chequear("listados-control", conMarcaPropia.size >= 3, `${actor.etiqueta}: al menos 3 pantallas muestran filas del negocio propio`, `solo ${conMarcaPropia.size}: ${[...conMarcaPropia].join(", ")}`, actor.etiqueta);
+  }
+}
+
+// ─── 3. CSV de reportes ───────────────────────────────────────────────────────
+
+async function aislamientoCsv(ai: Aislamiento) {
+  console.log("--- Aislamiento: exportaciones CSV ---");
+  const reportes = [...REPORTES_CSV.map((r) => `/reportes/export/${r}`), "/reportes/margen-real/export"];
+  for (const actor of ai.actores) {
+    const propio = ai.negocios[actor.lado];
+    const ajeno = ai.negocios[otro(actor.lado)];
+    let filasPropias = 0;
+    for (const ruta of reportes) {
+      const url = `${ruta}?${RANGO_AMPLIO}`;
+      const r = await pedir(url, { cookie: actor.cookie });
+      const rastros = fugasAjenas(r.cuerpo, ajeno);
+      chequear("csv", rastros.length === 0, `${actor.etiqueta}: ${ruta} no trae filas de ${ajeno.slug}`, rastros.map((x) => `${x} en …${fragmento(r.cuerpo, x)}…`).join(" | "), `${actor.etiqueta} ${ruta}`);
+      if (actor.rol === "empleado") {
+        chequear("csv", r.status === 403, `${actor.etiqueta}: ${ruta} es del dueño (403)`, evidencia(r), `${actor.etiqueta} ${ruta}`);
+      } else {
+        chequear("csv-control", r.status === 200 && /csv/i.test(r.tipo), `${actor.etiqueta}: ${ruta} se descarga como CSV`, evidencia(r), `${actor.etiqueta} ${ruta}`);
+        if (r.cuerpo.includes(propio.marca)) filasPropias += 1;
+      }
+    }
+    if (actor.rol === "dueno") {
+      chequear("csv-control", filasPropias >= 2, `${actor.etiqueta}: al menos 2 CSV traen filas del negocio propio`, `solo ${filasPropias}`, actor.etiqueta);
+    }
+  }
+}
+
+// ─── 4. Ningun parametro, cabecera ni cookie cambia el negocio ────────────────
+
+async function aislamientoParametros(ai: Aislamiento, sesiones: Record<Lado, { dueno: string; empleado: string }>) {
+  console.log("--- Aislamiento: parametros, cabeceras y cookies que intentan cambiar el negocio ---");
+  const PAGINAS = ["/clientes", "/ventas", "/materiales"];
+  for (const actor of ai.actores) {
+    const propio = ai.negocios[actor.lado];
+    const ajeno = ai.negocios[otro(actor.lado)];
+    const variantes: { nombre: string; query?: string; cabeceras?: Record<string, string>; cookiesExtra?: string }[] = [
+      { nombre: "?negocio=<slug ajeno>", query: `negocio=${ajeno.slug}` },
+      { nombre: "?negocio=<id ajeno>", query: `negocio=${ajeno.id}` },
+      { nombre: "?negocioId=<id ajeno>", query: `negocioId=${ajeno.id}` },
+      { nombre: "?slug=<slug ajeno>&tenant=<slug ajeno>", query: `slug=${ajeno.slug}&tenant=${ajeno.slug}` },
+      { nombre: "cabecera X-Negocio", cabeceras: { "X-Negocio": ajeno.slug } },
+      { nombre: "cabecera X-Negocio-Id", cabeceras: { "X-Negocio-Id": ajeno.id } },
+      { nombre: "cabecera X-Tenant-Id", cabeceras: { "X-Tenant-Id": ajeno.id } },
+      { nombre: "cabecera X-Forwarded-Host con el slug ajeno", cabeceras: { "X-Forwarded-Host": `${ajeno.slug}.localhost` } },
+      { nombre: "cookie negocio=<id ajeno>", cookiesExtra: `negocio=${ajeno.id}; negocioId=${ajeno.id}; ventas_negocio=${ajeno.slug}` },
+    ];
+    for (const pagina of PAGINAS) {
+      const base = await pedir(pagina, { cookie: actor.cookie });
+      chequear("parametros-control", base.status === 200 && base.cuerpo.includes(propio.marca), `${actor.etiqueta}: ${pagina} sin trucos muestra su negocio`, evidencia(base), `${actor.etiqueta} ${pagina}`);
+      for (const v of variantes) {
+        for (const rsc of [false, true]) {
+          const url = v.query ? `${pagina}?${v.query}` : pagina;
+          const r = await pedir(url, { cookie: actor.cookie, cookiesExtra: v.cookiesExtra, cabeceras: v.cabeceras, rsc });
+          const rastros = fugasAjenas(r.cuerpo, ajeno, [ajeno.id]);
+          chequear("parametros", rastros.length === 0 && r.status === 200, `${actor.etiqueta}${rsc ? " (RSC)" : ""}: ${pagina} con ${v.nombre} sigue en su negocio y no trae nada del otro`, `${evidencia(r)}${rastros.length ? ` | ${rastros.join(", ")}` : ""}`, `${actor.etiqueta} ${url}`);
+          if (!rsc) chequear("parametros", r.status === 200 && r.cuerpo.includes(propio.marca), `${actor.etiqueta}: ${pagina} con ${v.nombre} sigue mostrando SU negocio`, evidencia(r), `${actor.etiqueta} ${url}`);
+        }
+      }
+    }
+    // Cookie de sesion manipulada: el negocio de la cookie no se puede cambiar ni con un token valido.
+    const [idPropio, tokenPropio] = actor.cookie.split(".") as [string, string];
+    const duenoAjeno = sesiones[otro(actor.lado)].dueno;
+    const tokenAjeno = duenoAjeno.split(".")[1]!;
+    const manipuladas: [string, string][] = [
+      ["negocio ajeno + token propio", `${ajeno.id}.${tokenPropio}`],
+      ["negocio propio + token de otro negocio", `${idPropio}.${tokenAjeno}`],
+      ["negocio ajeno + token de otro negocio", `${ajeno.id}.${tokenAjeno}.${tokenPropio}`],
+      ["solo el token (sin negocio)", tokenPropio],
+      ["cookie de SUPERADMIN con el token propio", `admin.${tokenPropio}`],
+      ["negocio vacio", `.${tokenPropio}`],
+      ["dos negocios en la cookie", `${idPropio}.${ajeno.id}.${tokenPropio}`],
+    ];
+    for (const [nombre, valor] of manipuladas) {
+      for (const rsc of [false, true]) {
+        const r = await pedir("/clientes", { cookie: valor, rsc });
+        chequear("parametros", aLogin(r), `${actor.etiqueta}${rsc ? " (RSC)" : ""}: cookie manipulada (${nombre}) → /login o 401`, evidencia(r), `${actor.etiqueta} cookie ${nombre}`);
+        chequear("parametros", fugasAjenas(r.cuerpo, ajeno).length === 0 && fugasAjenas(r.cuerpo, propio).length === 0, `${actor.etiqueta}: cookie manipulada (${nombre}) no trae datos de ningun negocio`, evidencia(r), `${actor.etiqueta} cookie ${nombre}`);
+      }
+    }
+    // Dos cookies de sesion a la vez (la del propio y la del otro negocio): lo que venga es de UN solo negocio, nunca mezclado.
+    const doble = await pedir("/clientes", { cookie: actor.cookie, cookiesExtra: `${COOKIE}=${duenoAjeno}` });
+    const ve = [propio, ajeno].filter((n) => doble.cuerpo.includes(n.marca)).length;
+    chequear("parametros", ve <= 1, `${actor.etiqueta}: dos cookies de sesion no mezclan negocios`, `se ven ${ve} negocios · ${evidencia(doble)}`, `${actor.etiqueta} doble cookie`);
+  }
+}
+
+// ─── 5. Server actions con ids del otro negocio ───────────────────────────────
+
+const hoyISO = () => {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
+};
+
+/**
+ * Una accion y los argumentos con los que se la invoca sobre las filas de un negocio. El mismo pedido, hecho por el dueño
+ * del negocio al que pertenecen las filas, TIENE que funcionar (control): asi un fallo sobre las del otro negocio es por el
+ * aislamiento y no por un argumento mal armado o un estado que no admite la operacion.
+ */
+type EspecAccion = { clave: string; args: (ids: Ids) => unknown };
+const ESPECS_ACCIONES: EspecAccion[] = [
+  { clave: "ventas/[id]/actions.ts#registrarPago", args: (i) => ({ ventaId: i.ventaPagar, monto: "1", metodo: "EFECTIVO", fecha: hoyISO(), notas: "" }) },
+  { clave: "ventas/[id]/actions.ts#marcarEntregada", args: (i) => ({ ventaId: i.ventaEntregar }) },
+  { clave: "comprobantes/actions.ts#emitirFactura", args: (i) => ({ ventaId: i.ventaFacturar }) },
+  { clave: "ventas/[id]/actions.ts#anularPago", args: (i) => ({ pagoId: i.pago, motivo: "Prueba de aislamiento" }) },
+  { clave: "ventas/[id]/actions.ts#anularVenta", args: (i) => ({ ventaId: i.ventaAnular }) },
+  { clave: "ventas/[id]/actions.ts#emitirNotaCredito", args: (i) => ({ ventaId: i.venta, comprobanteId: i.comprobante }) },
+  { clave: "presupuestos/actions.ts#anularPresupuesto", args: (i) => ({ id: i.presupuestoAnular }) },
+  { clave: "presupuestos/actions.ts#convertirPresupuesto", args: (i) => ({ id: i.presupuestoConvertir }) },
+  { clave: "presupuestos/actions.ts#duplicarPresupuesto", args: (i) => ({ id: i.presupuesto }) },
+  { clave: "presupuestos/actions.ts#editarPresupuesto", args: (i) => ({ id: i.presupuesto, clienteId: i.cliente, validezDias: "15", observaciones: "", items: [{ articuloId: i.articulo, cantidad: "2" }] }) },
+  { clave: "presupuestos/actions.ts#crearPresupuesto", args: (i) => ({ clienteId: i.cliente, validezDias: "15", observaciones: "", items: [{ articuloId: i.articulo, cantidad: "1" }] }) },
+  { clave: "ventas/actions.ts#registrarVenta", args: (i) => ({ clienteId: i.cliente, observaciones: "", entregada: false, items: [{ articuloId: i.articulo, cantidad: "1" }], pago: null }) },
+  { clave: "compras/actions.ts#registrarCompra", args: (i) => ({ fecha: hoyISO(), proveedor: "Proveedor de prueba", comprobante: "", notas: "", actualizarCosto: false, items: [{ materialId: i.material, cantidad: "1", costoUnitario: "10" }] }) },
+  { clave: "clientes/actions.ts#crearCliente", args: (i) => ({ nombre: "Cliente con lista (aislamiento)", listaPrecioId: i.lista }) },
+  { clave: "clientes/actions.ts#editarCliente", args: (i) => ({ id: i.cliente, nombre: "Cliente editado (aislamiento)" }) },
+  { clave: "clientes/actions.ts#cambiarActivoCliente", args: (i) => ({ id: i.clienteActivo, activo: false }) },
+  { clave: "materiales/[id]/actions.ts#ajustarStock", args: (i) => ({ materialId: i.material, stockContado: "7", motivo: "Prueba de aislamiento" }) },
+  { clave: "materiales/actions.ts#cambiarEstadoMaterial", args: (i) => ({ id: i.materialActivo, activo: false }) },
+  { clave: "configuracion/actions.ts#cambiarActivoMaquina", args: (i) => ({ id: i.maquinaActivo, activo: false }) },
+  { clave: "catalogo/actions.ts#cambiarActivoArticulo", args: (i) => ({ id: i.articuloActivo, activo: false }) },
+  { clave: "listas-precios/actions.ts#cambiarActivoLista", args: (i) => ({ id: i.listaActiva, activo: false }) },
+  { clave: "produccion/actions.ts#anularTrabajo", args: (i) => ({ trabajoId: i.trabajoAnular, motivo: "Prueba de aislamiento" }) },
+  {
+    clave: "produccion/actions.ts#cargarTrabajo",
+    args: (i) => ({ ventaItemId: i.ventaItemLibre, fecha: hoyISO(), minutosManoObra: "5", tiempos: [{ maquinaId: i.maquina, minutos: "3" }], consumos: [{ materialId: i.material, cantidad: "1" }], notas: "" }),
+  },
+  { clave: "usuarios/actions.ts#resetearClaveUsuario", args: (i) => ({ id: i.usuarioVictima, clave: "clave-nueva-aislamiento-77" }) },
+  { clave: "usuarios/actions.ts#cambiarRolUsuario", args: (i) => ({ id: i.usuarioVictima, rol: "DUENO" }) },
+  { clave: "usuarios/actions.ts#cambiarActivoUsuario", args: (i) => ({ id: i.usuarioVictima, activo: false }) },
+];
+
+/**
+ * Pedidos que mezclan filas PROPIAS con filas del otro negocio (clave foranea cruzada): no tienen control porque nunca
+ * deben funcionar. Los hace solo el dueño.
+ */
+const ESPECS_CRUZADAS: { clave: string; nombre: string; args: (propio: Ids, ajeno: Ids) => unknown }[] = [
+  { clave: "ventas/actions.ts#registrarVenta", nombre: "cliente propio + articulo ajeno", args: (p, a) => ({ clienteId: p.cliente, observaciones: "", entregada: false, items: [{ articuloId: a.articulo, cantidad: "1" }], pago: null }) },
+  { clave: "ventas/actions.ts#registrarVenta", nombre: "cliente ajeno + articulo propio", args: (p, a) => ({ clienteId: a.cliente, observaciones: "", entregada: false, items: [{ articuloId: p.articulo, cantidad: "1" }], pago: null }) },
+  { clave: "presupuestos/actions.ts#crearPresupuesto", nombre: "cliente propio + articulo ajeno", args: (p, a) => ({ clienteId: p.cliente, validezDias: "15", observaciones: "", items: [{ articuloId: a.articulo, cantidad: "1" }] }) },
+  { clave: "presupuestos/actions.ts#editarPresupuesto", nombre: "presupuesto propio + cliente ajeno", args: (p, a) => ({ id: p.presupuesto, clienteId: a.cliente, validezDias: "15", observaciones: "", items: [{ articuloId: p.articulo, cantidad: "2" }] }) },
+  { clave: "compras/actions.ts#registrarCompra", nombre: "material ajeno", args: (_p, a) => ({ fecha: hoyISO(), proveedor: "Proveedor de prueba", comprobante: "", notas: "", actualizarCosto: false, items: [{ materialId: a.material, cantidad: "1", costoUnitario: "10" }] }) },
+  { clave: "clientes/actions.ts#editarCliente", nombre: "cliente propio + lista de precios ajena", args: (p, a) => ({ id: p.cliente, nombre: "Cliente con lista ajena", listaPrecioId: a.lista }) },
+  { clave: "produccion/actions.ts#cargarTrabajo", nombre: "renglon propio + maquina y material ajenos", args: (p, a) => ({ ventaItemId: p.ventaItemLibre, fecha: hoyISO(), minutosManoObra: "5", tiempos: [{ maquinaId: a.maquina, minutos: "3" }], consumos: [{ materialId: a.material, cantidad: "1" }], notas: "" }) },
+  { clave: "produccion/actions.ts#cargarTrabajo", nombre: "renglon ajeno + maquina y material propios", args: (p, a) => ({ ventaItemId: a.ventaItemLibre, fecha: hoyISO(), minutosManoObra: "5", tiempos: [{ maquinaId: p.maquina, minutos: "3" }], consumos: [{ materialId: p.material, cantidad: "1" }], notas: "" }) },
+];
+
+/**
+ * Acciones que no reciben ningun id de fila de otro negocio (o que son publicas/del SUPERADMIN): no tienen un "blanco ajeno".
+ * Una accion nueva tiene que estar en ESPECS_ACCIONES o aca, con el motivo: no puede quedar sin pensar.
+ */
+const ACCIONES_SIN_BLANCO_AJENO: Record<string, string> = {
+  "catalogo/actions.ts#guardarArticulo": "la receta referencia materiales y maquinas por id (cubierto por el control de claves foraneas de la base: scripts/test-rls.ts)",
+  "cobranzas/hoy/actions.ts#registrarContacto": "recibe el id de un cliente: lo cubre RLS en test-rls (contactos_cobranza)",
+  "comprobantes/actions.ts#resolverComprobantePendiente": "solo opera sobre comprobantes PENDIENTES, que el seed no tiene; la emision de otro negocio la cubre emitirFactura",
+  "configuracion/actions.ts#crearMaquina": "no recibe ids",
+  "configuracion/actions.ts#editarMaquina": "edita la maquina por id: misma ruta de datos que cambiarActivoMaquina",
+  "configuracion/actions.ts#guardarConfiguracion": "no recibe ids: escribe la configuracion del negocio de la sesion",
+  "configuracion/actions.ts#guardarDatosFiscales": "no recibe ids: escribe la configuracion fiscal del negocio de la sesion",
+  "configuracion/actions.ts#subirLogo": "no recibe ids: el logo es del negocio de la sesion",
+  "configuracion/actions.ts#quitarLogo": "no recibe ids: el logo es del negocio de la sesion",
+  "listas-precios/actions.ts#crearLista": "no recibe ids",
+  "listas-precios/actions.ts#editarLista": "edita la lista por id: misma ruta de datos que cambiarActivoLista",
+  "listas-precios/actions.ts#guardarPrecioLista": "recibe lista y articulo por id: claves foraneas cubiertas por test-rls",
+  "listas-precios/actions.ts#quitarPrecioLista": "recibe lista y articulo por id: claves foraneas cubiertas por test-rls",
+  "materiales/actions.ts#crearMaterial": "no recibe ids",
+  "materiales/actions.ts#editarMaterial": "edita el material por id: misma ruta de datos que cambiarEstadoMaterial",
+  "produccion/actions.ts#ajustarStockDeTrabajo": "ajusta el stock de un trabajo por id: misma ruta de datos que anularTrabajo",
+  "reposicion/actions.ts#guardarFactorReposicion": "no recibe ids",
+  "usuarios/actions.ts#cambiarMiClave": "solo opera sobre el usuario de la sesion",
+  "usuarios/actions.ts#crearUsuario": "el negocio sale de la sesion; no recibe ids",
+  "ventas/nueva/actions.ts#preciosParaCliente": "lectura de precios para un cliente por id: la lectura la cubre RLS en test-rls",
+  "ventas/nueva/actions.ts#preciosParaPresupuesto": "lectura de precios de un presupuesto por id: la lectura la cubre RLS en test-rls",
+};
+
+function destinoDeAccion(a: AccionHttp, ids: Ids): string {
+  const patron = a.paginas[0] ?? "/ventas";
+  if (!patron.includes("[")) return patron;
+  const valor = ejemplares(ids)[patron]?.[0];
+  return valor ? patron.replace(/\[[^\]]+\]/, valor) : "/ventas";
+}
+
+async function aislamientoAcciones(ai: Aislamiento) {
+  console.log("--- Aislamiento: server actions con ids del otro negocio ---");
+  const acciones = new Map(accionesDelBuild().map((a) => [a.clave, a]));
+  const hacer = (a: AccionHttp, destino: string, cookie: string, args: unknown) =>
+    pedir(destino, { metodo: "POST", cookie, cabeceras: { "Next-Action": a.id, "Content-Type": "text/plain;charset=UTF-8", Accept: "text/x-component" }, cuerpo: JSON.stringify([args]) });
+
+  // Cobertura: toda accion de un negocio tiene un blanco ajeno o un motivo escrito para no tenerlo.
+  const conSpec = new Set(ESPECS_ACCIONES.map((e) => e.clave));
+  for (const [clave, clase] of Object.entries(CLASIFICACION_ACCIONES)) {
+    if (clase === "publica" || clase === "superadmin") continue;
+    chequear("acciones-cobertura", conSpec.has(clave) || clave in ACCIONES_SIN_BLANCO_AJENO, "cada accion tiene un blanco ajeno (ESPECS_ACCIONES) o un motivo en ACCIONES_SIN_BLANCO_AJENO", clave, clave);
+  }
+  for (const e of [...ESPECS_ACCIONES, ...ESPECS_CRUZADAS]) chequear("acciones-cobertura", acciones.has(e.clave), "la accion existe en el build", e.clave, e.clave);
+
+  // Intentos: cada persona, con los ids reales del OTRO negocio. Nada puede cambiar en ninguna tabla.
+  const antes = await huella(ai.prisma);
+  for (const actor of ai.actores) {
+    const propio = ai.negocios[actor.lado];
+    const ajeno = ai.negocios[otro(actor.lado)];
+    for (const e of ESPECS_ACCIONES) {
+      const a = acciones.get(e.clave);
+      if (!a) continue;
+      // El alta de un cliente de un empleado IGNORA la lista de precios (es una decision del dueño): alta valida, no ajena.
+      // Para el empleado se verifica aparte (mas abajo) que la lista ajena no se guarda.
+      if (actor.rol === "empleado" && e.clave === "clientes/actions.ts#crearCliente") continue;
+      const args = e.args(ajeno.ids);
+      const r = await hacer(a, destinoDeAccion(a, propio.ids), actor.cookie, args);
+      const res = resultadoDeAccion(r);
+      chequear("acciones", res?.ok !== true, `${actor.etiqueta}: ${e.clave} con ids de ${ajeno.slug} falla`, `${evidencia(r)}`, `${actor.etiqueta} ${e.clave}`);
+      const rastros = fugasAjenas(r.cuerpo, ajeno, idsDe(JSON.stringify(args)));
+      chequear("acciones", rastros.length === 0, `${actor.etiqueta}: la respuesta de ${e.clave} no revela nada de ${ajeno.slug}`, rastros.map((x) => `${x} en …${fragmento(r.cuerpo, x)}…`).join(" | "), `${actor.etiqueta} ${e.clave}`);
+    }
+    if (actor.rol === "dueno") {
+      for (const e of ESPECS_CRUZADAS) {
+        const a = acciones.get(e.clave);
+        if (!a) continue;
+        const r = await hacer(a, destinoDeAccion(a, propio.ids), actor.cookie, e.args(propio.ids, ajeno.ids));
+        chequear("acciones", resultadoDeAccion(r)?.ok !== true, `${actor.etiqueta}: ${e.clave} mezclando filas (${e.nombre}) falla`, evidencia(r), `${actor.etiqueta} ${e.clave} [${e.nombre}]`);
+      }
+    }
+  }
+  const despues = await huella(ai.prisma);
+  chequear("acciones", diferencias(antes, despues) === "", "los intentos sobre el otro negocio no escribieron nada en ninguna tabla", diferencias(antes, despues));
+
+  // Control positivo: el mismo pedido, hecho por el dueño del negocio al que pertenecen las filas, SI funciona.
+  // Va DESPUES de los intentos (consume filas: anula, factura, desactiva) y ya no se miran pantallas despues.
+  for (const lado of ["A", "B"] as const) {
+    const actor = ai.actores.find((x) => x.lado === lado && x.rol === "dueno")!;
+    const propio = ai.negocios[lado];
+    for (const e of ESPECS_ACCIONES) {
+      const a = acciones.get(e.clave);
+      if (!a) continue;
+      const r = await hacer(a, destinoDeAccion(a, propio.ids), actor.cookie, e.args(propio.ids));
+      const res = resultadoDeAccion(r);
+      chequear("acciones-control", res?.ok === true, `${actor.etiqueta}: ${e.clave} sobre sus propias filas funciona (si no, el intento ajeno no probaba nada)`, `${evidencia(r)}${res?.error ? ` | ${res.error}` : ""}`, `${actor.etiqueta} ${e.clave}`);
+    }
+  }
+
+  // Un `negocioId` en el pedido no cambia donde se escribe: el alta cae en el negocio de la sesion.
+  for (const lado of ["A", "B"] as const) {
+    const actor = ai.actores.find((x) => x.lado === lado && x.rol === "dueno")!;
+    const propio = ai.negocios[lado];
+    const ajeno = ai.negocios[otro(lado)];
+    const a = acciones.get("clientes/actions.ts#crearCliente");
+    if (!a) continue;
+    const nombre = `Alta con negocioId inyectado ${lado}`;
+    const r = await hacer(a, destinoDeAccion(a, propio.ids), actor.cookie, { nombre, negocioId: ajeno.id, negocio: ajeno.slug });
+    const filas = await ai.prisma.$queryRaw<{ negocioId: string }[]>`SELECT "negocioId"::text AS "negocioId" FROM clientes WHERE nombre = ${nombre}`;
+    chequear("acciones", filas.length > 0 && filas.every((f) => f.negocioId === propio.id), `${actor.etiqueta}: un alta con negocioId de ${ajeno.slug} en el pedido cae en SU negocio`, `${evidencia(r)} | filas: ${JSON.stringify(filas)}`, `${actor.etiqueta} crearCliente + negocioId`);
+
+    // El empleado no puede asignar listas de precios: la lista ajena que traiga el pedido se descarta, y el alta cae en su negocio.
+    const emp = ai.actores.find((x) => x.lado === lado && x.rol === "empleado")!;
+    const nombreEmp = `Alta de empleado con lista ajena ${lado}`;
+    const rEmp = await hacer(a, destinoDeAccion(a, propio.ids), emp.cookie, { nombre: nombreEmp, listaPrecioId: ajeno.ids.lista, negocioId: ajeno.id });
+    const filasEmp = await ai.prisma.$queryRaw<{ negocioId: string; listaPrecioId: string | null }[]>`SELECT "negocioId"::text AS "negocioId", "listaPrecioId"::text AS "listaPrecioId" FROM clientes WHERE nombre = ${nombreEmp}`;
+    chequear("acciones", filasEmp.length === 1 && filasEmp[0]!.negocioId === propio.id && filasEmp[0]!.listaPrecioId === null, `${emp.etiqueta}: el alta con la lista de precios y el negocioId de ${ajeno.slug} cae en SU negocio y sin lista`, `${evidencia(rEmp)} | filas: ${JSON.stringify(filasEmp)}`, `${emp.etiqueta} crearCliente + lista ajena`);
+  }
+}
+
+// ─── 6. El rol con el que corre la app ────────────────────────────────────────
+
+async function aislamientoRolDeLaApp(ai: Aislamiento) {
+  console.log("--- Aislamiento: rol de base de datos de la app ---");
+  const conexiones = await ai.prisma.$queryRaw<{ usename: string; n: number }[]>`
+    SELECT usename, count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND usename IS NOT NULL GROUP BY usename`;
+  chequear("rol-de-la-app", conexiones.some((c) => c.usename === ROL_APP), `la app esta conectada con ${ROL_APP} (sujeto a RLS)`, JSON.stringify(conexiones));
+  const rol = (await ai.prisma.$queryRaw<{ rolsuper: boolean; rolbypassrls: boolean }[]>`SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = ${ROL_APP}`)[0];
+  chequear("rol-de-la-app", !!rol && !rol.rolsuper && !rol.rolbypassrls, `${ROL_APP} no es superusuario ni tiene BYPASSRLS`, JSON.stringify(rol));
+  const dueno = (await ai.prisma.$queryRaw<{ dueno: string }[]>`SELECT tableowner AS dueno FROM pg_tables WHERE schemaname = 'public' AND tablename = 'ventas'`)[0];
+  chequear("rol-de-la-app", dueno?.dueno !== ROL_APP, `${ROL_APP} no es dueño de las tablas`, JSON.stringify(dueno));
+}
+
+// ─── 7. Rotura deliberada (para comprobar que la suite falla) ─────────────────
+
+/**
+ * `ACCESO_ROMPER=ventas` apaga RLS en esa tabla; `ACCESO_ROMPER=ventas:politica` la deja con una politica que deja pasar todo.
+ * Varias, separadas por coma. La suite TIENE que fallar (sale con codigo 1): es la comprobacion de que sirve.
+ */
+async function romperDeliberadamente(urlMig: string, spec: string) {
+  const pg = new Client({ connectionString: urlMig });
+  await pg.connect();
+  try {
+    for (const item of spec.split(",").map((x) => x.trim()).filter(Boolean)) {
+      const [tabla, modo] = item.split(":") as [string, string | undefined];
+      if (!/^[a-z_]+$/.test(tabla)) throw new Error(`ACCESO_ROMPER: tabla invalida "${tabla}"`);
+      if (modo === "politica") {
+        const { rows } = await pg.query<{ policyname: string }>(`SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = $1`, [tabla]);
+        for (const p of rows) await pg.query(`DROP POLICY "${p.policyname}" ON "${tabla}"`);
+        await pg.query(`CREATE POLICY rotura_deliberada ON "${tabla}" FOR ALL USING (true) WITH CHECK (true)`);
+        console.log(`!!! ROTURA DELIBERADA: ${tabla} con una politica que deja pasar todo.`);
+      } else {
+        await pg.query(`ALTER TABLE "${tabla}" DISABLE ROW LEVEL SECURITY`);
+        console.log(`!!! ROTURA DELIBERADA: ${tabla} sin RLS.`);
+      }
+    }
+  } finally {
+    await pg.end();
+  }
+}
+
+// ─── 8. test:rls sobre la misma base ──────────────────────────────────────────
+
+/** `npm run test:rls` forma parte de la suite de cierre: se corre sobre la base de esta prueba, con los dos roles. */
+function correrTestRls(urlApp: string, urlMig: string) {
+  console.log("--- test:rls (RLS por tabla, con los dos roles) ---");
+  const env = Object.fromEntries(
+    Object.entries({ ...process.env, DATABASE_URL: urlApp, DATABASE_URL_MIGRACIONES: urlMig }).filter(([clave]) => clave !== "NODE_ENV"),
+  ) as unknown as NodeJS.ProcessEnv;
+  const r = spawnSync("npx", ["tsx", "scripts/test-rls.ts"], { cwd: RAIZ, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const resumen = /(\d+)\/(\d+) comprobaciones OK/.exec(r.stdout ?? "");
+  const fallos = (r.stdout ?? "").split("\n").filter((l) => l.startsWith("FALLA")).slice(0, 10).join("\n");
+  chequear("test-rls", r.status === 0 && resumen !== null, "npm run test:rls verde sobre la base de la prueba", `codigo ${r.status}; ${resumen ? resumen[0] : "sin resumen"}\n${fallos}${r.status === 0 ? "" : `\n${(r.stderr ?? "").slice(-1500)}`}`);
+  console.log(`     test:rls: ${resumen ? resumen[0] : "sin resumen"} (codigo ${r.status})`);
+}
+
+function resumenDeAislamiento() {
+  console.log("");
+  console.log("=== Aislamiento entre negocios ===");
+  for (const [familia, { n, fallas: f }] of [...familias].sort()) {
+    console.log(`${f === 0 ? "OK   " : "FALLA"} ${familia.padEnd(22)} ${String(n).padStart(5)} comprobaciones${f ? `, ${f} con falla` : ""}`);
+  }
+}
+
 // ─── Principal ────────────────────────────────────────────────────────────────
 
 async function main() {
   autotestDelDetector();
+  autotestDelDetectorDeAislamiento();
 
-  const original = process.env.DATABASE_URL;
+  // Servidor de Postgres: de ACCESO_URL_ADMIN o, si no, de DATABASE_URL (un rol con CREATEDB, p. ej. `postgres`). Solo local.
+  const original = process.env.ACCESO_URL_ADMIN ?? process.env.DATABASE_URL;
   if (!original) throw new Error("Falta DATABASE_URL (en .env o en el entorno): se usa para ubicar el servidor de Postgres.");
+  if (!esLocal(original)) throw new Error("Esta prueba crea y borra una base: solo corre contra Postgres local (localhost o socket unix). Nunca contra Neon.");
   if (!NOMBRE_BASE.startsWith("ventas_acceso")) throw new Error(`ACCESO_BASE debe empezar con "ventas_acceso" (es "${NOMBRE_BASE}").`);
   const nombreOriginal = new URL(original).pathname.replace(/^\//, "");
   if (nombreOriginal === NOMBRE_BASE) throw new Error(`DATABASE_URL ya apunta a "${NOMBRE_BASE}": usa otra para que la prueba pueda crearla y borrarla.`);
   if (!(await puertoLibre())) throw new Error(`El puerto ${PUERTO} esta ocupado. Liberalo con: fuser -k ${PUERTO}/tcp`);
 
   const adminUrl = urlDeBase(original, "postgres", false);
-  const urlPrueba = urlDeBase(original, NOMBRE_BASE, true);
-  // Entorno de los hijos: la base de prueba, y sin NODE_ENV heredado (next y prisma fijan el suyo).
-  const entorno = Object.fromEntries(
-    Object.entries({ ...process.env, DATABASE_URL: urlPrueba }).filter(([clave]) => clave !== "NODE_ENV"),
-  ) as unknown as NodeJS.ProcessEnv;
+  const urlBase = urlDeBase(original, NOMBRE_BASE, true);
+  const urlMig = urlConRol(urlBase, ROL_MIGRADOR, CLAVE_MIGRADOR); // dueño de las tablas, BYPASSRLS: migra, siembra y prepara sesiones
+  const urlApp = urlConRol(urlBase, ROL_APP, CLAVE_APP); // la app: SUJETA a RLS
+  const sinNodeEnv = (e: NodeJS.ProcessEnv) => Object.fromEntries(Object.entries(e).filter(([clave]) => clave !== "NODE_ENV")) as unknown as NodeJS.ProcessEnv;
+  // Entorno de las migraciones y el seed: el migrador (sin NODE_ENV heredado: next y prisma fijan el suyo).
+  const entornoMigracion = sinNodeEnv({ ...process.env, DATABASE_URL: urlMig, DATABASE_URL_MIGRACIONES: urlMig });
+  // Entorno de la app (build y `next start`): SOLO el rol de la app, sin credenciales del migrador y sin permiso para
+  // saltarse RLS (`PERMITIR_ROL_CON_BYPASS_RLS`): si la app se conectara con un rol que se salta RLS, arrancaria rota.
+  const entorno = sinNodeEnv({ ...process.env, DATABASE_URL: urlApp });
+  delete entorno.DATABASE_URL_MIGRACIONES;
+  delete entorno.PERMITIR_ROL_CON_BYPASS_RLS;
 
   let prisma: Prisma | null = null;
   let baseCreada = false;
   try {
-    console.log(`--- Preparacion (base propia "${NOMBRE_BASE}", servidor de DATABASE_URL) ---`);
+    console.log(`--- Preparacion (base propia "${NOMBRE_BASE}", servidor de DATABASE_URL; app con ${ROL_APP}, siembra con ${ROL_MIGRADOR}) ---`);
+    await verificarRoles(adminUrl);
     await recrearBase(adminUrl, NOMBRE_BASE);
     baseCreada = true;
-    correr("prisma migrate deploy", "npx", ["prisma", "migrate", "deploy"], entorno);
-    correr("prisma db seed", "npx", ["prisma", "db", "seed"], entorno);
+    correr("prisma migrate deploy", "npx", ["prisma", "migrate", "deploy"], entornoMigracion);
+    correr("prisma db seed", "npx", ["prisma", "db", "seed"], entornoMigracion);
 
-    prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlPrueba }) });
+    prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlMig }) });
+    NEG_A = (await prisma.negocio.findUniqueOrThrow({ where: { slug: SLUG_A }, select: { id: true } })).id;
+    NEG_B = (await prisma.negocio.findUniqueOrThrow({ where: { slug: SLUG_B }, select: { id: true } })).id;
     await sembrarDistintivos(prisma);
 
     // Usuarios de prueba: claves hasheadas con la funcion del repo (una sola vez; scrypt es caro a proposito).
     const hashClave = await hashearClave(CLAVE_DE_PRUEBA);
-    const { id: negocioDePrueba } = await prisma.negocio.findUniqueOrThrow({ where: { slug: "hl-laser" }, select: { id: true } });
-    const crear = (usuario: string, nombre: string, rol: "DUENO" | "EMPLEADO", activo = true) =>
-      prisma!.usuario.create({ data: { negocioId: negocioDePrueba, usuario, nombre, rol, hashClave, activo } });
-    const dueno = await crear("acceso.dueno", "Dueño de prueba (acceso)", "DUENO");
-    const empleado = await crear("acceso.empleado", "Empleado de prueba (acceso)", "EMPLEADO");
-    const baja = await crear("acceso.baja", "Dueño dado de baja (acceso)", "DUENO", false);
+    const crear = (negocioId: string, usuario: string, nombre: string, rol: "DUENO" | "EMPLEADO", activo = true) =>
+      prisma!.usuario.create({ data: { negocioId, usuario, nombre, rol, hashClave, activo } });
+    const dueno = await crear(NEG_A, "acceso.dueno", "Dueño de prueba (acceso)", "DUENO");
+    const empleado = await crear(NEG_A, "acceso.empleado", "Empleado de prueba (acceso)", "EMPLEADO");
+    const baja = await crear(NEG_A, "acceso.baja", "Dueño dado de baja (acceso)", "DUENO", false);
+    const victimaA = await crear(NEG_A, "acceso.victima", "Empleado blanco de acciones (acceso)", "EMPLEADO");
+    const duenoB = await crear(NEG_B, "acceso.dueno", "Dueño de prueba B (acceso)", "DUENO");
+    const empleadoB = await crear(NEG_B, "acceso.empleado", "Empleado de prueba B (acceso)", "EMPLEADO");
+    const victimaB = await crear(NEG_B, "acceso.victima", "Empleado blanco de acciones B (acceso)", "EMPLEADO");
     const superadmin = await prisma.usuario.create({
       data: { negocioId: null, usuario: "acceso.superadmin", nombre: "Superadmin de prueba (acceso)", rol: "SUPERADMIN", hashClave },
     });
@@ -1258,10 +1984,29 @@ async function main() {
       empleadoId: empleado.id,
       bajaId: baja.id,
     };
+    const sesionesB = { dueno: await crearSesionDirecta(prisma, duenoB.id, { negocioId: NEG_B }), empleado: await crearSesionDirecta(prisma, empleadoB.id, { negocioId: NEG_B }) };
 
-    await sembrarProduccion(prisma, dueno.id);
-    const ids = await prepararEjemplares(prisma, dueno.id);
+    // Produccion y ejemplares en CADA negocio (el B con sus propios materiales y maquinas).
+    const material = async (negocioId: string, nombre: string) => prisma!.material.findFirstOrThrow({ where: { negocioId, nombre } });
+    const maquina = async (negocioId: string, nombre: string) => prisma!.maquina.findFirstOrThrow({ where: { negocioId, nombre } });
+    await sembrarProduccion(prisma, NEG_A, dueno.id, await material(NEG_A, "Vinil adhesivo brillante"), await material(NEG_A, "Transportador (vinil transfer)"), await maquina(NEG_A, "Plotter de impresión"), await maquina(NEG_A, "Láser CO2"));
+    const matB = await prisma.material.findMany({ where: { negocioId: NEG_B }, orderBy: { nombre: "asc" } });
+    const maqB = await prisma.maquina.findMany({ where: { negocioId: NEG_B }, orderBy: { nombre: "asc" } });
+    await sembrarProduccion(prisma, NEG_B, duenoB.id, matB[0]!, matB[1]!, maqB[0]!, maqB[1]!);
+    const ids = await prepararEjemplares(prisma, NEG_A, dueno.id, victimaA.id, { articuloEmpieza: "Sticker", materialEmpieza: "Vinil" });
+    const idsB = await prepararEjemplares(prisma, NEG_B, duenoB.id, victimaB.id);
     const { sensibles, descartes } = await valoresSensibles(prisma);
+    // Marca de cada negocio en los nombres de sus clientes, materiales, articulos, maquinas, listas y usuarios (despues de
+    // sembrar, que busca por nombre): cualquier rastro en una respuesta del OTRO negocio es una fuga.
+    for (const [negocioId, marca] of [[NEG_A, MARCA_A], [NEG_B, MARCA_B]] as const) {
+      for (const tabla of ["clientes", "materiales", "articulos", "maquinas", "listas_precios", "usuarios"]) {
+        await prisma.$executeRawUnsafe(`UPDATE "${tabla}" SET nombre = nombre || $1 WHERE "negocioId" = $2::uuid`, ` ${marca}`, negocioId);
+      }
+    }
+    if (process.env.ACCESO_ROMPER) {
+      console.log(`!!! ACCESO_ROMPER=${process.env.ACCESO_ROMPER}: la suite TIENE que fallar.`);
+      await romperDeliberadamente(urlMig, process.env.ACCESO_ROMPER);
+    }
     console.log(`Valores sensibles sembrados: ${sensibles.length} (${[...new Set(sensibles.map((s) => s.categoria))].join(", ")})`);
     for (const d of descartes) avisos.push(`colision descartada: ${d}`);
     // Auto-test sobre los valores reales: el detector tiene que marcar cada uno de los sembrados.
@@ -1276,7 +2021,9 @@ async function main() {
     } else {
       correr("next build", "npm", ["run", "build"], entorno);
     }
-    arrancarServidor({ ...entorno, NODE_ENV: "production", PORT: String(PUERTO) });
+    // PERMITIR_EMISOR_SIMULADO: en produccion la factura simulada esta deshabilitada; la prueba de aislamiento
+    // factura de verdad por HTTP (emitirFactura / emitirNotaCredito) y necesita el emisor simulado.
+    arrancarServidor({ ...entorno, NODE_ENV: "production", PORT: String(PUERTO), PERMITIR_EMISOR_SIMULADO: "1" });
     await esperarServidor();
     console.log(`> next start escuchando en ${BASE_URL} (pid ${servidor?.pid})`);
 
@@ -1291,6 +2038,20 @@ async function main() {
       if (!patrones.has(clave)) avisos.push(`clasificada pero ya no existe: ${clave}`);
     }
     console.log(`${rutas.length} rutas en el codigo, ${rutas.length - sinClasificar.length} clasificadas`);
+    // La clasificacion de esta prueba y la auditoria estatica (scripts/auditoria-permisos.ts) tienen que coincidir:
+    // /admin/** es del SUPERADMIN en las dos, y lo publico lo es en las dos.
+    for (const r of rutas) {
+      if (!r.archivo.startsWith("src/app/") || !(r.patron in CLASIFICACION)) continue;
+      const claseEstatica = claseDeArchivo(r.archivo.slice("src/app/".length));
+      const clase = CLASIFICACION[r.patron]!;
+      if (claseEstatica === "superadmin" || clase === "superadmin") {
+        chequear("clasificacion", claseEstatica === "superadmin" && clase === "superadmin", "una ruta de /admin/** es `superadmin` en la prueba y en la auditoria estatica (y solo ellas)", `${r.patron}: prueba=${clase}, auditoria=${claseEstatica}`, r.patron);
+      } else if (claseEstatica === "publica") {
+        chequear("clasificacion", clase === "publica", "una ruta publica de la auditoria estatica es `publica` en la prueba", `${r.patron}: prueba=${clase}`, r.patron);
+      }
+    }
+    const hallazgosAdmin = auditarAdmin();
+    chequear("clasificacion", hallazgosAdmin.length === 0, "todo lo de /admin/** (layout, paginas, acciones, route handlers) exige solo administrarNegocios y nada mas lo exige", hallazgosAdmin.map((h) => `${h.archivo}: ${h.detalle}`).join(" | "), "auditoria de /admin");
 
     const instancias = ejemplares(ids);
     const objetivos: { patron: string; clase: Clase; url: string }[] = [];
@@ -1343,6 +2104,33 @@ async function main() {
     for (const obligatoria of ["costo de material", "costo de venta", "ganancia", "margen", "valorizacion de stock", "costo de articulo", "costo estimado de reposicion", "costo real de produccion", "desvio de produccion", "margen real"]) {
       comprobarSuelta(`el dueno ve "${obligatoria}" (el detector no esta ciego)`, (vistos.get(obligatoria) ?? 0) > 0, "ninguna pagina del dueno muestra un valor de esta categoria");
     }
+
+    // ─── Aislamiento entre negocios (VTA-20) ───
+    const ai: Aislamiento = {
+      prisma,
+      negocios: {
+        A: { lado: "A", id: NEG_A, slug: SLUG_A, marca: MARCA_A, ids, uuids: await uuidsDe(prisma, NEG_A) },
+        B: { lado: "B", id: NEG_B, slug: SLUG_B, marca: MARCA_B, ids: idsB, uuids: await uuidsDe(prisma, NEG_B) },
+      },
+      actores: [
+        { etiqueta: `dueño de ${SLUG_A}`, lado: "A", rol: "dueno", cookie: ses.dueno },
+        { etiqueta: `empleado de ${SLUG_A}`, lado: "A", rol: "empleado", cookie: ses.empleado },
+        { etiqueta: `dueño de ${SLUG_B}`, lado: "B", rol: "dueno", cookie: sesionesB.dueno },
+        { etiqueta: `empleado de ${SLUG_B}`, lado: "B", rol: "empleado", cookie: sesionesB.empleado },
+      ],
+      objetivos,
+    };
+    chequear("preparacion", ai.negocios.A.uuids.size > 100 && ai.negocios.B.uuids.size > 100, "se conocen los ids de las filas de los dos negocios (>100 cada uno)", `A=${ai.negocios.A.uuids.size}, B=${ai.negocios.B.uuids.size}`);
+    chequear("preparacion", ![...ai.negocios.A.uuids].some((x) => ai.negocios.B.uuids.has(x)), "ningun id esta en los dos negocios", "ids repetidos entre negocios");
+    await aislamientoEstructura(ai);
+    await aislamientoUrlsAjenas(ai);
+    await aislamientoListados(ai);
+    await aislamientoCsv(ai);
+    await aislamientoParametros(ai, { A: { dueno: ses.dueno, empleado: ses.empleado }, B: sesionesB });
+    await aislamientoAcciones(ai);
+    await aislamientoRolDeLaApp(ai);
+    if (process.env.ACCESO_SIN_RLS !== "1") correrTestRls(urlApp, urlMig);
+    else avisos.push("test:rls omitido (ACCESO_SIN_RLS=1)");
   } finally {
     console.log("--- Limpieza ---");
     await detenerServidor();
@@ -1372,10 +2160,16 @@ function informe() {
     console.log(`${f.url.padEnd(ancho)}  ${f.clase.padEnd(7)}  ${celdas}`);
   }
 
+  if (familias.size > 0) resumenDeAislamiento();
+
   if (avisos.length > 0) {
     console.log("");
     console.log("=== Avisos ===");
     for (const a of avisos) console.log(`AVISO ${a}`);
+  }
+  if (process.env.ACCESO_ROMPER) {
+    console.log("");
+    console.log(`!!! ACCESO_ROMPER=${process.env.ACCESO_ROMPER}: rotura deliberada. ${fallas.length > 0 ? "La suite FALLO, como tenia que pasar." : "La suite NO fallo: NO DETECTA esta rotura."}`);
   }
 
   console.log("");
