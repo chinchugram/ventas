@@ -18,7 +18,8 @@
  *   - deudas, ultimas ventas, facturado por dia y pendiente no cruzan de un lado al otro.
  * Despues borra B. Sin esa variable la parte 2 se omite.
  *
- * Los rangos dependen de que la base tenga ventas en octubre de 2026 (seed).
+ * Los rangos se calculan con las fechas de las ventas del seed (relativas a "hoy"): el test no depende del dia en que corre.
+ * El negocio B de la parte 2 usa fechas fijas propias (octubre de 2026), que no dependen del seed.
  */
 import "dotenv/config";
 import { Client } from "pg";
@@ -55,14 +56,51 @@ const suma = (xs: Dinero[]) => xs.reduce((a, b) => a.plus(b), d(0));
 
 type Caso = { nombre: string; params: ParamsFecha; ventasEsperadas?: number };
 
-const CASOS: Caso[] = [
-  { nombre: "Mes completo del seed (2026-10)", params: { mes: "2026-10" }, ventasEsperadas: 7 },
-  { nombre: "Rango parcial 14/10 a 23/10 (ambos bordes con venta)", params: { desde: "2026-10-14", hasta: "2026-10-23" }, ventasEsperadas: 4 },
-  { nombre: "Un solo dia, el ultimo con venta (27/10)", params: { desde: "2026-10-27", hasta: "2026-10-27" }, ventasEsperadas: 1 },
-  { nombre: "Rango al reves (23/10 a 14/10, se intercambia)", params: { desde: "2026-10-23", hasta: "2026-10-14" }, ventasEsperadas: 4 },
-  { nombre: "Rango sin ventas, entre dos ventas (10/10 a 13/10)", params: { desde: "2026-10-10", hasta: "2026-10-13" }, ventasEsperadas: 0 },
-  { nombre: "Mes sin ventas (2026-01)", params: { mes: "2026-01" }, ventasEsperadas: 0 },
-];
+/** Se arma en `main` a partir de las fechas reales de las ventas del seed (que son relativas a "hoy"). */
+let CASOS: Caso[] = [];
+
+const sumarDias = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const dmy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+
+/**
+ * Rangos de prueba calculados con las fechas de las ventas no anuladas del negocio (VTA-23: antes eran fijos de octubre
+ * de 2026 y fallaban cualquier otro dia). La cantidad esperada se cuenta aca, sobre la lista de fechas, sin pasar por
+ * las consultas que se estan probando.
+ */
+async function armarCasos(negocioId: string): Promise<Caso[]> {
+  const fechas = (
+    await conNegocio(negocioId, (tx) =>
+      tx.$queryRaw<{ f: string }[]>`
+        SELECT to_char(fecha, 'YYYY-MM-DD') AS f FROM ventas
+        WHERE "negocioId" = ${negocioId}::uuid AND estado <> 'ANULADA' ORDER BY fecha`,
+    )
+  ).map((r) => r.f);
+  if (fechas.length < 4) throw new Error(`El negocio necesita al menos 4 ventas no anuladas en el seed (hay ${fechas.length}).`);
+  const unicas = [...new Set(fechas)];
+  const cuenta = (desde: string, hasta: string) => fechas.filter((f) => f >= desde && f <= hasta).length;
+
+  const ultima = unicas[unicas.length - 1]!;
+  const mes = ultima.slice(0, 7);
+  const desde = unicas[1]!;
+  const hasta = unicas[Math.min(4, unicas.length - 1)]!;
+  const casos: Caso[] = [
+    { nombre: `Mes completo con ventas (${mes})`, params: { mes }, ventasEsperadas: fechas.filter((f) => f.startsWith(mes)).length },
+    { nombre: `Rango parcial ${dmy(desde)} a ${dmy(hasta)} (ambos bordes con venta)`, params: { desde, hasta }, ventasEsperadas: cuenta(desde, hasta) },
+    { nombre: `Un solo dia, el ultimo con venta (${dmy(ultima)})`, params: { desde: ultima, hasta: ultima }, ventasEsperadas: cuenta(ultima, ultima) },
+    { nombre: `Rango al reves (${dmy(hasta)} a ${dmy(desde)}, se intercambia)`, params: { desde: hasta, hasta: desde }, ventasEsperadas: cuenta(desde, hasta) },
+  ];
+  // Un hueco entre dos dias con venta (el seed los deja; si no hubiera, se omite el caso).
+  for (let i = 0; i + 1 < unicas.length; i++) {
+    const g1 = sumarDias(unicas[i]!, 1);
+    const g2 = sumarDias(unicas[i + 1]!, -1);
+    if (g1 <= g2) {
+      casos.push({ nombre: `Rango sin ventas, entre dos ventas (${dmy(g1)} a ${dmy(g2)})`, params: { desde: g1, hasta: g2 }, ventasEsperadas: 0 });
+      break;
+    }
+  }
+  casos.push({ nombre: "Mes sin ventas (2020-01)", params: { mes: "2020-01" }, ventasEsperadas: 0 });
+  return casos;
+}
 
 async function sqlPeriodo(negocioId: string, desdeISO: string, hastaISO: string) {
   // Las sumas van dentro de `conNegocio` (RLS) Y con el negocio filtrado a mano: la
@@ -321,6 +359,7 @@ async function main() {
   const idA = await negocioPorSlug(SLUG_A);
   if (!idA) throw new Error(`No existe el negocio "${SLUG_A}" (correr el seed).`);
   console.log(`Negocio A: ${SLUG_A} (${idA})`);
+  CASOS = await armarCasos(idA);
   await parteReportes(idA);
 
   const urlMig = process.env.DATABASE_URL_MIGRACIONES ?? "";
