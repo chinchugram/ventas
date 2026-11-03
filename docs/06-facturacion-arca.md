@@ -207,6 +207,12 @@ Es todo trámite del dueño con clave fiscal; ninguno depende del sistema. Los n
 
 > **Estado: NO implementada.** Esta sección es un plan para quien la haga. Los nombres de operaciones, campos y URLs de ARCA salen de memoria del manual y de fuentes secundarias; la sección 5 lista dónde confirmarlos.
 
+### Estado de 5.2 (rama `arca-5-2`, NO mergeada a `staging`)
+
+**Etapa A hecha (sin certificado, sin red):** `src/lib/fiscal/emisor-arca.ts` (`crearEmisorArca`) y `src/lib/fiscal/arca/` (`config`, `errores`, `xml`, `wsfe`, `wsaa`, `transporte`). Cumple el contrato de 2.3: un solo intento en `solicitarCae`, lecturas con reintento, `consultar` solo dice "no existe" con el error 602 y solo ese, el TA en memoria con un pedido a la vez, la firma CMS por `openssl` y sin rutas ni credenciales en los mensajes. `npm run test:arca` (81 comprobaciones) corre contra un transporte simulado y un certificado autofirmado. Las respuestas del test estan escritas a mano: **no prueban compatibilidad con ARCA real**.
+
+**Todavia NO conectado:** `seleccionarEmisor` / `obtenerEmisorFiscal` siguen respondiendo "no implementado" con `EMISOR_FISCAL=arca`; con la configuracion actual nada de esto se ejecuta. Falta (etapa B): enganchar `leerConfigArca` + `crearEmisorArca` en `src/lib/fiscal/index.ts` (el CUIT sale de los datos fiscales del negocio), agregar `fecha` al comprobante asociado si ARCA la pide, y correr el plan de pruebas de 4.8 con CUIT, punto de venta y certificado de homologacion. Antes de eso, contrastar con el WSDL oficial: namespaces, acciones SOAP, **orden de los campos de `FECAEDetRequest`** (en especial `CondicionIVAReceptorId`) y los codigos de error 600 a 605 y 602.
+
 ### 4.1 Mapa general
 
 ```
