@@ -1,0 +1,107 @@
+import { ErrorDeNegocio } from "@/lib/acciones";
+import { d } from "@/lib/money";
+import { CLAVES, type ConfiguracionValidada, type MaquinaValidada } from "@/lib/configuracion";
+import { negocioUnico } from "@/lib/dominio/auth";
+import type { Tx } from "@/lib/dominio/tx";
+
+// Escrituras de configuracion y maquinas. Reciben datos ya validados por zod
+// (`esquemaConfiguracion`, `esquemaMaquina`) y un `tx`, asi las llaman tanto las
+// server actions como `scripts/test-configuracion.ts`.
+
+// `configuracion` tiene clave (negocioId, clave): se lee y se escribe por negocio. Las
+// server actions pasan el `negocioId` del contexto con el que abrieron `conNegocio`.
+// `negocioId` es opcional solo para los scripts de prueba que corren sin RLS (rol con
+// BYPASSRLS) y sin sesion: si falta, se usa el negocio unico y, con mas de uno, falla.
+
+/** Negocio donde se escribe: el pasado, o (solo sin contexto de negocio) el unico que haya. */
+async function negocioDeEscritura(tx: Tx, negocioId?: string): Promise<string> {
+  return negocioId ?? (await negocioUnico(tx));
+}
+
+/** Guarda las cuatro claves con upsert: las que no existian se crean. */
+export async function guardarConfiguracionEnTx(tx: Tx, datos: ConfiguracionValidada, negocioId?: string): Promise<void> {
+  negocioId = await negocioDeEscritura(tx, negocioId);
+  for (const clave of Object.values(CLAVES)) {
+    const valor = datos[clave];
+    await tx.configuracion.upsert({
+      where: { negocioId_clave: { negocioId, clave } },
+      update: { valor },
+      create: { negocioId, clave, valor },
+    });
+  }
+}
+
+/** El nombre de una maquina no se repite (sin distinguir mayusculas), ni con las de baja. */
+async function exigirNombreLibre(tx: Tx, nombre: string, excepto?: string) {
+  const otra = await tx.maquina.findFirst({
+    where: { nombre: { equals: nombre, mode: "insensitive" }, ...(excepto ? { id: { not: excepto } } : {}) },
+    select: { nombre: true, activo: true },
+  });
+  if (otra) {
+    throw new ErrorDeNegocio(
+      otra.activo
+        ? `Ya hay una máquina llamada "${otra.nombre}"`
+        : `Ya hay una máquina dada de baja llamada "${otra.nombre}": reactivala en vez de crear otra`,
+    );
+  }
+}
+
+export async function crearMaquinaEnTx(tx: Tx, negocioId: string, datos: MaquinaValidada): Promise<{ id: string }> {
+  await exigirNombreLibre(tx, datos.nombre);
+  return tx.maquina.create({
+    data: { negocioId, nombre: datos.nombre, costoHora: d(datos.costoHora), notas: datos.notas },
+    select: { id: true },
+  });
+}
+
+export async function editarMaquinaEnTx(tx: Tx, id: string, datos: MaquinaValidada): Promise<void> {
+  const existe = await tx.maquina.findUnique({ where: { id }, select: { id: true } });
+  if (!existe) throw new ErrorDeNegocio("La máquina no existe");
+  await exigirNombreLibre(tx, datos.nombre, id);
+  await tx.maquina.update({
+    where: { id },
+    data: { nombre: datos.nombre, costoHora: d(datos.costoHora), notas: datos.notas },
+  });
+}
+
+/**
+ * Baja logica o reactivacion. Nunca se borra: la maquina puede estar en recetas.
+ * Devuelve en cuantas recetas de articulos activos figura, para avisar.
+ */
+export async function cambiarActivoMaquinaEnTx(tx: Tx, id: string, activo: boolean): Promise<{ recetas: number }> {
+  const maquina = await tx.maquina.findUnique({ where: { id }, select: { activo: true } });
+  if (!maquina) throw new ErrorDeNegocio("La máquina no existe");
+  if (maquina.activo !== activo) await tx.maquina.update({ where: { id }, data: { activo } });
+  return { recetas: await contarRecetasConMaquina(tx, id) };
+}
+
+/**
+ * Guarda los datos fiscales del formulario (claves de `CLAVES_FISCALES`, ya
+ * validadas por `validarDatosFiscales`). Un valor "" borra la clave: es lo que
+ * queda para las opcionales vacias (ingresos brutos). Las que no van en el
+ * formulario (el umbral de identificacion) no se tocan: quien llama decide.
+ */
+export async function guardarDatosFiscalesEnTx(tx: Tx, valores: Record<string, string>, negocioId?: string): Promise<void> {
+  negocioId = await negocioDeEscritura(tx, negocioId);
+  for (const [clave, valor] of Object.entries(valores)) {
+    if (valor === "") {
+      await tx.configuracion.deleteMany({ where: { negocioId, clave } });
+    } else {
+      await tx.configuracion.upsert({
+        where: { negocioId_clave: { negocioId, clave } },
+        update: { valor },
+        create: { negocioId, clave, valor },
+      });
+    }
+  }
+}
+
+/** Recetas distintas (de articulos activos) que usan la maquina. */
+export async function contarRecetasConMaquina(tx: Tx, maquinaId: string): Promise<number> {
+  const filas = await tx.recetaComponente.findMany({
+    where: { maquinaId, receta: { articulo: { activo: true } } },
+    distinct: ["recetaId"],
+    select: { recetaId: true },
+  });
+  return filas.length;
+}

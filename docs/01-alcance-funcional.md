@@ -83,9 +83,8 @@ Respuesta directa a *"¿cómo va el mes?"*:
 ## Fuera del alcance del MVP (explícitamente)
 
 - Facturación electrónica AFIP/ARCA (decisión tomada: solo comprobantes internos).
-- Multi-usuario, login, roles y permisos.
 - Órdenes de compra y gestión real de stock (entradas por compra).
-- Remitos, notas de crédito, listas de precios por cliente.
+- Remitos, notas de crédito.
 - Contas corrientes de títulos (cheques, pagarés).
 - Integración con pasarelas de pago.
 - Multi-moneda.
@@ -95,13 +94,79 @@ Respuesta directa a *"¿cómo va el mes?"*:
 
 ## Etapas siguientes (en orden de prioridad real)
 
-| Etapa | Qué resuelve | Por qué |
-|---|---|---|
-| **2 — Stock real** | Compras, movimientos de entrada/salida, alertas por stock mínimo | Hoy el dueño compra a ciegas. El MVP solo le avisa si el stock *virtual* baja del mínimo. |
-| **3 — Multi-usuario** | Login, registro de quién hizo cada venta | Cuando el negocio crezca o para no perder trazabilidad. |
-| **4 — Facturación electrónica** | Factura A/B ante ARCA, CAE, certificado digital | Requisito legal/comercial. El modelo ya está preparado: falta el emisor. |
-| **5 — Productividad** | Costeo real por máquina/consumo medido, tiempos por arte | Pasa de margen estimado a margen real. Es el salto de calidad. |
-| **6 — Comercial** | Listas de precios, presupuestos que se convierten en venta, recordatorios de cobranza | Antes de perder un cliente por no llamar al que debe. |
+Estado al día de hoy. El detalle de tareas y su orden de ejecución está en `docs/04-checklist-olas.md`.
+
+| Etapa | Estado | Qué resuelve | Por qué |
+|---|---|---|---|
+| **2 — Stock real** | **Hecha.** Compras, libro de movimientos, ajuste por conteo, ventas que descuentan stock y anulación, lista de reposición sugerida | Compras, movimientos de entrada/salida, alertas por stock mínimo | Hoy el dueño compra a ciegas. El MVP solo le avisa si el stock *virtual* baja del mínimo. |
+| **3 — Multi-usuario** | **Hecha.** Login con usuarios y roles (`DUENO` / `EMPLEADO`), sesiones en base, permisos por rol, trazabilidad (quién cargó cada venta, cobro, compra y movimiento de stock) y administración de usuarios | Login, roles y registro de quién hizo cada cosa | Cuando el negocio crezca o para no perder trazabilidad. |
+| **4 — Facturación electrónica** | **Hecha con emisor simulado** (ola 5). La integración real con ARCA (5.2) quedó diferida | Factura A/B/C y notas de crédito, CAE, datos fiscales | Requisito legal/comercial. Sin ARCA real, todo comprobante sale `SIMULADO` y sin validez fiscal. Ver `docs/06-facturacion-arca.md`. |
+| **5 — Productividad** | **Hecha** (ola 6) | Costeo real por máquina/consumo medido, tiempos por arte | Pasa de margen estimado a margen real. Es el salto de calidad. |
+| **6 — Comercial** | **Hecha** (ola 7), con roles | Listas de precios, presupuestos que se convierten en venta, recordatorios de cobranza | Antes de perder un cliente por no llamar al que debe. |
+
+Las **altas y ediciones** (clientes, materiales, artículos, recetas, configuración) y los **cobros
+sobre ventas existentes**, que hacían falta antes de las etapas 3 a 6, ya están hechos (olas 1 y 2
+del checklist).
+
+**Etapa 3 (hecha, ola 4) incluye:**
+
+- Dos roles: `DUENO` (todo) y `EMPLEADO` (cargar ventas, registrar cobros, marcar entregada, clientes,
+  stock en cantidades y reposición sin costos). Su pantalla de inicio es `/ventas/nueva`.
+- Login en `/login` con sesiones guardadas en la base (revocables), claves con hash, pausa creciente tras
+  fallos y cookie `httpOnly` (`Secure` en producción).
+- Permisos por rol en cada pantalla, acción y exportación. Los costos y márgenes no llegan al navegador
+  del empleado.
+- Trazabilidad: "Registrado por" en ventas, cobros, compras y movimientos de stock.
+- Administración de usuarios por el dueño: alta, baja lógica y reactivación, cambio de rol y reinicio de
+  clave. Cada usuario cambia su propia clave.
+
+**Queda fuera de la etapa 3** (ver `docs/seguridad-ola-4-auth.md`): 2FA, recuperación de clave (hoy la
+cambia otro dueño o un comando del servidor), límite de intentos por IP, auditoría de logins y listado o
+cierre remoto de sesiones.
+
+
+## Etapa 5 — Productividad (hecha en la ola 6)
+
+- **Registro de producción** (`/produccion`): por línea de venta, minutos por máquina, minutos de mano de obra y materiales
+  realmente usados. Se precarga con la receta. Lo carga el empleado en el taller (celular) o el dueño; sin costos a la vista.
+  Se corrige anulando y recargando (baja lógica con motivo).
+- **Margen real** (`/reportes/margen-real`, solo dueño): costo real (con los costos congelados al cargar) contra costo de
+  receta, desvío por artículo y por período, con filtro de fechas y CSV.
+- **Tiempos por arte** (`/produccion/estimar`): minutos de máquina y de mano de obra de un pedido, con la mediana de los últimos
+  10 trabajos del mismo artículo y un mínimo de 3. Con menos, "sin datos suficientes".
+- **El consumo real no descuenta stock**: el dueño puede ajustar la diferencia contra la receta, con confirmación.
+- **No hace:** no registra paradas ni merma por causa, no mide por operario, y la estimación no es un presupuesto automático.
+
+## Etapa 6 — Comercial (hecha en la ola 7)
+
+Tres funciones. Ninguna manda nada sola: quien usa la app decide cada envío.
+
+### Listas de precios por cliente
+- Una lista (`/listas-precios`) tiene un descuento general sobre el catálogo y, si hace falta, precios
+  específicos por artículo. Se asigna a clientes desde su ficha.
+- Al cargar una venta se muestra el precio que le toca a ese cliente. El servidor lo recalcula al confirmar.
+- Dar de baja una lista no la borra: sus clientes vuelven a pagar precio de catálogo.
+- **No hace:** vigencia por fechas, escalas por cantidad ni listas en otra moneda.
+
+### Presupuestos (`/presupuestos`)
+- Se arma para un cliente con artículos y cantidades. El precio de cada línea se congela al momento.
+- Vale 15 días por defecto. Un presupuesto vencido no se edita ni se convierte: se duplica con los precios de hoy.
+- "Convertir en venta" crea la venta con los precios del presupuesto, pendiente y sin pago. Un
+  presupuesto se convierte una sola vez.
+- Vista para imprimir y enlace de WhatsApp con un mensaje precargado (número, total y validez).
+- **No hace:** no registra si el cliente aceptó o rechazó (no hay seguimiento de aprobación); no reserva
+  stock ni cambia precios; no guarda costos ni márgenes; no manda WhatsApp solo (arma el enlace y lo envía quien usa la app).
+
+### Recordatorios de cobranza (`/cobranzas/hoy`)
+- Lista de a quién llamar hoy: clientes con saldo, sin un próximo contacto prometido a futuro y no contactados hoy.
+  Va ordenada por antigüedad (lo más viejo primero) y, dentro de cada tramo, por monto.
+- Cada tarjeta muestra el saldo, los días desde la venta impaga más vieja, el último contacto y un enlace
+  de WhatsApp con mensaje precargado (nombre y saldo).
+- Registrar un contacto: fecha de hoy, nota y próximo contacto opcional.
+- **No hace:** no envía mensajes ni llama, no hace recordatorios automáticos ni por fecha, y no modifica
+  ventas ni pagos. La lista se arma al abrir la pantalla.
+
+Las tres pantallas ya tienen roles (ola 8): ver `README.md` y `docs/seguridad-ola-4-auth.md`.
 
 ---
 

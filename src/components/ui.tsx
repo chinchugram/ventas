@@ -57,7 +57,7 @@ export function Seccion({
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 className="text-xl font-semibold text-slate-900">{titulo}</h1>
-        {descripcion ? <p className="mt-0.5 text-sm text-slate-500">{descripcion}</p> : null}
+        {descripcion ? <p className="mt-0.5 text-sm text-slate-600">{descripcion}</p> : null}
       </div>
       {accion}
     </div>
@@ -109,7 +109,7 @@ export function Tabla({ columnas, filas }: { columnas: string[]; filas: string[]
           <thead>
             <tr>
               {columnas.map((c) => (
-                <th key={c}>{c}</th>
+                <th key={c} scope="col">{c}</th>
               ))}
             </tr>
           </thead>

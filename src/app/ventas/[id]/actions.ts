@@ -1,0 +1,198 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
+import { d } from "@/lib/money";
+import {
+  decimalPositivo,
+  fechaDesdeISO,
+  fechaISO,
+  hoyArgentinaISO,
+  mensajeDeError,
+  primerError,
+  SIN_BASE,
+  textoOpcional,
+  type Resultado,
+} from "@/lib/acciones";
+import { METODOS_PAGO, validarFechaPago } from "@/lib/cobranzas";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
+import { anularVentaEnTx } from "@/lib/dominio/ventas";
+import { anularPagoEnTx, marcarEntregadaEnTx, registrarPagoEnTx } from "@/lib/dominio/pagos";
+import { revalidarVentas } from "@/lib/revalidar";
+import { accesoSimuladoDeNegocio, baseDeNegocio } from "@/lib/dominio/comprobantes";
+import { emitirNotaCredito as emitirNotaCreditoDeVenta } from "@/lib/dominio/notas-credito";
+import { entornoDelProceso, obtenerEmisorFiscal } from "@/lib/fiscal";
+import { negocioUnico } from "@/lib/dominio/auth";
+import { conNegocio } from "@/lib/negocio";
+
+/** Todo lo que muestra el saldo o el estado de una venta. */
+function revalidarCobranza(ventaId: string) {
+  revalidarVentas();
+  revalidatePath("/cobranzas");
+  revalidatePath("/clientes/[id]", "page");
+  revalidatePath(`/ventas/${ventaId}`);
+}
+
+const esquema = z.object({ ventaId: z.uuid("Venta inválida") });
+
+/** Anula una venta (queda ANULADA, no se borra) y devuelve el stock que salio. */
+export async function anularVenta(datos: z.input<typeof esquema>): Promise<Resultado> {
+  const permiso = await verificarPermiso("anularVenta");
+  if (!permiso.ok) return permiso;
+  const parsed = esquema.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const { ventaId } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
+
+  try {
+    const negocioId = await negocioUnico(prisma);
+    await conNegocio(negocioId, (tx) => anularVentaEnTx(tx, negocioId, ventaId, usuarioId));
+  } catch (error) {
+    console.error("[anularVenta]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo anular la venta.") };
+  }
+
+  revalidarCobranza(ventaId);
+  return { ok: true };
+}
+
+// ─── Cobranzas ────────────────────────────────────────────────────────────────
+
+const esquemaPago = z.object({
+  ventaId: z.uuid("Venta inválida"),
+  monto: decimalPositivo,
+  metodo: z.enum(METODOS_PAGO, "Elegí cómo pagó"),
+  fecha: fechaISO,
+  notas: textoOpcional(500),
+});
+
+export type DatosPago = z.input<typeof esquemaPago>;
+
+/**
+ * Registra un pago sobre una venta. El saldo se recalcula en el servidor con
+ * la venta bloqueada: del formulario solo se usa el monto tipeado.
+ */
+export async function registrarPago(datos: DatosPago): Promise<Resultado> {
+  const permiso = await verificarPermiso("registrarCobro");
+  if (!permiso.ok) return permiso;
+  const parsed = esquemaPago.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  const problemaFecha = validarFechaPago(parsed.data.fecha, hoyArgentinaISO());
+  if (problemaFecha) return { ok: false, error: problemaFecha };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const { ventaId, monto, metodo, fecha, notas } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
+
+  try {
+    const negocioId = await negocioUnico(prisma);
+    await conNegocio(negocioId, (tx) =>
+      registrarPagoEnTx(tx, negocioId, { ventaId, monto: d(monto), metodo, fecha: fechaDesdeISO(fecha), notas, usuarioId }),
+    );
+  } catch (error) {
+    console.error("[registrarPago]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo registrar el pago.") };
+  }
+
+  revalidarCobranza(ventaId);
+  return { ok: true };
+}
+
+const esquemaAnularPago = z.object({
+  pagoId: z.uuid("Pago inválido"),
+  motivo: z.string().trim().min(1, "Indicá el motivo de la anulación").max(200, "Máximo 200 caracteres"),
+});
+
+/** Anula un pago (baja logica, con motivo). El saldo de la venta vuelve a subir. */
+export async function anularPago(datos: z.input<typeof esquemaAnularPago>): Promise<Resultado> {
+  const permiso = await verificarPermiso("anularPago");
+  if (!permiso.ok) return permiso;
+  const parsed = esquemaAnularPago.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const { pagoId, motivo } = parsed.data;
+
+  let ventaId: string;
+  try {
+    ({ ventaId } = await conNegocio(await negocioUnico(prisma), (tx) => anularPagoEnTx(tx, pagoId, motivo)));
+  } catch (error) {
+    console.error("[anularPago]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo anular el pago.") };
+  }
+
+  revalidarCobranza(ventaId);
+  return { ok: true };
+}
+
+/** PENDIENTE → ENTREGADA. */
+export async function marcarEntregada(datos: z.input<typeof esquema>): Promise<Resultado> {
+  const permiso = await verificarPermiso("marcarEntregada");
+  if (!permiso.ok) return permiso;
+  const parsed = esquema.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const { ventaId } = parsed.data;
+
+  try {
+    await conNegocio(await negocioUnico(prisma), (tx) => marcarEntregadaEnTx(tx, ventaId));
+  } catch (error) {
+    console.error("[marcarEntregada]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo marcar la venta como entregada.") };
+  }
+
+  revalidarCobranza(ventaId);
+  return { ok: true };
+}
+
+// ─── Nota de credito (tarea 5.4) ──────────────────────────────────────────────
+
+const esquemaNotaCredito = z.object({
+  ventaId: z.uuid("Venta inválida"),
+  /** La factura que la persona vio en pantalla: si cambio mientras tanto, no se anula a ciegas. */
+  comprobanteId: z.uuid("Comprobante inválido"),
+});
+
+export type ResultadoNotaCredito =
+  | { ok: true; estado: "PENDIENTE" | "EMITIDO" | "RECHAZADO"; mensaje: string }
+  | { ok: false; error: string };
+
+/**
+ * Emite la nota de credito TOTAL de la factura de la venta (la deshace fiscalmente
+ * y habilita anular la venta). Solo el dueno. Dos fases: reserva el numero, pide el
+ * CAE fuera de la transaccion y registra el resultado. Un rechazo del emisor o una
+ * falta de respuesta no son errores del pedido: se devuelven en `estado` y
+ * `mensaje` para mostrarlos.
+ */
+export async function emitirNotaCredito(datos: z.input<typeof esquemaNotaCredito>): Promise<ResultadoNotaCredito> {
+  const permiso = await verificarPermiso("emitirNotaCredito");
+  if (!permiso.ok) return permiso;
+  const parsed = esquemaNotaCredito.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+  const { ventaId, comprobanteId } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
+
+  let procesado;
+  try {
+    const negocioId = await negocioUnico(prisma);
+    const emisor = obtenerEmisorFiscal(entornoDelProceso(), accesoSimuladoDeNegocio(negocioId));
+    if (!emisor.ok) return { ok: false, error: emisor.error };
+    procesado = await emitirNotaCreditoDeVenta(baseDeNegocio(negocioId), negocioId, ventaId, usuarioId, { emisor: emisor.emisor, facturaId: comprobanteId });
+  } catch (error) {
+    console.error("[emitirNotaCredito]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo emitir la nota de crédito.") };
+  }
+
+  revalidarCobranza(ventaId);
+  revalidatePath("/comprobantes");
+  revalidatePath("/comprobantes/[id]", "page");
+  return { ok: true, estado: procesado.estado, mensaje: procesado.mensaje };
+}

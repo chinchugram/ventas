@@ -1,7 +1,10 @@
+import Link from "next/link";
 import { fmtMoneda, fmtNumero } from "@/lib/money";
 import { configNumero, getArticulosConMargen, getConfig } from "@/lib/queries/catalogo";
+import { getArticulosDeBaja } from "@/lib/queries/recetas";
 import { precioParaMargen } from "@/lib/costing";
 import { Seccion, SemaforoMargen, Vacio } from "@/components/ui";
+import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
@@ -9,18 +12,24 @@ export const dynamic = "force-dynamic";
  * Catalogo con costo y margen.
  */
 export default async function CatalogoPage() {
-  const [articulos, config] = await Promise.all([getArticulosConMargen(), getConfig()]);
+  await requierePermisoPagina("verCostos", "verMargenes");
+  const [articulos, config, deBaja] = await Promise.all([
+    getArticulosConMargen(),
+    getConfig(),
+    getArticulosDeBaja(),
+  ]);
 
   const metaMargenPct = configNumero(config, "margenObjetivo", "40");
 
   if (articulos.length === 0) {
     return (
       <>
-        <Seccion titulo="Artículos" />
+        <Seccion titulo="Artículos" accion={<BotonNuevo />} />
         <Vacio
           mensaje="No hay artículos cargados"
           hint="Empezá por los materiales: un sticker o un cartel se costean a partir de ellos."
         />
+        <ListaDeBaja articulos={deBaja} />
       </>
     );
   }
@@ -30,6 +39,7 @@ export default async function CatalogoPage() {
       <Seccion
         titulo="Artículos"
         descripcion="Costo por receta, precio de venta y margen real"
+        accion={<BotonNuevo />}
       />
 
       <ul className="space-y-2">
@@ -41,7 +51,10 @@ export default async function CatalogoPage() {
             <li key={a.id} className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium text-slate-900">{a.nombre}</p>
+                  <Link href={`/catalogo/${a.id}`} className="inline-flex min-h-11 items-center font-medium text-slate-900 hover:underline">
+                    {a.nombre}
+                  </Link>
+                  {a.esServicio ? <span className="ml-2 text-xs text-slate-500">servicio</span> : null}
                   {a.descripcion ? (
                     <p className="text-sm text-slate-500">{a.descripcion}</p>
                   ) : null}
@@ -72,7 +85,7 @@ export default async function CatalogoPage() {
 
               {a.receta.confiable ? (
                 <details className="mt-3 group">
-                  <summary className="cursor-pointer text-sm font-medium text-marca-texto">
+                  <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-marca-texto">
                     Ver receta ({a.receta.componentes.length}{" "}
                     {a.receta.componentes.length === 1 ? "componente" : "componentes"})
                   </summary>
@@ -105,11 +118,49 @@ export default async function CatalogoPage() {
                   ))}
                 </ul>
               )}
+
+              <Link
+                href={`/catalogo/${a.id}`}
+                className="mt-3 block rounded-lg border border-slate-300 py-3 text-center text-sm font-medium text-slate-700"
+              >
+                {a.receta.confiable ? "Editar artículo y receta" : "Cargar receta"}
+              </Link>
             </li>
           );
         })}
       </ul>
+
+      <ListaDeBaja articulos={deBaja} />
     </>
+  );
+}
+
+function BotonNuevo() {
+  return (
+    <Link href="/catalogo/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-tinta px-3 text-sm font-semibold text-white">
+      + Nuevo artículo
+    </Link>
+  );
+}
+
+/** Los dados de baja quedan al final, plegados: se abren solo para reactivarlos. */
+function ListaDeBaja({ articulos }: { articulos: { id: string; nombre: string }[] }) {
+  if (articulos.length === 0) return null;
+  return (
+    <details className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+      <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-slate-700">
+        Dados de baja ({articulos.length})
+      </summary>
+      <ul className="mt-2 divide-y divide-slate-100">
+        {articulos.map((a) => (
+          <li key={a.id}>
+            <Link href={`/catalogo/${a.id}`} className="block py-3 text-sm text-slate-600 hover:underline">
+              {a.nombre}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

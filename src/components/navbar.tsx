@@ -1,167 +1,334 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icono, type NombreIcono } from "@/components/iconos";
+import { LogoMarca } from "@/components/logo-marca";
+import { salir } from "@/app/login/actions";
+import type { Rol } from "@/lib/auth-pura";
+import { puedeTodo, rutaDeInicio, type Accion } from "@/lib/permisos-pura";
 
-type Seccion = { href: string; etiqueta: string; icono: NombreIcono };
+type Seccion = {
+  href: string;
+  etiqueta: string;
+  icono: NombreIcono;
+  /** Permisos que hacen falta para ver la entrada (todos). Los mismos que exige la pagina. */
+  acciones: readonly Accion[];
+  /** Frase corta, en palabras de todos los dias, que explica para que sirve la seccion. */
+  ayuda?: string;
+};
 
 // Orden y agrupacion de la navegacion. En el celular, las primeras cuatro viven
 // en la barra inferior y el resto en "Mas": son las que se usan todos los dias.
-const INICIO: Seccion = { href: "/", etiqueta: "Inicio", icono: "inicio" };
-const VENTAS: Seccion = { href: "/ventas", etiqueta: "Ventas", icono: "ventas" };
-const CLIENTES: Seccion = { href: "/clientes", etiqueta: "Clientes", icono: "clientes" };
+const INICIO: Seccion = { href: "/", etiqueta: "Inicio", icono: "inicio", acciones: ["verCostos", "verMargenes"], ayuda: "Cómo va el mes" };
+const VENTAS: Seccion = { href: "/ventas", etiqueta: "Ventas", icono: "ventas", acciones: ["verVentas"], ayuda: "Todo lo que vendiste" };
+const CLIENTES: Seccion = { href: "/clientes", etiqueta: "Clientes", icono: "clientes", acciones: ["verClientes"], ayuda: "Tus clientes y sus datos" };
 const PRINCIPALES: Seccion[] = [INICIO, VENTAS, CLIENTES];
-const SECUNDARIAS: Seccion[] = [
-  { href: "/catalogo", etiqueta: "Artículos", icono: "articulos" },
-  { href: "/cortes", etiqueta: "Cortes", icono: "articulos" },
-  { href: "/materiales", etiqueta: "Materiales", icono: "materiales" },
-  { href: "/reportes", etiqueta: "Reportes", icono: "reportes" },
+// Todas son arreglos de datos planos: cada entrada se filtra con los permisos del usuario antes de
+// pintarse (ver `entradasVisibles`). Ocultar un enlace no protege nada: cada pagina lo vuelve a exigir.
+// Cuelga de /cobranzas pero tiene su propia entrada: "Cobranzas" no debe encenderse en ella.
+const RUTA_RECORDATORIOS = "/cobranzas/hoy";
+const PRESUPUESTOS: Seccion = { href: "/presupuestos", etiqueta: "Presupuestos", icono: "ventas", acciones: ["verPresupuestos"], ayuda: "Cotizaciones para tus clientes" };
+const COBRANZAS: Seccion = { href: "/cobranzas", etiqueta: "Cobranzas", icono: "cobranzas", acciones: ["verCobranzas"], ayuda: "Quién te debe plata" };
+const RECORDATORIOS: Seccion = { href: RUTA_RECORDATORIOS, etiqueta: "Recordatorios", icono: "cobranzas", acciones: ["verRecordatorios"], ayuda: "A quién llamar hoy" };
+const ARTICULOS: Seccion = { href: "/catalogo", etiqueta: "Artículos", icono: "articulos", acciones: ["verCostos", "verMargenes"], ayuda: "Lo que vendés y sus precios" };
+const CORTES: Seccion = { href: "/cortes", etiqueta: "Cortes", icono: "articulos", acciones: ["verCostos"], ayuda: "Calculá el precio de una medida" };
+const MATERIALES: Seccion = { href: "/materiales", etiqueta: "Materiales", icono: "materiales", acciones: ["verStock"], ayuda: "Lo que hay en stock" };
+const COMPRAS: Seccion = { href: "/compras", etiqueta: "Compras", icono: "materiales", acciones: ["registrarCompra", "verCostos"], ayuda: "Cargá lo que compraste" };
+const REPOSICION: Seccion = { href: "/reposicion", etiqueta: "Reposición", icono: "materiales", acciones: ["verReposicion"], ayuda: "Qué falta comprar" };
+const PRODUCCION: Seccion = { href: "/produccion", etiqueta: "Producción", icono: "articulos", acciones: ["cargarProduccion"], ayuda: "Cargá lo que se usó en cada trabajo" };
+const COMPROBANTES: Seccion = { href: "/comprobantes", etiqueta: "Comprobantes", icono: "comprobantes", acciones: ["verComprobantes"], ayuda: "Facturas y notas de crédito" };
+const REPORTES: Seccion = { href: "/reportes", etiqueta: "Reportes", icono: "reportes", acciones: ["verReportes", "verCostos", "verMargenes"], ayuda: "Cuánto ganaste y qué se vende" };
+// Orden de la hoja "Mas" del celular.
+const SECUNDARIAS: Seccion[] = [PRESUPUESTOS, COBRANZAS, RECORDATORIOS, ARTICULOS, CORTES, MATERIALES, COMPRAS, REPOSICION, PRODUCCION, COMPROBANTES, REPORTES];
+// Se usan poco: en el celular van al final de "Mas". La pagina `/usuarios/mi-clave` la ve cualquier rol;
+// la administracion (`/usuarios`) solo el dueno.
+const MI_CLAVE = "/usuarios/mi-clave";
+const USUARIOS: Seccion = { href: "/usuarios", etiqueta: "Usuarios", icono: "clientes", acciones: ["gestionarUsuarios"], ayuda: "Quién puede entrar al sistema" };
+const CONFIGURACION: Seccion = {
+  href: "/configuracion",
+  etiqueta: "Configuración",
+  icono: "configuracion",
+  acciones: ["configuracion"],
+  ayuda: "Datos del negocio",
+};
+const LISTAS_PRECIOS: Seccion = {
+  href: "/listas-precios",
+  etiqueta: "Listas de precios",
+  icono: "articulos",
+  acciones: ["gestionarListasPrecios"],
+  ayuda: "Precios especiales por cliente",
+};
+const ADMINISTRACION: Seccion[] = [LISTAS_PRECIOS, USUARIOS, CONFIGURACION];
+
+// Escritorio ancho (lg): pocas secciones sueltas y el resto agrupado en menus con nombre, cada
+// entrada con una frase que dice para que sirve. Ningun icono suelto sin texto.
+type Grupo = { etiqueta: string; icono: NombreIcono; entradas: Seccion[] };
+const DIRECTAS_ESCRITORIO: Seccion[] = [INICIO, VENTAS, CLIENTES, PRESUPUESTOS, COBRANZAS];
+const GRUPOS_ESCRITORIO: Grupo[] = [
+  { etiqueta: "Productos", icono: "articulos", entradas: [ARTICULOS, CORTES, PRODUCCION] },
+  { etiqueta: "Stock y compras", icono: "materiales", entradas: [MATERIALES, COMPRAS, REPOSICION] },
+  { etiqueta: "Más", icono: "mas", entradas: [COMPROBANTES, RECORDATORIOS, REPORTES, LISTAS_PRECIOS, USUARIOS, CONFIGURACION] },
 ];
+const ACCIONES_NUEVA_VENTA: readonly Accion[] = ["cargarVenta"];
+const ID_HOJA_MAS = "hoja-mas";
+const ID_MENU_USUARIO = "menu-usuario";
 const NUEVA_VENTA = "/ventas/nueva";
+
+/** Las entradas que el rol puede usar. */
+function entradasVisibles(rol: Rol, secciones: Seccion[]): Seccion[] {
+  return secciones.filter((s) => puedeTodo({ rol }, s.acciones));
+}
+
+// Clases literales (Tailwind no ve las armadas con plantillas): la barra inferior tiene una columna
+// por entrada principal, mas "Nueva venta" (al centro) y "Mas".
+const COLUMNAS_BARRA: Record<number, string> = { 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" };
 
 function estaActiva(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   // "Nueva venta" tiene su propio boton: no debe encender "Ventas".
   if (href === "/ventas") return pathname === "/ventas";
+  // La entrada mas especifica gana: dentro de /cobranzas/hoy solo se enciende "Recordatorios".
+  if (href === "/cobranzas") return pathname.startsWith(href) && !pathname.startsWith(RUTA_RECORDATORIOS);
   return pathname.startsWith(href);
 }
 
-export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
-  const pathname = usePathname() ?? "/";
-  const [masAbierto, setMasAbierto] = useState(false);
+/** Lo unico que el navegador sabe del usuario: nombre para mostrar y rol. */
+export type UsuarioNavbar = { nombre: string; rol: Rol };
 
-  // Con la hoja abierta la pagina de atras no se desplaza, y Escape la cierra.
+const ETIQUETA_ROL: Record<Rol, string> = { DUENO: "Dueño", EMPLEADO: "Empleado" };
+
+/** Primera letra del nombre para mostrar (respeta acentos y emojis). */
+function inicial(nombre: string): string {
+  return ([...nombre.trim()][0] ?? "?").toLocaleUpperCase("es-AR");
+}
+
+export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string | null; usuario: UsuarioNavbar }) {
+  const pathname = usePathname() ?? "/";
+  const principales = entradasVisibles(usuario.rol, PRINCIPALES);
+  const secundarias = entradasVisibles(usuario.rol, SECUNDARIAS);
+  const administracion = entradasVisibles(usuario.rol, ADMINISTRACION);
+  const directas = entradasVisibles(usuario.rol, DIRECTAS_ESCRITORIO);
+  // Un menu sin ninguna entrada permitida para el rol no se muestra.
+  const grupos = GRUPOS_ESCRITORIO.map((g) => ({ ...g, entradas: entradasVisibles(usuario.rol, g.entradas) })).filter(
+    (g) => g.entradas.length > 0,
+  );
+  const puedeNuevaVenta = puedeTodo(usuario, ACCIONES_NUEVA_VENTA);
+  // Escritorio ancho (lg): secciones sueltas y menus desplegables. Entre md y lg no entran: se muestran
+  // las principales y el resto va en la hoja "Mas", la misma del celular.
+  const enHojaMas = [...secundarias, ...administracion];
+  const columnasBarra = COLUMNAS_BARRA[principales.length + 1 + (puedeNuevaVenta ? 1 : 0)] ?? "grid-cols-5";
+  const [masAbierto, setMasAbierto] = useState(false);
+  const hojaRef = useRef<HTMLDialogElement>(null);
+  // Boton que abrio la hoja (hay uno en la barra inferior y otro en el encabezado): a el vuelve el foco.
+  const disparadorRef = useRef<HTMLElement | null>(null);
+
+  function abrirMas(e: React.MouseEvent<HTMLElement>) {
+    disparadorRef.current = e.currentTarget;
+    setMasAbierto((v) => !v);
+  }
+
+  // <dialog> modal: showModal() mueve el foco adentro, atrapa Tab, deja inerte la pagina de atras
+  // y Escape lo cierra. El estado de React solo refleja si esta abierto.
+  useEffect(() => {
+    const hoja = hojaRef.current;
+    if (!hoja) return;
+    if (masAbierto && !hoja.open) hoja.showModal();
+    if (!masAbierto && hoja.open) hoja.close();
+  }, [masAbierto]);
+
+  // Al navegar la hoja se cierra, aunque el cambio de ruta no venga de un toque en la hoja.
+  useEffect(() => {
+    setMasAbierto(false);
+  }, [pathname]);
+
+  // Con la hoja abierta la pagina de atras no se desplaza.
   useEffect(() => {
     if (!masAbierto) return;
     const overflowPrevio = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const alTeclear = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMasAbierto(false);
-    };
-    window.addEventListener("keydown", alTeclear);
     return () => {
       document.body.style.overflow = overflowPrevio;
-      window.removeEventListener("keydown", alTeclear);
     };
   }, [masAbierto]);
 
-  const masActivo = SECUNDARIAS.some((s) => estaActiva(pathname, s.href));
+  // Se dispara al cerrar por cualquier via (Escape, "Cerrar", fondo, navegar): devuelve el foco.
+  function alCerrarHoja() {
+    setMasAbierto(false);
+    disparadorRef.current?.focus();
+  }
+
+  const masActivo = enHojaMas.some((s) => estaActiva(pathname, s.href));
 
   return (
     <>
       {/* Encabezado: negro del logo, igual en celular y escritorio. */}
       <header className="sticky top-0 z-40 w-full bg-tinta shadow-md">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-          <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center" aria-label={`${nombre}, ir al inicio`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logo} alt={nombre} className="h-10 w-auto" />
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+          <div className="flex min-w-0 items-center gap-2 lg:gap-3">
+            <Link
+              href={rutaDeInicio(usuario.rol)}
+              className="flex shrink-0 items-center rounded-lg p-1"
+              aria-label={`${nombre}, ir al inicio`}
+            >
+              <LogoMarca nombre={nombre} logo={logo} alto="h-10" />
             </Link>
 
-            <nav className="hidden items-center gap-1 md:flex" aria-label="Principal">
-              {[...PRINCIPALES, ...SECUNDARIAS].map((s) => {
-                const activa = estaActiva(pathname, s.href);
-                return (
-                  <Link
-                    key={s.href}
-                    href={s.href}
-                    aria-current={activa ? "page" : undefined}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      activa
-                        ? "bg-marca text-tinta"
-                        : "text-slate-300 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    {s.etiqueta}
-                  </Link>
-                );
-              })}
+            {/* Desde md: las principales y "Más" (hoja); desde lg, las secciones sueltas y los menús
+                desplegables con nombre. */}
+            <nav className="hidden min-w-0 items-center gap-1 md:flex" aria-label="Principal">
+              {principales.map((s) => (
+                <EnlaceBarra key={s.href} seccion={s} activa={estaActiva(pathname, s.href)} />
+              ))}
+              {directas
+                .filter((s) => !PRINCIPALES.includes(s))
+                .map((s) => (
+                  <EnlaceBarra key={s.href} seccion={s} activa={estaActiva(pathname, s.href)} className="hidden lg:block" />
+                ))}
+              {grupos.map((g) => (
+                <MenuDesplegable key={g.etiqueta} grupo={g} pathname={pathname} className="hidden lg:block" alDerecha={g.etiqueta === "Más"} />
+              ))}
+              <button
+                type="button"
+                onClick={abrirMas}
+                aria-haspopup="dialog"
+                aria-expanded={masAbierto}
+                aria-controls={ID_HOJA_MAS}
+                className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 lg:hidden ${
+                  masActivo
+                    ? "bg-marca text-tinta"
+                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                Más
+                <Icono nombre="mas" className="h-4 w-4" />
+              </button>
             </nav>
           </div>
 
-          <Link
-            href={NUEVA_VENTA}
-            className="hidden items-center gap-1.5 rounded-lg bg-marca px-4 py-2 text-sm font-semibold text-tinta transition-transform hover:brightness-105 active:scale-95 md:flex"
-          >
-            <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
-            Nueva venta
-          </Link>
+          <div className="hidden shrink-0 items-center gap-2 md:flex">
+            {puedeNuevaVenta ? (
+              <Link
+                href={NUEVA_VENTA}
+                className="flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 text-sm font-semibold text-tinta transition-transform hover:brightness-105 active:scale-95"
+              >
+                <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
+                Nueva venta
+              </Link>
+            ) : null}
+            <MenuUsuario usuario={usuario} pathname={pathname} />
+          </div>
         </div>
       </header>
 
-      {/* Hoja "Más" (solo celular). */}
-      {masAbierto && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-            onClick={() => setMasAbierto(false)}
-          />
-          <div
-            role="dialog"
-            aria-label="Más secciones"
-            className="sheet-in absolute inset-x-0 bottom-0 rounded-t-3xl bg-white px-4 pt-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] shadow-2xl"
-          >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-300" />
-            <ul className="space-y-1">
-              {SECUNDARIAS.map((s) => {
-                const activa = estaActiva(pathname, s.href);
-                return (
-                  <li key={s.href}>
-                    <Link
-                      href={s.href}
-                      onClick={() => setMasAbierto(false)}
-                      aria-current={activa ? "page" : undefined}
-                      className={`flex items-center gap-3 rounded-xl px-3 py-3.5 text-base font-medium ${
-                        activa ? "bg-marca-claro text-tinta" : "text-slate-700 active:bg-slate-100"
+      {/* Hoja "Más": abajo en el celular, tarjeta centrada desde md. Al tocar el fondo se cierra. */}
+      <dialog
+        ref={hojaRef}
+        id={ID_HOJA_MAS}
+        aria-modal="true"
+        aria-labelledby="hoja-mas-titulo"
+        onClose={alCerrarHoja}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setMasAbierto(false);
+        }}
+        className="sheet-in fixed inset-x-0 bottom-0 top-auto m-0 max-h-[85dvh] w-full max-w-none overflow-y-auto rounded-t-3xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-900/50 backdrop:backdrop-blur-sm md:inset-0 md:m-auto md:h-fit md:max-w-sm md:rounded-3xl"
+      >
+        <div className="px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-300" aria-hidden="true" />
+          <div className="mb-2 flex items-center justify-between">
+            <h2 id="hoja-mas-titulo" className="px-3 text-sm font-semibold text-slate-500">
+              Más secciones
+            </h2>
+            <button
+              type="button"
+              onClick={() => setMasAbierto(false)}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-xl px-3 text-sm font-semibold text-slate-700 active:bg-slate-100"
+            >
+              Cerrar
+            </button>
+          </div>
+          <ul className="space-y-1">
+            {enHojaMas.map((s) => {
+              const activa = estaActiva(pathname, s.href);
+              return (
+                <li key={s.href}>
+                  <Link
+                    href={s.href}
+                    onClick={() => setMasAbierto(false)}
+                    aria-current={activa ? "page" : undefined}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-3.5 text-base font-medium ${
+                      activa ? "bg-marca-claro text-tinta" : "text-slate-700 active:bg-slate-100"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+                        activa ? "bg-marca text-tinta" : "bg-slate-100 text-slate-600"
                       }`}
                     >
-                      <span
-                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                          activa ? "bg-marca text-tinta" : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        <Icono nombre={s.icono} className="h-5 w-5" />
-                      </span>
-                      {s.etiqueta}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+                      <Icono nombre={s.icono} className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block">{s.etiqueta}</span>
+                      {s.ayuda ? <span className="block text-sm font-normal text-slate-500">{s.ayuda}</span> : null}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-200 px-3 pt-3">
+            <p className="min-w-0 text-sm text-slate-600">
+              <span className="block truncate font-semibold text-slate-900">{usuario.nombre}</span>
+              {ETIQUETA_ROL[usuario.rol]}
+              <Link
+                href={MI_CLAVE}
+                onClick={() => setMasAbierto(false)}
+                className="flex min-h-11 items-center font-medium text-marca-texto underline underline-offset-2"
+              >
+                Cambiar mi clave
+              </Link>
+            </p>
+            <BotonSalir className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 active:bg-slate-100">
+              <IconoSalir className="h-5 w-5" />
+              Cerrar sesión
+            </BotonSalir>
           </div>
         </div>
-      )}
+      </dialog>
 
       {/* Barra inferior (solo celular): lo que se usa todos los dias, a un pulgar. */}
       <nav
         aria-label="Principal"
         className="fixed inset-x-0 bottom-0 z-[60] border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
-        <ul className="mx-auto grid max-w-md grid-cols-5 items-end">
-          <ItemBarra seccion={INICIO} activa={estaActiva(pathname, "/")} />
-          <ItemBarra seccion={VENTAS} activa={estaActiva(pathname, "/ventas")} />
+        <ul className={`mx-auto grid max-w-md ${columnasBarra} items-end`}>
+          {principales.includes(INICIO) ? <ItemBarra seccion={INICIO} activa={estaActiva(pathname, "/")} /> : null}
+          {principales.includes(VENTAS) ? <ItemBarra seccion={VENTAS} activa={estaActiva(pathname, "/ventas")} /> : null}
 
-          <li className="flex justify-center">
-            <Link
-              href={NUEVA_VENTA}
-              aria-label="Nueva venta"
-              aria-current={pathname === NUEVA_VENTA ? "page" : undefined}
-              className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-tinta shadow-lg ring-4 ring-white transition-transform active:scale-90"
-            >
-              <Icono nombre="nueva" className="h-7 w-7" grosor={2.5} />
-            </Link>
-          </li>
+          {puedeNuevaVenta ? (
+            <li className="flex justify-center">
+              <Link
+                href={NUEVA_VENTA}
+                aria-label="Nueva venta"
+                aria-current={pathname === NUEVA_VENTA ? "page" : undefined}
+                className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-tinta shadow-lg ring-4 ring-white transition-transform active:scale-90"
+              >
+                <Icono nombre="nueva" className="h-7 w-7" grosor={2.5} />
+              </Link>
+            </li>
+          ) : null}
 
-          <ItemBarra seccion={CLIENTES} activa={estaActiva(pathname, "/clientes")} />
+          {principales.includes(CLIENTES) ? <ItemBarra seccion={CLIENTES} activa={estaActiva(pathname, "/clientes")} /> : null}
 
           <li>
             <button
               type="button"
-              onClick={() => setMasAbierto((v) => !v)}
+              onClick={abrirMas}
+              aria-haspopup="dialog"
               aria-expanded={masAbierto}
-              className={`flex w-full flex-col items-center gap-0.5 pt-2 pb-1.5 text-[11px] font-medium ${
+              aria-controls={ID_HOJA_MAS}
+              className={`flex w-full flex-col items-center gap-0.5 pt-2 pb-1.5 text-xs font-medium ${
                 masActivo || masAbierto ? "text-tinta" : "text-slate-500"
               }`}
             >
@@ -176,13 +343,136 @@ export function Navbar({ nombre, logo }: { nombre: string; logo: string }) {
   );
 }
 
+/** Enlace suelto de la barra de escritorio. */
+function EnlaceBarra({ seccion, activa, className = "" }: { seccion: Seccion; activa: boolean; className?: string }) {
+  return (
+    <Link
+      href={seccion.href}
+      aria-current={activa ? "page" : undefined}
+      className={`${className} whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 ${
+        activa ? "bg-marca text-tinta" : "text-slate-300 hover:bg-white/10 hover:text-white"
+      }`}
+    >
+      {seccion.etiqueta}
+    </Link>
+  );
+}
+
+const FLECHA_ABAJO = "M19.5 8.25l-7.5 7.5-7.5-7.5";
+
+/**
+ * Menu desplegable de la barra de escritorio: un boton con nombre y flecha que abre un panel con las
+ * secciones del grupo, cada una con su icono y una frase que explica para que sirve.
+ * Patron "disclosure": aria-expanded; Escape o un clic afuera lo cierran.
+ */
+function MenuDesplegable({
+  grupo,
+  pathname,
+  className = "",
+  alDerecha = false,
+}: {
+  grupo: Grupo;
+  pathname: string;
+  className?: string;
+  /** El panel se abre hacia la izquierda: para el ultimo menu, que queda pegado al borde. */
+  alDerecha?: boolean;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  const botonRef = useRef<HTMLButtonElement>(null);
+  const idPanel = `menu-${grupo.etiqueta.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+  const activo = grupo.entradas.some((s) => estaActiva(pathname, s.href));
+
+  useEffect(() => {
+    setAbierto(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const alClicFuera = (e: MouseEvent) => {
+      if (!contenedorRef.current?.contains(e.target as Node)) setAbierto(false);
+    };
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setAbierto(false);
+      botonRef.current?.focus();
+    };
+    document.addEventListener("mousedown", alClicFuera);
+    document.addEventListener("keydown", alTeclear);
+    return () => {
+      document.removeEventListener("mousedown", alClicFuera);
+      document.removeEventListener("keydown", alTeclear);
+    };
+  }, [abierto]);
+
+  return (
+    <div ref={contenedorRef} className={`relative ${className}`}>
+      <button
+        ref={botonRef}
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        aria-controls={idPanel}
+        className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 ${
+          activo ? "bg-marca text-tinta" : abierto ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"
+        }`}
+      >
+        {grupo.etiqueta}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          className={`h-3.5 w-3.5 ${abierto ? "rotate-180" : ""}`}
+        >
+          <path d={FLECHA_ABAJO} />
+        </svg>
+      </button>
+      {abierto ? (
+        <ul
+          id={idPanel}
+          className={`absolute top-full ${alDerecha ? "right-0" : "left-0"} z-50 mt-2 w-72 rounded-xl bg-white p-2 text-slate-900 shadow-xl ring-1 ring-slate-200`}
+        >
+          {grupo.entradas.map((s) => {
+            const activa = estaActiva(pathname, s.href);
+            return (
+              <li key={s.href}>
+                <Link
+                  href={s.href}
+                  aria-current={activa ? "page" : undefined}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 ${activa ? "bg-marca-claro" : "hover:bg-slate-100"}`}
+                >
+                  <span
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                      activa ? "bg-marca text-tinta" : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    <Icono nombre={s.icono} className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-slate-900">{s.etiqueta}</span>
+                    {s.ayuda ? <span className="block text-xs text-slate-500">{s.ayuda}</span> : null}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function ItemBarra({ seccion, activa }: { seccion: Seccion; activa: boolean }) {
   return (
     <li>
       <Link
         href={seccion.href}
         aria-current={activa ? "page" : undefined}
-        className={`flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-[11px] font-medium ${
+        className={`flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-xs font-medium ${
           activa ? "text-tinta" : "text-slate-500"
         }`}
       >
@@ -201,5 +491,115 @@ function Indicador({ visible }: { visible: boolean }) {
       aria-hidden="true"
       className={`h-1 w-1 rounded-full ${visible ? "bg-marca" : "bg-transparent"}`}
     />
+  );
+}
+
+/**
+ * Cierra la sesion con un formulario y una server action (POST, mismo origen):
+ * anda aunque el JS no haya cargado y otro sitio no puede dispararlo.
+ */
+function BotonSalir({ className, children }: { className: string; children: React.ReactNode }) {
+  return (
+    <form action={salir}>
+      <button type="submit" className={className}>
+        {children}
+      </button>
+    </form>
+  );
+}
+
+/** Flecha saliendo de una puerta (mismo trazo que los iconos de la navegacion). */
+function IconoSalir({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+    </svg>
+  );
+}
+
+/**
+ * Menu del usuario en el encabezado de escritorio: la inicial (en la barra no
+ * entra el nombre completo) abre un panel con el nombre, el rol y "Cerrar sesion".
+ * Patron "disclosure": boton con aria-expanded; Escape o un clic afuera lo cierran.
+ */
+function MenuUsuario({ usuario, pathname }: { usuario: UsuarioNavbar; pathname: string }) {
+  const [abierto, setAbierto] = useState(false);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  const botonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setAbierto(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const alClicFuera = (e: MouseEvent) => {
+      if (!contenedorRef.current?.contains(e.target as Node)) setAbierto(false);
+    };
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setAbierto(false);
+      botonRef.current?.focus();
+    };
+    document.addEventListener("mousedown", alClicFuera);
+    document.addEventListener("keydown", alTeclear);
+    return () => {
+      document.removeEventListener("mousedown", alClicFuera);
+      document.removeEventListener("keydown", alTeclear);
+    };
+  }, [abierto]);
+
+  return (
+    <div ref={contenedorRef} className="relative">
+      <button
+        ref={botonRef}
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        aria-controls={ID_MENU_USUARIO}
+        aria-label={`${usuario.nombre}: cuenta y cerrar sesión`}
+        title={usuario.nombre}
+        className="flex h-11 items-center gap-2 rounded-lg px-1.5 transition-colors hover:bg-white/10"
+      >
+        <span
+          aria-hidden="true"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/15 text-sm font-semibold text-white"
+        >
+          {inicial(usuario.nombre)}
+        </span>
+        <span className="hidden max-w-32 truncate text-sm font-medium text-slate-200 2xl:block">{usuario.nombre}</span>
+      </button>
+      {abierto ? (
+        <div
+          id={ID_MENU_USUARIO}
+          className="absolute top-full right-0 z-50 mt-2 w-60 rounded-xl bg-white p-3 text-slate-900 shadow-xl ring-1 ring-slate-200"
+        >
+          <p className="px-1 text-sm text-slate-600">
+            <span className="block truncate font-semibold text-slate-900">{usuario.nombre}</span>
+            {ETIQUETA_ROL[usuario.rol]}
+          </p>
+          <Link
+            href={MI_CLAVE}
+            aria-current={estaActiva(pathname, MI_CLAVE) ? "page" : undefined}
+            className="mt-3 flex min-h-11 w-full items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Cambiar mi clave
+          </Link>
+          <BotonSalir className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <IconoSalir className="h-5 w-5" />
+            Cerrar sesión
+          </BotonSalir>
+        </div>
+      ) : null}
+    </div>
   );
 }

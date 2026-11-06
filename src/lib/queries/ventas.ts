@@ -1,11 +1,14 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { conNegocio } from "@/lib/negocio";
+import { negocioUnico } from "@/lib/dominio/auth";
 import { demoVentas } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
 import { aMoneda, d, fmtFecha, type Dinero, sumar } from "@/lib/money";
 import { estadoPago, type EstadoPago } from "@/lib/costing";
 
-export type VentaRow = {
+/** Una venta del listado, sin costo ni margen: lo que puede ver cualquier usuario con sesion. */
+export type VentaListado = {
   id: string;
   numero: number;
   anio: number;
@@ -15,12 +18,21 @@ export type VentaRow = {
   clienteId: string;
   items: number;
   totalBruto: Dinero;
-  costoTotal: Dinero;
-  ganancia: Dinero;
   pagado: Dinero;
   saldo: Dinero;
   estadoPago: EstadoPago;
 };
+
+/** Con costo y ganancia: solo para quien puede `verCostos` / `verMargenes`. */
+export type VentaRow = VentaListado & {
+  costoTotal: Dinero;
+  ganancia: Dinero;
+};
+
+/** La fila trae costo y ganancia (solo las arma `getVentas`, nunca `getVentasSinCostos`). */
+export function tieneGanancia(venta: VentaListado): venta is VentaRow {
+  return "ganancia" in venta;
+}
 
 /**
  * Listado de ventas con margen y estado de pago.
@@ -37,17 +49,76 @@ export const getVentas = cache(
     ),
 );
 
-async function ventasDesdeBase(limite: number): Promise<VentaRow[]> {
-  const ventas = await prisma.venta.findMany({
-    where: { estado: { not: "ANULADA" } },
-    orderBy: [{ fecha: "desc" }, { numero: "desc" }],
-    take: limite,
-    include: {
-      cliente: { select: { id: true, nombre: true } },
-      pagos: { select: { monto: true } },
-      _count: { select: { items: true } },
-    },
+/**
+ * Listado de ventas SIN costo ni ganancia, para quien no puede `verCostos`. A
+ * diferencia de `getVentas`, ni siquiera lee `costoTotal` de la base: el dato
+ * prohibido no llega a la memoria del servidor, menos a una pagina o un payload.
+ */
+export const getVentasSinCostos = cache(
+  (limite = 50): Promise<VentaListado[]> =>
+    conRespaldo(
+      () => ventasSinCostosDesdeBase(limite),
+      () => demoVentas(limite).map(sinCostos),
+    ),
+);
+
+function sinCostos({ costoTotal: _costo, ganancia: _ganancia, ...venta }: VentaRow): VentaListado {
+  return venta;
+}
+
+async function ventasSinCostosDesdeBase(limite: number): Promise<VentaListado[]> {
+  const ventas = await conNegocio(await negocioUnico(prisma), (tx) =>
+    tx.venta.findMany({
+      where: { estado: { not: "ANULADA" } },
+      orderBy: [{ fecha: "desc" }, { numero: "desc" }],
+      take: limite,
+      select: {
+        id: true,
+        numero: true,
+        anio: true,
+        fecha: true,
+        estado: true,
+        totalBruto: true,
+        cliente: { select: { id: true, nombre: true } },
+        pagos: { where: { anuladoEn: null }, select: { monto: true } },
+        _count: { select: { items: true } },
+      },
+    }),
+  );
+
+  return ventas.map((v) => {
+    const pagado = sumar(...v.pagos.map((p) => p.monto));
+    return {
+      id: v.id,
+      numero: v.numero,
+      anio: v.anio,
+      fecha: v.fecha,
+      estado: v.estado,
+      clienteId: v.cliente.id,
+      clienteNombre: v.cliente.nombre,
+      items: v._count.items,
+      totalBruto: v.totalBruto,
+      pagado,
+      saldo: aMoneda(v.totalBruto.minus(pagado)),
+      estadoPago: estadoPago(v.totalBruto, pagado),
+    };
   });
+}
+
+async function ventasDesdeBase(limite: number): Promise<VentaRow[]> {
+  const ventas = await conNegocio(await negocioUnico(prisma), (tx) =>
+    tx.venta.findMany({
+      where: { estado: { not: "ANULADA" } },
+      orderBy: [{ fecha: "desc" }, { numero: "desc" }],
+      take: limite,
+      include: {
+        cliente: { select: { id: true, nombre: true } },
+        // Los pagos anulados no cuentan en el saldo.
+        pagos: { where: { anuladoEn: null }, select: { monto: true } },
+        _count: { select: { items: true } },
+      },
+    }),
+  );
 
   return ventas.map((v) => {
     const pagado = sumar(...v.pagos.map((p) => p.monto));
@@ -98,3 +169,103 @@ export function rangoMes(anio: number, mes: number): { desde: Date; hasta: Date 
 }
 
 export { d };
+
+export type VentaDetalle = {
+  id: string;
+  numero: number;
+  anio: number;
+  fecha: Date;
+  estado: "PENDIENTE" | "ENTREGADA" | "ANULADA";
+  clienteId: string;
+  clienteNombre: string;
+  observaciones: string | null;
+  totalNeto: Dinero;
+  totalIVA: Dinero;
+  totalBruto: Dinero;
+  pagado: Dinero;
+  saldo: Dinero;
+  estadoPago: EstadoPago;
+  items: { id: string; descripcion: string; cantidad: Dinero; precioUnitario: Dinero; subtotalBruto: Dinero }[];
+  /** Nombre de quien la cargo; null = historico (se muestra "—"). */
+  registradoPor: string | null;
+  /** Todos los pagos, tambien los anulados (se muestran tachados y no cuentan). */
+  pagos: {
+    id: string;
+    fecha: Date;
+    monto: Dinero;
+    metodo: string;
+    notas: string | null;
+    anuladoEn: Date | null;
+    motivoAnulacion: string | null;
+    registradoPor: string | null;
+  }[];
+};
+
+/**
+ * Una venta con sus items y pagos. Sin base no hay detalle: las ventas demo no se abren.
+ *
+ * Nunca trae costo ni ganancia (ni de la venta ni de sus items): la pantalla de
+ * detalle la ven todos los roles, y el costo congelado no se lee de la base.
+ */
+export const getVenta = cache(
+  (id: string): Promise<VentaDetalle | null> =>
+    conRespaldo(
+      async () => {
+        const v = await conNegocio(await negocioUnico(prisma), (tx) =>
+          tx.venta.findUnique({
+            where: { id },
+            omit: { costoTotal: true },
+            include: {
+              cliente: { select: { id: true, nombre: true } },
+              usuario: { select: { nombre: true } },
+              items: {
+                orderBy: { id: "asc" },
+                select: { id: true, descripcion: true, cantidad: true, precioUnitario: true, subtotalBruto: true },
+              },
+              pagos: {
+                orderBy: [{ fecha: "asc" }, { creadoEn: "asc" }],
+                include: { usuario: { select: { nombre: true } } },
+              },
+            },
+          }),
+        );
+        if (!v) return null;
+        const pagado = sumar(...v.pagos.filter((p) => p.anuladoEn === null).map((p) => p.monto));
+        return {
+          id: v.id,
+          numero: v.numero,
+          anio: v.anio,
+          fecha: v.fecha,
+          estado: v.estado,
+          clienteId: v.cliente.id,
+          clienteNombre: v.cliente.nombre,
+          observaciones: v.observaciones,
+          totalNeto: v.totalNeto,
+          totalIVA: v.totalIVA,
+          totalBruto: v.totalBruto,
+          pagado,
+          saldo: aMoneda(v.totalBruto.minus(pagado)),
+          estadoPago: estadoPago(v.totalBruto, pagado),
+          items: v.items.map((i) => ({
+            id: i.id,
+            descripcion: i.descripcion,
+            cantidad: i.cantidad,
+            precioUnitario: i.precioUnitario,
+            subtotalBruto: i.subtotalBruto,
+          })),
+          registradoPor: v.usuario?.nombre ?? null,
+          pagos: v.pagos.map((p) => ({
+            id: p.id,
+            fecha: p.fecha,
+            monto: p.monto,
+            metodo: p.metodo,
+            notas: p.notas,
+            anuladoEn: p.anuladoEn,
+            motivoAnulacion: p.motivoAnulacion,
+            registradoPor: p.usuario?.nombre ?? null,
+          })),
+        };
+      },
+      () => null,
+    ),
+);

@@ -1,5 +1,14 @@
+import Link from "next/link";
+import { faltanteParaMinimo } from "@/lib/stock";
 import { fmtMoneda, fmtMonedaCorta, fmtNumero, sumar } from "@/lib/money";
-import { getMateriales } from "@/lib/queries/materiales";
+import {
+  getMateriales,
+  getMaterialesDeBaja,
+  getMaterialesStock,
+  tieneCostos,
+  type MaterialDeBaja,
+} from "@/lib/queries/materiales";
+import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { Seccion, Tarjeta, Vacio } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -16,22 +25,72 @@ const TEXTO_ESTADO = {
   OK: "OK",
 } as const;
 
-export default async function MaterialesPage() {
-  const materiales = await getMateriales();
+const BOTON_SECUNDARIO = "inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700";
 
-  if (materiales.length === 0) {
+export default async function MaterialesPage({ searchParams }: { searchParams: Promise<{ bajas?: string }> }) {
+  const usuario = await requierePermisoPagina("verStock");
+  // Costos, precios, valorizacion y gestion (alta, edicion, bajas, compras): cada cosa con su permiso.
+  const verCostos = puede(usuario, "verCostos");
+  const puedeEditar = puede(usuario, "editarMateriales");
+  const puedeComprar = puede(usuario, "registrarCompra");
+  const verBajas = (await searchParams).bajas === "1" && verCostos && puedeEditar;
+  // Quien no ve costos recibe una lista que ni lee las columnas de plata. Las bajas traen costo: solo para quien edita.
+  const [materiales, deBaja] = await Promise.all([
+    verCostos ? getMateriales() : getMaterialesStock(),
+    verCostos && puedeEditar ? getMaterialesDeBaja() : Promise.resolve([]),
+  ]);
+
+  const acciones = (
+    <div className="flex flex-wrap gap-2">
+      {puede(usuario, "verReposicion") ? (
+        <Link href="/reposicion" className={BOTON_SECUNDARIO}>
+          Reposición
+        </Link>
+      ) : null}
+      {puedeComprar ? (
+        <Link href="/compras/nueva" className={BOTON_SECUNDARIO}>
+          Registrar compra
+        </Link>
+      ) : null}
+      {puedeEditar ? (
+        <Link href="/materiales/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta">
+          Nuevo material
+        </Link>
+      ) : null}
+    </div>
+  );
+
+  if (verBajas) {
     return (
       <>
-        <Seccion titulo="Materiales" />
-        <Vacio
-          mensaje="No hay materiales cargados"
-          hint="Los materiales son la base del costeo: sin ellos, las recetas no tienen costo."
+        <Seccion
+          titulo="Materiales dados de baja"
+          descripcion="No se ofrecen en compras nuevas; conservan su historial"
+          accion={
+            <Link href="/materiales" className={BOTON_SECUNDARIO}>
+              Volver
+            </Link>
+          }
         />
+        <ListaDeBajas materiales={deBaja} />
       </>
     );
   }
 
-  const valorTotal = sumar(...materiales.map((m) => m.valorInventario));
+  if (materiales.length === 0) {
+    return (
+      <>
+        <Seccion titulo="Materiales" accion={acciones} />
+        <Vacio
+          mensaje="No hay materiales cargados"
+          hint="Los materiales son la base del costeo: sin ellos, las recetas no tienen costo."
+        />
+        <LinkBajas cantidad={deBaja.length} />
+      </>
+    );
+  }
+
+  const valorTotal = sumar(...materiales.filter(tieneCostos).map((m) => m.valorInventario));
   const alertas = materiales.filter((m) => m.estado !== "OK");
 
   return (
@@ -39,14 +98,22 @@ export default async function MaterialesPage() {
       <Seccion
         titulo="Materiales"
         descripcion="Lo que se consume para producir, y lo que se vende suelto"
+        accion={acciones}
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3">
-        <Tarjeta titulo="Valor en stock" valor={fmtMonedaCorta(valorTotal)} detalle="a costo de compra" />
+        {verCostos ? <Tarjeta titulo="Valor en stock" valor={fmtMonedaCorta(valorTotal)} detalle="a costo de compra" /> : null}
         <Tarjeta
           titulo="Necesitan reposición"
           valor={fmtNumero(alertas.length)}
           tono={alertas.length > 0 ? "aviso" : "ok"}
+          detalle={
+            alertas.length > 0 && puede(usuario, "verReposicion") ? (
+              <Link href="/reposicion" className="inline-flex min-h-11 items-center underline underline-offset-2">
+                Ver qué comprar
+              </Link>
+            ) : undefined
+          }
         />
       </div>
 
@@ -54,12 +121,23 @@ export default async function MaterialesPage() {
         {materiales.map((m) => (
           <li key={m.id} className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="font-medium text-slate-900">{m.nombre}</p>
-              <span
-                className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold ${ESTILO_ESTADO[m.estado]}`}
-              >
-                {TEXTO_ESTADO[m.estado]}
-              </span>
+              <Link href={`/materiales/${m.id}`} className="inline-flex min-h-11 items-center font-medium text-slate-900 underline-offset-2 hover:underline">
+                {m.nombre}
+              </Link>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${ESTILO_ESTADO[m.estado]}`}>
+                  {TEXTO_ESTADO[m.estado]}
+                </span>
+                {puedeEditar ? (
+                  <Link
+                    href={`/materiales/${m.id}/editar`}
+                    aria-label={`Editar ${m.nombre}`}
+                    className="-my-3 rounded-md px-2 py-3 text-sm font-medium text-marca-texto underline-offset-2 hover:underline"
+                  >
+                    Editar
+                  </Link>
+                ) : null}
+              </div>
             </div>
 
             <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
@@ -76,22 +154,78 @@ export default async function MaterialesPage() {
                   {m.stockMinimo.cmp(0) > 0 ? `${fmtNumero(m.stockMinimo)} ${m.unidad}` : "-"}
                 </dd>
               </div>
-              <div>
-                <dt className="text-xs text-slate-500">Costo unitario</dt>
-                <dd className="text-sm font-semibold tabular-nums text-slate-900">
-                  {fmtMoneda(m.costoUnitario)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-slate-500">Precio de venta</dt>
-                <dd className="text-sm font-semibold tabular-nums text-slate-900">
-                  {m.precioVenta ? fmtMoneda(m.precioVenta) : "solo insumo"}
-                </dd>
-              </div>
+              {tieneCostos(m) ? (
+                <>
+                  <div>
+                    <dt className="text-xs text-slate-500">Costo unitario</dt>
+                    <dd className="text-sm font-semibold tabular-nums text-slate-900">
+                      {fmtMoneda(m.costoUnitario)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">Precio de venta</dt>
+                    <dd className="text-sm font-semibold tabular-nums text-slate-900">
+                      {m.precioVenta ? fmtMoneda(m.precioVenta) : "solo insumo"}
+                    </dd>
+                  </div>
+                </>
+              ) : null}
             </dl>
+
+            {m.estado !== "OK" ? (
+              <p className="mt-3 text-sm text-amber-700">
+                Faltan {fmtNumero(faltanteParaMinimo(m.stockActual, m.stockMinimo))} {m.unidad} para llegar al mínimo.
+              </p>
+            ) : null}
           </li>
         ))}
       </ul>
+
+      <LinkBajas cantidad={deBaja.length} />
     </>
+  );
+}
+
+function LinkBajas({ cantidad }: { cantidad: number }) {
+  if (cantidad === 0) return null;
+  return (
+    <p className="mt-4 text-center text-sm">
+      <Link href="/materiales?bajas=1" className="inline-flex min-h-11 items-center text-slate-600 underline underline-offset-2">
+        Ver {cantidad === 1 ? "1 material dado de baja" : `${cantidad} materiales dados de baja`}
+      </Link>
+    </p>
+  );
+}
+
+function ListaDeBajas({ materiales }: { materiales: MaterialDeBaja[] }) {
+  if (materiales.length === 0) {
+    return <Vacio mensaje="No hay materiales dados de baja" />;
+  }
+  return (
+    <ul className="space-y-2">
+      {materiales.map((m) => (
+        <li key={m.id} className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 font-medium text-slate-700">{m.nombre}</p>
+            <Link
+              href={`/materiales/${m.id}/editar`}
+              className="-my-3 shrink-0 rounded-md px-2 py-3 text-sm font-medium text-marca-texto underline-offset-2 hover:underline"
+            >
+              Ver / reactivar
+            </Link>
+          </div>
+          <p className="mt-1 text-sm text-slate-500 tabular-nums">
+            Stock {fmtNumero(m.stockActual)} {m.unidad} · costo {fmtMoneda(m.costoUnitario)}
+          </p>
+          {m.articulosQueLoUsan > 0 ? (
+            <p className="mt-2 text-sm text-amber-700">
+              {m.articulosQueLoUsan === 1
+                ? "1 artículo activo todavía lo usa en la receta."
+                : `${m.articulosQueLoUsan} artículos activos todavía lo usan en la receta.`}
+            </p>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }

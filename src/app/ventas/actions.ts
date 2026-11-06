@@ -1,0 +1,68 @@
+"use server";
+
+import { z } from "zod";
+import { dbDisponible, prisma } from "@/lib/prisma";
+import { verificarPermiso } from "@/lib/permisos";
+import { d } from "@/lib/money";
+import { decimalPositivo, hoyArgentina, mensajeDeError, primerError, SIN_BASE, textoOpcional } from "@/lib/acciones";
+import { idParaGuardar, usuarioParaAccion } from "@/lib/auth";
+import { registrarVentaEnTx } from "@/lib/dominio/ventas";
+import { revalidarVentas } from "@/lib/revalidar";
+import { negocioUnico } from "@/lib/dominio/auth";
+import { conNegocio } from "@/lib/negocio";
+
+export type ResultadoVenta =
+  | { ok: true; id: string; numero: number; anio: number; advertencias: string[] }
+  | { ok: false; error: string };
+
+const esquemaVenta = z.object({
+  clienteId: z.uuid("Cliente inválido"),
+  observaciones: textoOpcional(500),
+  entregada: z.boolean(),
+  items: z
+    .array(z.object({ articuloId: z.uuid("Artículo inválido"), cantidad: decimalPositivo }))
+    .min(1, "Agregá al menos un artículo"),
+  pago: z
+    .object({
+      monto: decimalPositivo,
+      metodo: z.enum(["EFECTIVO", "TRANSFERENCIA", "TARJETA", "OTRO"]),
+    })
+    .nullable(),
+});
+
+export type DatosVenta = z.input<typeof esquemaVenta>;
+
+/**
+ * Confirma una venta con fecha de hoy. El servidor recalcula precio, IVA y
+ * costo desde la base: el navegador solo informa que se vendio, cuanto y a quien.
+ * Ver `registrarVentaEnTx`.
+ */
+export async function registrarVenta(datos: DatosVenta): Promise<ResultadoVenta> {
+  const permiso = await verificarPermiso("cargarVenta");
+  if (!permiso.ok) return permiso;
+  const parsed = esquemaVenta.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+
+  const { items, pago, ...resto } = parsed.data;
+  const sesion = await usuarioParaAccion();
+  if (!sesion.ok) return sesion;
+  const usuarioId = idParaGuardar(sesion.usuario);
+  try {
+    const negocioId = await negocioUnico(prisma);
+    const { id, numero, anio, advertencias } = await conNegocio(negocioId, (tx) =>
+      registrarVentaEnTx(tx, negocioId, {
+        ...resto,
+        fecha: hoyArgentina(),
+        usuarioId,
+        items: items.map((i) => ({ articuloId: i.articuloId, cantidad: d(i.cantidad) })),
+        pago: pago ? { monto: d(pago.monto), metodo: pago.metodo } : null,
+      }),
+    );
+    revalidarVentas();
+    return { ok: true, id, numero, anio, advertencias };
+  } catch (error) {
+    console.error("[registrarVenta]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo guardar la venta.") };
+  }
+}

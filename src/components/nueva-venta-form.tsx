@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { aMoneda, d, fmtMoneda, fmtNumero, fmtPorcentaje, type Dinero } from "@/lib/money";
+import { registrarVenta } from "@/app/ventas/actions";
+import { preciosParaCliente, type PreciosCliente } from "@/app/ventas/nueva/actions";
+import type { OrigenPrecio } from "@/lib/precios";
 import {
   calcularMargen,
   costearLineaVenta,
@@ -13,11 +16,17 @@ import {
 } from "@/lib/costing";
 
 /**
- * MOCKUP de la carga de venta.
+ * Carga de venta.
  *
- * Importa el MISMO motor de costeo que usaria la version real (`lib/costing.ts`).
- * No hay logica de negocio duplicada ni numeros de Showcase: los margenes que ve
- * el dueño son los que saldrian de sus propias recetas.
+ * Los numeros en pantalla salen del MISMO motor de costeo que usa el servidor
+ * (`lib/costing.ts`), pero son informativos: al confirmar, el servidor recalcula
+ * todo desde la base. Sin base de datos (modo demo) la venta se simula en
+ * memoria y no se guarda nada.
+ *
+ * Precios por cliente: al elegir cliente se pide al servidor el precio de cada
+ * articulo segun su lista (`preciosParaCliente`, solo precios, nunca costos).
+ * Es informativo: `registrarVenta` recalcula el precio al confirmar. En modo
+ * demo no hay listas y se usa el precio de catalogo.
  */
 
 export type ComponenteDTO = {
@@ -28,6 +37,7 @@ export type ComponenteDTO = {
   costoTotal: string;
 };
 
+/** Lo que viaja al navegador de cualquier usuario: nombre, precio e IVA. Sin costos. */
 export type ArticuloDTO = {
   id: string;
   nombre: string;
@@ -35,6 +45,10 @@ export type ArticuloDTO = {
   precioVenta: string;
   ivaPct: string;
   esServicio: boolean;
+};
+
+/** Solo para quien puede `verCostos`: el servidor no arma esto para nadie mas. */
+export type ArticuloConCostosDTO = ArticuloDTO & {
   costoUnitario: string;
   recetaConfiable: boolean;
   receta: ComponenteDTO[];
@@ -51,10 +65,16 @@ type Linea = { id: string; articuloId: string; cantidad: string };
 type LineaCalculada = {
   linea: Linea;
   articulo: ArticuloDTO;
+  /** Costo y receta del articulo; `null` si el usuario no puede verlos. */
+  costos: ArticuloConCostosDTO | null;
   cantidad: Dinero;
-  /** Resultado crudo del motor de costeo: neto, IVA, costo y ganancia de la linea. */
+  /** Precio unitario que se cobra a este cliente (catalogo o lista). */
+  precioUnitario: Dinero;
+  origenPrecio: OrigenPrecio;
+  /** Resultado crudo del motor de costeo: neto, IVA y total de la linea (el costo, solo con `costos`). */
   cal: ReturnType<typeof costearLineaVenta>;
-  margen: Margen;
+  /** Margen de la linea; `null` si el usuario no puede verlo. */
+  margen: Margen | null;
 };
 
 const METODOS = [
@@ -68,15 +88,22 @@ const METODOS = [
 // pantalla son efimeras, no se persisten.
 let secuenciaLinea = 0;
 
-export function NuevaVentaForm({
-  articulos,
-  clientes,
-  esModoDemo = false,
-}: {
-  articulos: ArticuloDTO[];
+function tieneCostos(a: ArticuloDTO | ArticuloConCostosDTO): a is ArticuloConCostosDTO {
+  return "costoUnitario" in a;
+}
+
+type PropsNuevaVenta = {
   clientes: ClienteDTO[];
   esModoDemo?: boolean;
-}) {
+} & (
+  | { verCostos: true; articulos: ArticuloConCostosDTO[] }
+  // Sin permiso de ver costos el servidor ni arma los costos: solo precio, IVA y total.
+  | { verCostos: false; articulos: ArticuloDTO[] }
+);
+
+export function NuevaVentaForm({ articulos, clientes, esModoDemo = false, verCostos }: PropsNuevaVenta) {
+  const costosDe = (a: ArticuloDTO): ArticuloConCostosDTO | null =>
+    verCostos && tieneCostos(a) ? a : null;
   const [clienteId, setClienteId] = useState(clientes[0]?.id ?? "");
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [busqueda, setBusqueda] = useState("");
@@ -86,30 +113,38 @@ export function NuevaVentaForm({
   const [metodo, setMetodo] = useState<string>("EFECTIVO");
   const [observaciones, setObservaciones] = useState("");
   const [comprobante, setComprobante] = useState<Simulacion | null>(null);
+  const [entregada, setEntregada] = useState(true);
+  const [guardando, iniciarGuardado] = useTransition();
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+  const [preciosCargados, setPreciosCargados] = useState<(PreciosCliente & { clienteId: string }) | null>(null);
+  const [reintento, setReintento] = useState(0);
 
-  function cargarEjemploDemo() {
-    // Solo artículos con receta: uno sin receta tiene costo 0 y mostraría un
-    // margen inflado en la primera pantalla que ve el cliente.
-    const costeados = articulos.filter((a) => a.recetaConfiable);
-    const a1 = costeados[0] ?? articulos[0];
-    if (!a1) return;
-    const a2 = costeados[1] ?? a1;
-    if (clientes[0]) {
-      setClienteId(clientes[0].id);
-    }
-    setLineas([
-      { id: `l${++secuenciaLinea}`, articuloId: a1.id, cantidad: "2" },
-      { id: `l${++secuenciaLinea}`, articuloId: a2.id, cantidad: "25" },
-    ]);
-    setObservaciones("Entrega coordinada para el viernes. Diseños aprobados.");
-    setModoCobro("TOTAL");
-  }
+  // Precios del cliente elegido. Mientras llegan (o si fallan) no se deja guardar:
+  // el comprobante muestra estos precios y tienen que ser los que va a usar el servidor.
+  useEffect(() => {
+    if (esModoDemo || !clienteId) return;
+    let vigente = true;
+    preciosParaCliente({ clienteId, articuloIds: articulos.map((a) => a.id) })
+      .then((r) => vigente && setPreciosCargados({ ...r, clienteId }))
+      .catch(
+        () =>
+          vigente &&
+          setPreciosCargados({ ok: false, error: "No se pudo conectar con el servidor.", clienteId }),
+      );
+    return () => {
+      vigente = false;
+    };
+  }, [clienteId, articulos, esModoDemo, reintento]);
 
-  function limpiarFormulario() {
-    setLineas([]);
-    setMontoParcial("");
-    setObservaciones("");
-    setModoCobro("TOTAL");
+  const preciosActuales = preciosCargados?.clienteId === clienteId ? preciosCargados : null;
+  const repreciando = !esModoDemo && clienteId !== "" && preciosActuales === null;
+  const errorPrecios = preciosActuales && !preciosActuales.ok ? preciosActuales.error : null;
+  const listaCliente = preciosActuales?.ok ? preciosActuales.lista : null;
+
+  /** Precio unitario del articulo para el cliente elegido. */
+  function precioDe(articulo: ArticuloDTO): { precio: string; origen: OrigenPrecio } {
+    const resuelto = preciosActuales?.ok ? preciosActuales.precios[articulo.id] : undefined;
+    return resuelto ?? { precio: articulo.precioVenta, origen: "CATALOGO" };
   }
 
   const porId = useMemo(() => new Map(articulos.map((a) => [a.id, a])), [articulos]);
@@ -123,29 +158,38 @@ export function NuevaVentaForm({
       if (!articulo) continue;
 
       const cantidad = d(linea.cantidad || "0");
+      const { precio, origen } = precioDe(articulo);
+      const costos = costosDe(articulo);
       const cal = costearLineaVenta({
         cantidad,
-        precioUnitario: d(articulo.precioVenta),
+        precioUnitario: d(precio),
         ivaPct: d(articulo.ivaPct),
-        costoUnitario: d(articulo.costoUnitario),
+        costoUnitario: d(costos?.costoUnitario ?? "0"),
       });
 
       salida.push({
         linea,
         articulo,
+        costos,
         cantidad,
+        precioUnitario: d(precio),
+        origenPrecio: origen,
         cal,
-        margen: calcularMargen({
-          precioBruto: cal.subtotalBruto,
-          costo: cal.costoTotalSnapshot,
-          ivaPct: d(articulo.ivaPct),
-          costoConfiable: articulo.recetaConfiable,
-        }),
+        margen: costos
+          ? calcularMargen({
+              precioBruto: cal.subtotalBruto,
+              costo: cal.costoTotalSnapshot,
+              ivaPct: d(articulo.ivaPct),
+              costoConfiable: costos.recetaConfiable,
+            })
+          : null,
       });
     }
 
     return salida;
-  }, [lineas, porId]);
+    // `costosDe` solo depende de `verCostos` y `precioDe` de `preciosActuales`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineas, porId, preciosActuales, verCostos]);
 
   // Los totales salen de `totalizarVenta`, el mismo helper que usa la version que
   // guarda. El IVA se acumula linea por linea a proposito: cada articulo tiene su
@@ -198,8 +242,7 @@ export function NuevaVentaForm({
   }
 
   function confirmar() {
-    setComprobante({
-      numero: Math.floor(Math.random() * 900 + 100),
+    const base = {
       cliente: cliente?.nombre ?? "",
       lineas: lineasCalculadas,
       totales,
@@ -207,6 +250,28 @@ export function NuevaVentaForm({
       metodo,
       estadoPago: estadoPago(totales.totalBruto, cobrado),
       observaciones,
+      verCostos,
+    };
+
+    if (esModoDemo) {
+      setComprobante({ ...base, numero: `${Math.floor(Math.random() * 900 + 100)}`, guardada: false, advertencias: [] });
+      return;
+    }
+
+    setErrorGuardado(null);
+    iniciarGuardado(async () => {
+      const r = await registrarVenta({
+        clienteId,
+        observaciones,
+        entregada,
+        items: lineasCalculadas.map((l) => ({ articuloId: l.articulo.id, cantidad: l.linea.cantidad })),
+        pago: cobrado.gt(0) ? { monto: cobrado.toString(), metodo: metodo as "EFECTIVO" } : null,
+      });
+      if (r.ok) {
+        setComprobante({ ...base, numero: `${r.numero}/${r.anio}`, guardada: true, advertencias: r.advertencias, ventaId: r.id });
+      } else {
+        setErrorGuardado(r.error);
+      }
     });
   }
 
@@ -228,18 +293,11 @@ export function NuevaVentaForm({
 
   return (
     <div className="space-y-6 pb-28">
-      <BannerMockup
-        onCargarEjemplo={cargarEjemploDemo}
-        onLimpiar={limpiarFormulario}
-        tieneLineas={lineas.length > 0}
-        esModoDemo={esModoDemo}
-      />
-
       <section>
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
           Cliente
         </h2>
-        <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+        <select aria-label="Cliente" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
           {clientes.map((c) => (
             <option key={c.id} value={c.id}>
               {c.nombre}
@@ -247,14 +305,34 @@ export function NuevaVentaForm({
             </option>
           ))}
         </select>
+        {repreciando ? (
+          <p role="status" className="mt-1 text-xs text-slate-500">
+            Actualizando precios…
+          </p>
+        ) : null}
+        {errorPrecios ? (
+          <p role="alert" className="mt-1 text-sm text-red-700">
+            {errorPrecios}{" "}
+            <button type="button" onClick={() => setReintento((n) => n + 1)} className="font-semibold underline">
+              Reintentar
+            </button>
+          </p>
+        ) : null}
+        {listaCliente ? (
+          <p className="mt-1 text-xs text-marca-texto">
+            Lista de precios: {listaCliente.nombre}
+            {d(listaCliente.descuentoPct).gt(0) ? ` (−${fmtNumero(listaCliente.descuentoPct)}%)` : ""}
+          </p>
+        ) : null}
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
           Agregar articulo
         </h2>
         <input
           type="search"
+          aria-label="Buscar artículo en el catálogo"
           placeholder="Buscar en el catalogo"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
@@ -269,16 +347,16 @@ export function NuevaVentaForm({
                 <button
                   type="button"
                   onClick={() => agregar(a.id)}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-3 text-left text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
                     yaCargado
-                      ? "border-marca bg-marca-claro text-marca"
+                      ? "border-marca bg-marca-claro text-marca-texto"
                       : "border-slate-300 bg-white text-slate-800"
                   }`}
                 >
                   <span>{a.nombre}</span>
-                  <span className="text-slate-500">{fmtMoneda(a.precioVenta)}</span>
-                  {!a.recetaConfiable ? (
-                    <span className="text-xs font-semibold text-amber-600">sin receta</span>
+                  <span className="text-slate-500">{fmtMoneda(precioDe(a).precio)}</span>
+                  {costosDe(a) && !costosDe(a)?.recetaConfiable ? (
+                    <span className="text-xs font-semibold text-amber-700">sin receta</span>
                   ) : null}
                 </button>
               </li>
@@ -287,23 +365,23 @@ export function NuevaVentaForm({
         </ul>
 
         {articulosFiltrados.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">Ningún artículo coincide con la búsqueda.</p>
+          <p className="mt-2 text-sm text-slate-600">Ningún artículo coincide con la búsqueda.</p>
         ) : null}
       </section>
 
       <section>
         <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
+          <h2 className="text-sm font-semibold tracking-wide text-slate-600 uppercase">
             Detalle
           </h2>
-          <span className="text-sm text-slate-500">
+          <span className="text-sm text-slate-600">
             {lineasCalculadas.length}{" "}
             {lineasCalculadas.length === 1 ? "linea" : "lineas"}
           </span>
         </div>
 
         {lineasCalculadas.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-600">
             Todavía no agregaste nada.
           </p>
         ) : (
@@ -315,13 +393,14 @@ export function NuevaVentaForm({
                   <button
                     type="button"
                     onClick={() => quitar(l.linea.id)}
-                    className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-red-600"
+                    aria-label={`Quitar ${l.articulo.nombre}`}
+                    className="inline-flex min-h-11 shrink-0 items-center rounded-md px-3 text-xs font-semibold text-red-600"
                   >
                     Quitar
                   </button>
                 </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className={`mt-3 grid grid-cols-2 gap-3 ${l.margen ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
                   <div className="col-span-2 sm:col-span-1">
                     <label htmlFor={`cant-${l.linea.id}`} className="text-xs">
                       Cantidad
@@ -337,58 +416,67 @@ export function NuevaVentaForm({
                     />
                   </div>
                   <div>
-                    <label className="text-xs">Unitario</label>
+                    <span className="mb-1 block text-xs font-medium text-slate-700">Unitario</span>
                     <p className="py-2.5 text-sm tabular-nums text-slate-600">
-                      {fmtMoneda(l.articulo.precioVenta)}
+                      {fmtMoneda(l.precioUnitario)}
+                      {l.origenPrecio !== "CATALOGO" ? (
+                        <span className="ml-1 text-xs font-semibold text-marca-texto">
+                          {l.origenPrecio === "ESPECIFICO" ? "precio de lista" : "con descuento"}
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                   <div>
-                    <label className="text-xs">Total</label>
+                    <span className="mb-1 block text-xs font-medium text-slate-700">Total</span>
                     <p className="py-2.5 text-sm font-semibold tabular-nums text-slate-900">
                       {fmtMoneda(l.cal.subtotalBruto)}
                     </p>
                   </div>
-                  <div>
-                    <label className="text-xs">Ganancia</label>
-                    <p
-                      className={`py-2.5 text-sm font-semibold tabular-nums ${
-                        l.margen.costoConfiable ? "text-emerald-700" : "text-amber-600"
-                      }`}
-                    >
-                      {l.margen.costoConfiable
-                        ? fmtMoneda(l.margen.ganancia)
-                        : "costo desconocido"}
-                    </p>
-                  </div>
+                  {l.margen ? (
+                    <div>
+                      <span className="mb-1 block text-xs font-medium text-slate-700">Ganancia</span>
+                      <p
+                        className={`py-2.5 text-sm font-semibold tabular-nums ${
+                          l.margen.costoConfiable ? "text-emerald-700" : "text-amber-700"
+                        }`}
+                      >
+                        {l.margen.costoConfiable
+                          ? fmtMoneda(l.margen.ganancia)
+                          : "costo desconocido"}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
 
-                {l.articulo.recetaConfiable ? (
-                  <p className="mt-2 text-xs text-slate-500">
-                    Costo {fmtMoneda(l.cal.costoTotalSnapshot)} · margen{" "}
-                    {fmtPorcentaje(l.margen.margenPct)} · markup{" "}
-                    {fmtPorcentaje(l.margen.markupPct)}
-                  </p>
-                ) : (
-                  <p className="mt-2 text-xs text-amber-700">
-                    Este artículo no tiene receta: el costo real se está suponiendo 0 y el margen
-                    que se ve es optimista.
-                  </p>
-                )}
+                {l.margen && l.costos ? (
+                  l.costos.recetaConfiable ? (
+                    <p className="mt-2 text-xs text-slate-600">
+                      Costo {fmtMoneda(l.cal.costoTotalSnapshot)} · margen{" "}
+                      {fmtPorcentaje(l.margen.margenPct)} · markup{" "}
+                      {fmtPorcentaje(l.margen.markupPct)}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-amber-700">
+                      Este artículo no tiene receta: el costo real se está suponiendo 0 y el margen
+                      que se ve es optimista.
+                    </p>
+                  )
+                ) : null}
 
-                {l.articulo.receta.length > 0 ? (
+                {l.costos && l.costos.receta.length > 0 ? (
                   <div className="mt-2">
                     <button
                       type="button"
                       onClick={() =>
                         setVerReceta(verReceta === l.linea.id ? null : l.linea.id)
                       }
-                      className="text-xs font-medium text-marca-texto"
+                      className="inline-flex min-h-11 items-center text-sm font-medium text-marca-texto"
                     >
                       {verReceta === l.linea.id ? "Ocultar receta" : "Ver receta"}
                     </button>
                     {verReceta === l.linea.id ? (
                       <ul className="mt-2 space-y-1 border-l-2 border-slate-200 pl-3">
-                        {l.articulo.receta.map((c, i) => (
+                        {l.costos.receta.map((c, i) => (
                           <li key={i} className="text-xs text-slate-600">
                             {c.etiqueta}: {fmtNumero(c.cantidad)} × {fmtMoneda(c.costoUnitario)} ={" "}
                             {fmtMoneda(c.costoTotal)}
@@ -405,7 +493,7 @@ export function NuevaVentaForm({
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
           Cobro
         </h2>
 
@@ -433,7 +521,7 @@ export function NuevaVentaForm({
           </div>
         ) : null}
 
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {METODOS.map((m) => (
             <Boton key={m.valor} toggle activo={metodo === m.valor} onClick={() => setMetodo(m.valor)}>
               {m.etiqueta}
@@ -458,6 +546,21 @@ export function NuevaVentaForm({
       </section>
 
       <section>
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-normal text-slate-700">
+          <input
+            type="checkbox"
+            checked={entregada}
+            onChange={(e) => setEntregada(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0"
+          />
+          <span>
+            Ya se entregó
+            <span className="block text-slate-500">Si no, queda como pedido pendiente (el stock se descuenta igual).</span>
+          </span>
+        </label>
+      </section>
+
+      <section>
         <label htmlFor="obs">Observaciones</label>
         <textarea
           id="obs"
@@ -470,9 +573,11 @@ export function NuevaVentaForm({
 
       <BarraInferior
         total={totales.totalBruto}
-        ganancia={totales.ganancia}
-        margenPct={totales.margenPct}
-        habilitado={hayLineas && clienteId !== ""}
+        ganancia={verCostos ? totales.ganancia : null}
+        margenPct={verCostos ? totales.margenPct : null}
+        habilitado={hayLineas && clienteId !== "" && !guardando && !repreciando && !errorPrecios}
+        guardando={guardando}
+        error={errorGuardado}
         onConfirmar={confirmar}
       />
     </div>
@@ -480,7 +585,11 @@ export function NuevaVentaForm({
 }
 
 type Simulacion = {
-  numero: number;
+  numero: string;
+  /** true = ya esta en la base; false = simulacion del modo demo. */
+  guardada: boolean;
+  advertencias: string[];
+  ventaId?: string;
   cliente: string;
   lineas: LineaCalculada[];
   totales: TotalesVenta;
@@ -488,6 +597,8 @@ type Simulacion = {
   metodo: string;
   estadoPago: ReturnType<typeof estadoPago>;
   observaciones: string;
+  /** El usuario puede ver costo y ganancia en el comprobante. */
+  verCostos: boolean;
 };
 
 function ComprobanteSimulado({
@@ -508,18 +619,34 @@ function ComprobanteSimulado({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-        <p className="text-sm font-semibold text-amber-900">
-          Asi quedaria el comprobante interno.
-        </p>
-        <p className="mt-1 text-sm text-amber-800">
-          Esto se genero en memoria: no se guardo nada en la base ni se desconto stock.
-        </p>
-      </div>
+      {sim.guardada ? (
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4">
+          <p className="text-sm font-semibold text-emerald-900">Venta guardada.</p>
+          <p className="mt-1 text-sm text-emerald-800">Se descontó el stock de los materiales.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">Así quedaría el comprobante interno.</p>
+          <p className="mt-1 text-sm text-amber-800">
+            Esto se generó en memoria: no se guardó nada en la base ni se descontó stock.
+          </p>
+        </div>
+      )}
+
+      {sim.advertencias.length > 0 ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">Revisá el stock</p>
+          <ul className="mt-1 list-disc pl-5 text-sm text-amber-800">
+            {sim.advertencias.map((a) => (
+              <li key={a}>{a}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="overflow-hidden rounded-xl border border-slate-300 bg-white">
         <div className="border-b border-dashed border-slate-300 p-4 text-center">
-          <p className="text-xs tracking-wide text-slate-500 uppercase">Comprobante interno</p>
+          <p className="text-xs tracking-wide text-slate-600 uppercase">Comprobante interno</p>
           <p className="text-lg font-semibold text-slate-900">Nº {sim.numero}</p>
           <p className="text-sm text-slate-600">{sim.cliente}</p>
         </div>
@@ -534,7 +661,7 @@ function ComprobanteSimulado({
                 </p>
               </div>
               <p className="mt-0.5 text-sm text-slate-500">
-                {fmtNumero(l.cantidad)} × {fmtMoneda(l.articulo.precioVenta)}
+                {fmtNumero(l.cantidad)} × {fmtMoneda(l.precioUnitario)}
               </p>
             </li>
           ))}
@@ -544,13 +671,17 @@ function ComprobanteSimulado({
           <Fila etiqueta="Neto" valor={fmtMoneda(sim.totales.totalNeto)} />
           <Fila etiqueta="IVA" valor={fmtMoneda(sim.totales.totalIVA)} />
           <Fila etiqueta="Total" valor={fmtMoneda(sim.totales.totalBruto)} fuerte />
-          <Fila etiqueta="Costo" valor={fmtMoneda(sim.totales.costoTotal)} />
-          <Fila
-            etiqueta="Ganancia"
-            valor={`${fmtMoneda(sim.totales.ganancia)} (${fmtPorcentaje(sim.totales.margenPct)})`}
-            fuerte
-            tono="green"
-          />
+          {sim.verCostos ? (
+            <>
+              <Fila etiqueta="Costo" valor={fmtMoneda(sim.totales.costoTotal)} />
+              <Fila
+                etiqueta="Ganancia"
+                valor={`${fmtMoneda(sim.totales.ganancia)} (${fmtPorcentaje(sim.totales.margenPct)})`}
+                fuerte
+                tono="green"
+              />
+            </>
+          ) : null}
         </div>
 
         <div className="border-t border-dashed border-slate-300 p-4 text-sm">
@@ -589,70 +720,22 @@ function ComprobanteSimulado({
           Imprimir comprobante
         </button>
         <Link
-          href="/ventas"
+          href={sim.ventaId ? `/ventas/${sim.ventaId}` : "/ventas"}
           className="rounded-lg bg-marca px-4 py-3 text-center text-sm font-semibold text-tinta hover:opacity-90"
         >
-          Volver a ventas
+          {sim.ventaId ? "Ver la venta" : "Volver a ventas"}
         </Link>
       </div>
 
-      <button
-        type="button"
-        onClick={onVolver}
-        className="w-full text-sm text-slate-500 hover:underline"
-      >
-        Volver a editar la venta
-      </button>
-    </div>
-  );
-}
-
-function BannerMockup({
-  onCargarEjemplo,
-  onLimpiar,
-  tieneLineas,
-  esModoDemo = false,
-}: {
-  onCargarEjemplo: () => void;
-  onLimpiar: () => void;
-  tieneLineas: boolean;
-  esModoDemo?: boolean;
-}) {
-  return (
-    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center rounded-md bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-900">
-              {esModoDemo ? "Mockup con catálogo demo" : "Mockup interactivo"}
-            </span>
-            <p className="text-sm font-semibold text-amber-900">Simulación en vivo (no guarda en base)</p>
-          </div>
-          <p className="mt-1 text-sm text-amber-800">
-            Los cálculos de costo, alícuotas de IVA y márgenes se computan en tiempo real según las recetas.
-            Podés seleccionar artículos, modificar cantidades y simular la emisión del comprobante.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {!tieneLineas ? (
-            <button
-              type="button"
-              onClick={onCargarEjemplo}
-              className="rounded-lg bg-amber-800 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-amber-900"
-            >
-              ⚡ Cargar ejemplo demo
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onLimpiar}
-              className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
-            >
-              Limpiar líneas
-            </button>
-          )}
-        </div>
-      </div>
+      {sim.guardada ? null : (
+        <button
+          type="button"
+          onClick={onVolver}
+          className="min-h-11 w-full text-sm text-slate-600 hover:underline"
+        >
+          Volver a editar la venta
+        </button>
+      )}
     </div>
   );
 }
@@ -662,25 +745,37 @@ function BarraInferior({
   ganancia,
   margenPct,
   habilitado,
+  guardando,
+  error,
   onConfirmar,
 }: {
   total: Dinero;
-  ganancia: Dinero;
-  margenPct: Dinero;
+  /** `null` si el usuario no puede ver ganancia ni margen. */
+  ganancia: Dinero | null;
+  margenPct: Dinero | null;
   habilitado: boolean;
+  guardando: boolean;
+  error: string | null;
   onConfirmar: () => void;
 }) {
   return (
     <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t border-slate-200 bg-white/95 backdrop-blur md:bottom-0">
+      {error ? (
+        <p role="alert" className="mx-auto max-w-5xl bg-red-50 px-4 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
       <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-xs text-slate-500">Total</p>
           <p className="text-lg leading-tight font-semibold tabular-nums text-slate-900">
             {fmtMoneda(total)}
           </p>
-          <p className="text-xs tabular-nums text-emerald-700">
-            ganancia {fmtMoneda(ganancia)} · {fmtPorcentaje(margenPct)}
-          </p>
+          {ganancia && margenPct ? (
+            <p className="text-xs tabular-nums text-emerald-700">
+              ganancia {fmtMoneda(ganancia)} · {fmtPorcentaje(margenPct)}
+            </p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -688,7 +783,7 @@ function BarraInferior({
           disabled={!habilitado}
           className="shrink-0 rounded-lg bg-marca px-5 py-3 text-sm font-semibold text-tinta disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          Guardar venta
+          {guardando ? "Guardando…" : "Guardar venta"}
         </button>
       </div>
     </div>
@@ -710,7 +805,8 @@ function Boton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border px-3 py-2.5 text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
+      aria-pressed={toggle ? !!activo : undefined}
+      className={`rounded-lg border px-3 py-3 text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
         toggle
           ? activo
             ? "border-marca bg-marca text-tinta"

@@ -1,0 +1,275 @@
+import { aCosto, CERO, d, fmtNumero, type Dinero } from "@/lib/money";
+import { ErrorDeNegocio } from "@/lib/acciones";
+import { NOMBRE_TIPO, numeroFormateado, TIPOS_FACTURA } from "@/lib/comprobantes";
+import { costearLineaVenta, totalizarVenta } from "@/lib/costing";
+import { configNumero, recetaResuelta } from "@/lib/receta";
+import { resolverPrecio } from "@/lib/precios";
+import { ETIQUETA_UNIDAD } from "@/lib/unidades";
+import { cargarListaDeCliente } from "./listas-precios";
+import type { Tx } from "./tx";
+
+/**
+ * Clave textual del advisory lock que numera las ventas de un (negocio, anio). Lleva el
+ * negocio: dos negocios cargando ventas a la vez no se esperan ni comparten correlativo.
+ */
+export function claveLockVentas(negocioId: string, anio: number): string {
+  return `ventas:${negocioId}:${anio}`;
+}
+
+export type MetodoPago = "EFECTIVO" | "TRANSFERENCIA" | "TARJETA" | "OTRO";
+
+export type VentaNueva = {
+  clienteId: string;
+  fecha: Date;
+  observaciones: string | null;
+  entregada: boolean;
+  items: {
+    articuloId: string;
+    cantidad: Dinero;
+    /**
+     * Override del precio unitario: SOLO lo pasa el servidor (por ejemplo al
+     * convertir un presupuesto con el precio acordado), nunca un formulario.
+     * Sin override, el precio sale de `resolverPrecio` segun la lista del cliente.
+     */
+    precioUnitario?: Dinero;
+  }[];
+  pago: { monto: Dinero; metodo: MetodoPago } | null;
+  /** Momento de los movimientos de stock. Por defecto, ahora (el seed lo fija). */
+  momento?: Date;
+  /** Quien la carga. Se guarda en la venta, su pago y sus movimientos. Ausente = sin usuario. */
+  usuarioId?: string | null;
+};
+
+export type VentaRegistrada = {
+  id: string;
+  numero: number;
+  anio: number;
+  totalBruto: Dinero;
+  advertencias: string[];
+};
+
+/**
+ * Confirma una venta. Todo se recalcula a partir de la base: precio (catalogo o
+ * lista del cliente, ver `resolverPrecio`), IVA y costo de receta del momento.
+ * Lo que llega de afuera es solo que se vendio, cuanto y a quien.
+ *
+ * Numera la venta, congela los costos, descuenta el stock de los materiales de
+ * cada receta (con un movimiento por material) y registra el pago inicial.
+ *
+ * Nunca se frena una venta por falta de stock: el sistema puede estar
+ * desactualizado y el pedido ya esta hecho. Se descuenta lo que hay, se deja
+ * constancia en el movimiento y se devuelve una advertencia.
+ */
+export async function registrarVentaEnTx(tx: Tx, negocioId: string, venta: VentaNueva): Promise<VentaRegistrada> {
+  const { clienteId, fecha, entregada, pago, momento } = venta;
+  const usuarioId = venta.usuarioId ?? null;
+  const anio = fecha.getUTCFullYear();
+  if (venta.items.length === 0) throw new ErrorDeNegocio("Agregá al menos un artículo");
+
+  for (const l of venta.items) {
+    if (l.precioUnitario !== undefined && l.precioUnitario.lt(0)) {
+      throw new ErrorDeNegocio("El precio unitario no puede ser negativo.");
+    }
+  }
+
+  const cliente = await tx.cliente.findFirst({ where: { id: clienteId, activo: true }, select: { id: true } });
+  if (!cliente) throw new ErrorDeNegocio("El cliente no existe o está dado de baja.");
+
+  const ids = [...new Set(venta.items.map((l) => l.articuloId))];
+  const lista = await cargarListaDeCliente(tx, clienteId, ids);
+  const articulos = await tx.articulo.findMany({
+    where: { id: { in: ids }, activo: true },
+    include: {
+      receta: { include: { componentes: { include: { material: true, maquina: true }, orderBy: { id: "asc" } } } },
+    },
+  });
+  if (articulos.length !== ids.length) throw new ErrorDeNegocio("Algún artículo ya no existe o está dado de baja.");
+  const porId = new Map(articulos.map((a) => [a.id, a]));
+
+  const config = await tx.configuracion.findMany();
+  const costoHora = configNumero(Object.fromEntries(config.map((c) => [c.clave, c.valor])), "costoHoraManoObra", "0");
+
+  const consumos = new Map<string, Dinero>();
+  const items = venta.items.map((l) => {
+    const articulo = porId.get(l.articuloId)!;
+    const componentes = articulo.receta?.componentes ?? [];
+    const receta = recetaResuelta(componentes, costoHora);
+    const precioUnitario =
+      l.precioUnitario !== undefined
+        ? aCosto(l.precioUnitario)
+        : resolverPrecio({ articuloId: articulo.id, precioCatalogo: articulo.precioVenta, lista }).precio;
+    const cal = costearLineaVenta({
+      cantidad: l.cantidad,
+      precioUnitario,
+      ivaPct: articulo.ivaPct,
+      costoUnitario: receta.costoTotal,
+    });
+
+    if (!articulo.esServicio) {
+      for (const c of componentes) {
+        if (c.tipo === "MATERIAL" && c.materialId) {
+          consumos.set(c.materialId, (consumos.get(c.materialId) ?? CERO).plus(c.cantidad.times(l.cantidad)));
+        }
+      }
+    }
+
+    return {
+      articuloId: articulo.id,
+      descripcion: articulo.nombre,
+      cantidad: l.cantidad,
+      precioUnitario,
+      ivaPct: articulo.ivaPct,
+      subtotalNeto: cal.subtotalNeto,
+      subtotalIVA: cal.subtotalIVA,
+      subtotalBruto: cal.subtotalBruto,
+      costoUnitarioSnapshot: cal.costoUnitarioSnapshot,
+      costoTotalSnapshot: cal.costoTotalSnapshot,
+    };
+  });
+  const totales = totalizarVenta(items);
+
+  if (pago && pago.monto.gt(totales.totalBruto.plus("0.01"))) {
+    throw new ErrorDeNegocio("El pago no puede superar el total de la venta.");
+  }
+
+  // Un solo escritor numera por (negocio, anio) a la vez: el correlativo no se repite ni deja huecos,
+  // y dos negocios no se esperan entre si (la clave del candado lleva el negocio).
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${claveLockVentas(negocioId, anio)}, 0))`;
+  const ultimo = await tx.venta.aggregate({ where: { negocioId, anio }, _max: { numero: true } });
+  const numero = (ultimo._max.numero ?? 0) + 1;
+
+  const creada = await tx.venta.create({
+    data: {
+      negocioId,
+      numero,
+      anio,
+      clienteId,
+      fecha,
+      estado: entregada ? "ENTREGADA" : "PENDIENTE",
+      observaciones: venta.observaciones,
+      totalNeto: totales.totalNeto,
+      totalIVA: totales.totalIVA,
+      totalBruto: totales.totalBruto,
+      costoTotal: totales.costoTotal,
+      usuarioId,
+      items: { create: items.map((i) => ({ negocioId, ...i })) },
+    },
+  });
+
+  if (pago) {
+    await tx.pago.create({
+      data: { negocioId, ventaId: creada.id, clienteId, fecha, monto: pago.monto, metodo: pago.metodo, usuarioId },
+    });
+  }
+
+  const advertencias: string[] = [];
+  // Orden fijo por id: dos ventas simultaneas bloquean las filas en el mismo orden.
+  for (const [materialId, consumo] of [...consumos].sort(([a], [b]) => a.localeCompare(b))) {
+    const filas = await tx.$queryRaw<{ stockActual: string; nombre: string; unidad: string }[]>`
+      SELECT "stockActual"::text AS "stockActual", nombre, unidad::text AS unidad
+      FROM "materiales" WHERE id = ${materialId}::uuid AND "negocioId" = ${negocioId}::uuid FOR UPDATE`;
+    const fila = filas[0];
+    if (!fila) continue;
+
+    const disponible = d(fila.stockActual);
+    const descontar = consumo.lt(disponible) ? consumo : disponible;
+    const faltante = consumo.minus(descontar);
+    if (faltante.gt(0)) {
+      advertencias.push(
+        `${fila.nombre}: faltaron ${fmtNumero(faltante)} ${ETIQUETA_UNIDAD[fila.unidad] ?? fila.unidad} de stock (el sistema quedó en 0).`,
+      );
+    }
+    if (descontar.lte(0)) continue;
+
+    const material = await tx.material.update({
+      where: { id: materialId },
+      data: { stockActual: { decrement: descontar } },
+      select: { stockActual: true },
+    });
+    await tx.movimientoStock.create({
+      data: {
+        negocioId,
+        materialId,
+        tipo: "VENTA",
+        cantidad: descontar.neg(),
+        stockResultante: material.stockActual,
+        motivo: `Venta #${numero}/${anio}${faltante.gt(0) ? ` (faltaron ${fmtNumero(faltante)})` : ""}`,
+        ventaId: creada.id,
+        usuarioId,
+        ...(momento ? { creadoEn: momento } : {}),
+      },
+    });
+  }
+
+  return { id: creada.id, numero, anio, totalBruto: totales.totalBruto, advertencias };
+}
+
+/**
+ * Anula una venta y devuelve al stock exactamente lo que se desconto al
+ * confirmarla (se leen sus movimientos, no se recalcula la receta: si la receta
+ * cambio desde entonces, igual vuelve lo que realmente salio).
+ *
+ * La venta no se borra: queda ANULADA y deja de contar en saldos y reportes.
+ * Los movimientos de reversa quedan a nombre de quien anula (`usuarioId`).
+ *
+ * Una venta con factura vigente (PENDIENTE o EMITIDA) no se anula hasta que una
+ * nota de credito EMITIDA anule esa factura (la base tambien lo impone; aca se
+ * verifica antes para dar un mensaje claro).
+ */
+export async function anularVentaEnTx(tx: Tx, negocioId: string, ventaId: string, usuarioId?: string | null): Promise<void> {
+  const filas = await tx.$queryRaw<{ estado: string; numero: number; anio: number }[]>`
+    SELECT estado::text AS estado, numero, anio FROM "ventas" WHERE id = ${ventaId}::uuid AND "negocioId" = ${negocioId}::uuid FOR UPDATE`;
+  const venta = filas[0];
+  if (!venta) throw new ErrorDeNegocio("La venta no existe.");
+  if (venta.estado === "ANULADA") throw new ErrorDeNegocio("La venta ya estaba anulada.");
+
+  const factura = await tx.comprobante.findFirst({
+    where: { ventaId, tipo: { in: [...TIPOS_FACTURA] }, estado: { in: ["PENDIENTE", "EMITIDO"] } },
+    select: {
+      tipo: true,
+      puntoVenta: true,
+      numero: true,
+      estado: true,
+      notasDeCredito: { where: { estado: { in: ["PENDIENTE", "EMITIDO"] } }, select: { estado: true } },
+    },
+  });
+  if (factura && !factura.notasDeCredito.some((nc) => nc.estado === "EMITIDO")) {
+    const cual = `${NOMBRE_TIPO[factura.tipo]} ${numeroFormateado(factura.puntoVenta, factura.numero)}`;
+    if (factura.estado === "PENDIENTE") {
+      throw new ErrorDeNegocio(
+        `La venta tiene la ${cual} esperando respuesta del emisor: resolvela desde Comprobantes antes de anular la venta (si queda emitida, hará falta una nota de crédito).`,
+      );
+    }
+    throw new ErrorDeNegocio(
+      factura.notasDeCredito.length > 0
+        ? `La venta tiene la ${cual} y su nota de crédito está esperando respuesta del emisor: resolvela desde Comprobantes antes de anular la venta.`
+        : `La venta tiene la ${cual}: primero hay que emitir la nota de crédito.`,
+    );
+  }
+
+  await tx.venta.update({ where: { id: ventaId }, data: { estado: "ANULADA" } });
+
+  const salidas = await tx.movimientoStock.findMany({
+    where: { ventaId, tipo: "VENTA" },
+    orderBy: { materialId: "asc" },
+  });
+  for (const salida of salidas) {
+    const material = await tx.material.update({
+      where: { id: salida.materialId },
+      data: { stockActual: { increment: salida.cantidad.neg() } },
+      select: { stockActual: true },
+    });
+    await tx.movimientoStock.create({
+      data: {
+        negocioId,
+        materialId: salida.materialId,
+        tipo: "VENTA",
+        cantidad: salida.cantidad.neg(),
+        stockResultante: material.stockActual,
+        motivo: `Anulación de la venta #${venta.numero}/${venta.anio}`,
+        ventaId,
+        usuarioId: usuarioId ?? null,
+      },
+    });
+  }
+}

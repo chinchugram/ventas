@@ -1,15 +1,10 @@
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
 import { DEMO_CONFIG, demoArticulos } from "@/lib/demo-data";
 import { conRespaldo } from "@/lib/respaldo";
-import { CERO, d, Dinero } from "@/lib/money";
-import {
-  calcularMargen,
-  ComponenteResuelto,
-  costearReceta,
-  Margen,
-  ResultadoReceta,
-} from "@/lib/costing";
+import { configNumero, recetaResuelta } from "@/lib/receta";
+import type { Dinero } from "@/lib/money";
+import { calcularMargen, Margen, ResultadoReceta } from "@/lib/costing";
 
 /**
  * Configuracion del negocio, memoizada por request.
@@ -21,16 +16,13 @@ export const getConfig = cache(
   (): Promise<Record<string, string>> =>
     conRespaldo(
       async () => {
-        const filas = await prisma.configuracion.findMany();
+        const filas = await conNegocio(await negocioActual(), (tx) => tx.configuracion.findMany({ where: { clave: { notIn: ["logoDatos"] } } }));
         return Object.fromEntries(filas.map((f) => [f.clave, f.valor]));
       },
       () => DEMO_CONFIG,
     ),
 );
 
-export function configNumero(config: Record<string, string>, clave: string, porDefecto: string): Dinero {
-  return d(config[clave] ?? porDefecto);
-}
 
 /**
  * Articulos con su costo de receta resuelto y el margen calculado.
@@ -48,20 +40,22 @@ async function articulosDesdeBase(): Promise<ArticuloConMargen[]> {
   const config = await getConfig();
   const costoHoraManoObra = configNumero(config, "costoHoraManoObra", "0");
 
-  const articulos = await prisma.articulo.findMany({
-    where: { activo: true },
-    orderBy: { nombre: "asc" },
-    include: {
-      receta: {
-        include: {
-          componentes: {
-            include: { material: true, maquina: true },
-            orderBy: { id: "asc" },
+  const articulos = await conNegocio(await negocioActual(), (tx) =>
+    tx.articulo.findMany({
+      where: { activo: true },
+      orderBy: { nombre: "asc" },
+      include: {
+        receta: {
+          include: {
+            componentes: {
+              include: { material: true, maquina: true },
+              orderBy: { id: "asc" },
+            },
           },
         },
       },
-    },
-  });
+    }),
+  );
 
   return articulos.map((a) => {
     const receta = recetaResuelta(a.receta?.componentes ?? [], costoHoraManoObra);
@@ -85,6 +79,46 @@ async function articulosDesdeBase(): Promise<ArticuloConMargen[]> {
   });
 }
 
+/** Lo que hace falta para vender un articulo: nombre, precio e IVA. Sin receta, costo ni margen. */
+export type ArticuloParaVender = {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  precioVenta: Dinero;
+  ivaPct: Dinero;
+  esServicio: boolean;
+};
+
+/**
+ * Articulos activos SIN costo ni receta, para quien no puede `verCostos`. No lee
+ * las recetas, materiales ni maquinas de la base: el costo no llega ni a la
+ * memoria del servidor, y mucho menos a un componente cliente.
+ */
+export const getArticulosParaVender = cache(
+  (): Promise<ArticuloParaVender[]> =>
+    conRespaldo(
+      async () => {
+        const articulos = await conNegocio(await negocioActual(), (tx) =>
+          tx.articulo.findMany({
+            where: { activo: true },
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true, descripcion: true, precioVenta: true, ivaPct: true, esServicio: true },
+          }),
+        );
+        return articulos;
+      },
+      () =>
+        demoArticulos().map((a) => ({
+          id: a.id,
+          nombre: a.nombre,
+          descripcion: a.descripcion,
+          precioVenta: a.precioVenta,
+          ivaPct: a.ivaPct,
+          esServicio: a.esServicio,
+        })),
+    ),
+);
+
 export type ArticuloConMargen = {
   id: string;
   nombre: string;
@@ -96,69 +130,4 @@ export type ArticuloConMargen = {
   margen: Margen;
 };
 
-type ComponenteDb = {
-  id: string;
-  tipo: "MATERIAL" | "MAQUINA" | "MANO_OBRA";
-  cantidad: Dinero;
-  costoUnitarioOverride: Dinero | null;
-  notas: string | null;
-  material: { nombre: string; costoUnitario: Dinero; unidad: string } | null;
-  maquina: { nombre: string; costoHora: Dinero } | null;
-};
-
-/**
- * Traduce componentes de la base a valores planos para el motor de costeo.
- *
- * El orden de resolucion del costo unitario, en palabras:
- *   1. override explicito en la receta (gana sobre todo)
- *   2. costo/hora de la maquina
- *   3. costo unitario del material
- *   4. costo/hora de mano de obra general
- */
-export function recetaResuelta(
-  componentes: ComponenteDb[],
-  costoHoraManoObra: Dinero,
-): ResultadoReceta {
-  const resueltos: ComponenteResuelto[] = componentes.map((c) => {
-    const conOverride = c.costoUnitarioOverride !== null;
-
-    switch (c.tipo) {
-      case "MATERIAL": {
-        const material = c.material;
-        return {
-          id: c.id,
-          tipo: c.tipo,
-          etiqueta: material?.nombre ?? "Material eliminado",
-          cantidad: c.cantidad,
-          costoUnitario: conOverride ? c.costoUnitarioOverride! : (material?.costoUnitario ?? CERO),
-          costoUnitarioOverride: conOverride,
-          notas: c.notas,
-        };
-      }
-      case "MAQUINA": {
-        const maquina = c.maquina;
-        return {
-          id: c.id,
-          tipo: c.tipo,
-          etiqueta: maquina?.nombre ?? "Maquina eliminada",
-          cantidad: c.cantidad,
-          costoUnitario: conOverride ? c.costoUnitarioOverride! : (maquina?.costoHora ?? CERO),
-          costoUnitarioOverride: conOverride,
-          notas: c.notas,
-        };
-      }
-      case "MANO_OBRA":
-        return {
-          id: c.id,
-          tipo: c.tipo,
-          etiqueta: "Mano de obra",
-          cantidad: c.cantidad,
-          costoUnitario: conOverride ? c.costoUnitarioOverride! : costoHoraManoObra,
-          costoUnitarioOverride: conOverride,
-          notas: c.notas,
-        };
-    }
-  });
-
-  return costearReceta(resueltos, costoHoraManoObra);
-}
+export { configNumero, recetaResuelta };

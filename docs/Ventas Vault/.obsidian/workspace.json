@@ -1,0 +1,227 @@
+{
+  "main": {
+    "id": "22d6ab5f03f93a3e",
+    "type": "split",
+    "children": [
+      {
+        "id": "9a7c93096e8d7eb7",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "e8e8d3ee8f019588",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Ventas ERP/Producto/Pantallas y rutas.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Pantallas y rutas"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "4147e9a259ba284f",
+    "type": "split",
+    "children": [
+      {
+        "id": "d3beb8e9a19d4726",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f51b49a5ce8fa113",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de archivos"
+            }
+          },
+          {
+            "id": "78bf7835d4543a8f",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Buscar"
+            }
+          },
+          {
+            "id": "06d3ee09990bb566",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 428.5
+  },
+  "right": {
+    "id": "403699d67a3c470d",
+    "type": "split",
+    "children": [
+      {
+        "id": "061fae07adc2d1b0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "eb0ead2431c8fe64",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Cobranzas.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Enlaces entrantes"
+            }
+          },
+          {
+            "id": "89b280f95bc0d1d2",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Cobranzas.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Enlaces salientes"
+            }
+          },
+          {
+            "id": "6bfcbc0aebf04c7b",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "c66a7e2bd04c3202",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas las propiedades"
+            }
+          },
+          {
+            "id": "b728ad1f6dcc5f93",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Cobranzas.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Esquema"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir selector rápido": false,
+      "graph:Abrir vista gráfica": false,
+      "canvas:Crear nuevo lienzo": false,
+      "daily-notes:Abrir la nota de hoy": false,
+      "templates:Insertar plantilla": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Crear nueva base": false
+    }
+  },
+  "active": "e8e8d3ee8f019588",
+  "lastOpenFiles": [
+    "Ventas ERP/Producto/Visión y alcance.md",
+    "Ventas ERP/Producto/Glosario.md",
+    "Cobranzas.md",
+    "Video demo.md",
+    "Ventas ERP/Gestión/Pendientes y deuda técnica.md",
+    "Ventas ERP/00 Inicio.md",
+    "Ventas ERP/Gestión/Historial por olas.md",
+    "Ventas ERP/Operación/Video demo.md",
+    "Ventas ERP/Operación/Despliegue.md",
+    "Ventas ERP/Operación/Respaldos.md",
+    "Ventas ERP/Operación/Scripts y pruebas.md",
+    "Ventas ERP/Operación/Arranque y entorno local.md",
+    "Ventas ERP/Operación",
+    "Ventas ERP/Gestión/Dudas para el contador.md",
+    "Ventas ERP/Gestión",
+    "Ventas ERP/Técnica/Integración ARCA (tarea 5.2).md",
+    "Ventas ERP/Técnica/Seguridad y permisos.md",
+    "Ventas ERP/Módulos/Usuarios y acceso.md",
+    "Ventas ERP/Módulos/Facturación.md",
+    "Ventas ERP/Módulos/Producción y margen real.md",
+    "Ventas ERP/Módulos/Reportes.md",
+    "Ventas ERP/Módulos/Listas de precios y presupuestos.md",
+    "Ventas ERP/Módulos/Compras y stock.md",
+    "Ventas ERP/Módulos/Catálogo, materiales y recetas.md",
+    "Ventas ERP/Módulos/Cobranzas.md",
+    "Ventas ERP/Módulos/Ventas.md",
+    "Ventas ERP/Módulos/Dashboard.md",
+    "Ventas ERP/Módulos",
+    "Ventas ERP/Técnica/Arquitectura.md",
+    "Ventas ERP/Técnica/Datos",
+    "Ventas ERP/Técnica",
+    "Ventas ERP/Producto",
+    "Ventas ERP"
+  ]
+}

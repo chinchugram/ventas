@@ -1,0 +1,117 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { Prisma } from "@/generated/prisma/client";
+import { dbDisponible } from "@/lib/prisma";
+import { conNegocio, negocioActual } from "@/lib/negocio";
+import { puede, verificarPermiso } from "@/lib/permisos";
+import type { UsuarioSesion } from "@/lib/auth";
+import { mensajeDeError, primerError, SIN_BASE, textoOpcional, type Resultado } from "@/lib/acciones";
+import { CONDICIONES_IVA_CLIENTE, cambiarActivoClienteEnTx, crearClienteEnTx, editarClienteEnTx } from "@/lib/dominio/clientes";
+import { normalizarDni } from "@/lib/comprobantes";
+
+export type { Resultado } from "@/lib/acciones";
+
+// El CUIT llega como texto libre ("30-71234567-1"): la forma y el digito
+// verificador los valida el dominio (`src/lib/cuit.ts`), que lo normaliza.
+// El DNI se valida aca (7 u 8 digitos, con o sin puntos) y el dominio lo guarda normalizado.
+const esquemaCliente = z.object({
+  nombre: z.string().trim().min(1, "Falta el nombre o razón social").max(120, "Máximo 120 caracteres"),
+  cuit: textoOpcional(20),
+  condicionIva: z.enum(CONDICIONES_IVA_CLIENTE, "Condición frente al IVA inválida").optional(),
+  dni: textoOpcional(20).refine((v) => v === null || normalizarDni(v) !== null, "El DNI tiene que tener 7 u 8 dígitos, sin puntos."),
+  telefono: textoOpcional(40),
+  email: textoOpcional(120).refine((v) => v === null || z.email().safeParse(v).success, "El email no es válido"),
+  direccion: textoOpcional(200),
+  notas: textoOpcional(500),
+  // Lista de precios: null la quita; sin informar no la toca (el dominio valida que exista y este activa).
+  listaPrecioId: z.uuid("Lista de precios inválida").nullish(),
+});
+
+export type DatosCliente = z.input<typeof esquemaCliente>;
+
+const idCliente = z.uuid("Cliente inválido");
+
+/**
+ * Asignar o cambiar la lista de precios de un cliente es una decision de
+ * precios: solo con `gestionarListasPrecios` (el dueno). Para quien no la tiene
+ * el campo se ignora (no se valida ni se toca la lista que el cliente ya tiene,
+ * y un cliente nuevo queda sin lista), aunque el pedido lo traiga.
+ */
+function segunPermisoDeListas<T extends { listaPrecioId?: string | null }>(usuario: UsuarioSesion, datos: T): T {
+  return puede(usuario, "gestionarListasPrecios") ? datos : { ...datos, listaPrecioId: undefined };
+}
+
+/** Choque con el indice unico de CUIT (dos altas a la vez con el mismo CUIT). */
+function esCuitDuplicado(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+function revalidarClientes(id?: string) {
+  revalidatePath("/clientes");
+  if (id) revalidatePath(`/clientes/${id}`);
+  // El nombre del cliente aparece en el tablero, las ventas y los reportes.
+  for (const ruta of ["/", "/ventas", "/ventas/nueva", "/reportes", "/cobranzas", "/listas-precios"]) revalidatePath(ruta);
+}
+
+export async function crearCliente(datos: DatosCliente): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const permiso = await verificarPermiso("editarClientes");
+  if (!permiso.ok) return permiso;
+  const parsed = esquemaCliente.safeParse(segunPermisoDeListas(permiso.usuario, datos));
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+
+  let id: string;
+  try {
+    const negocioId = await negocioActual();
+    ({ id } = await conNegocio(negocioId, (tx) => crearClienteEnTx(tx, negocioId, parsed.data)));
+  } catch (error) {
+    if (esCuitDuplicado(error)) return { ok: false, error: "Ya hay un cliente con ese CUIT." };
+    console.error("[crearCliente]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo guardar el cliente.") };
+  }
+
+  revalidarClientes(id);
+  return { ok: true, id };
+}
+
+export async function editarCliente(datos: DatosCliente & { id: string }): Promise<Resultado> {
+  const permiso = await verificarPermiso("editarClientes");
+  if (!permiso.ok) return permiso;
+  const id = idCliente.safeParse(datos.id);
+  if (!id.success) return { ok: false, error: primerError(id.error) };
+  const parsed = esquemaCliente.safeParse(segunPermisoDeListas(permiso.usuario, datos));
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+
+  try {
+    await conNegocio(await negocioActual(), (tx) => editarClienteEnTx(tx, id.data, parsed.data));
+  } catch (error) {
+    if (esCuitDuplicado(error)) return { ok: false, error: "Ya hay un cliente con ese CUIT." };
+    console.error("[editarCliente]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo guardar el cliente.") };
+  }
+
+  revalidarClientes(id.data);
+  return { ok: true };
+}
+
+/** Baja logica (`activo: false`) o reactivacion (`activo: true`). */
+export async function cambiarActivoCliente(datos: { id: string; activo: boolean }): Promise<Resultado> {
+  const permiso = await verificarPermiso("editarClientes");
+  if (!permiso.ok) return permiso;
+  const parsed = z.object({ id: idCliente, activo: z.boolean() }).safeParse(datos);
+  if (!parsed.success) return { ok: false, error: primerError(parsed.error) };
+  if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
+
+  try {
+    await conNegocio(await negocioActual(), (tx) => cambiarActivoClienteEnTx(tx, parsed.data.id, parsed.data.activo));
+  } catch (error) {
+    console.error("[cambiarActivoCliente]", error);
+    return { ok: false, error: mensajeDeError(error, "No se pudo actualizar el cliente.") };
+  }
+
+  revalidarClientes(parsed.data.id);
+  return { ok: true };
+}

@@ -11,6 +11,8 @@ import type { ArticuloConMargen } from "@/lib/queries/catalogo";
 import type { ClienteListado } from "@/lib/queries/clientes";
 import type { DeudaCliente, ResumenMes, TopProducto, VentaListada } from "@/lib/queries/dashboard";
 import type { MaterialListado } from "@/lib/queries/materiales";
+import type { CompraListada, MovimientoListado } from "@/lib/queries/compras";
+import { subtotalCompra } from "@/lib/stock";
 import type { VentaRow } from "@/lib/queries/ventas";
 
 /**
@@ -19,11 +21,23 @@ import type { VentaRow } from "@/lib/queries/ventas";
  * No son numeros escritos a mano: todo (costos, margenes, saldos, totales) sale
  * de las mismas funciones de `costing.ts` que usa la version con base. Asi las
  * pantallas son coherentes entre si y el mockup muestra el comportamiento real.
+ *
+ * MODO DEMO = UN SOLO NEGOCIO. Este juego de datos (el respaldo de `conRespaldo`, que solo
+ * entra cuando la base no responde) describe un unico negocio demo, "HL Laser": no hay
+ * login, ni sesion, ni `negocioId`, y NO es multi-negocio ni sirve para probar el
+ * aislamiento. Los dos negocios de ejemplo ("HL Laser" y "Taller Demo", con datos
+ * distintos) los siembra `npm run db:seed` (prisma/seed.ts) en una base real; ahi si
+ * rige el aislamiento por RLS y cada dueño ve solo lo suyo. No hay que agregar un segundo
+ * negocio a este archivo: con base, los datos de demostracion nunca se mezclan.
  */
 
+/** El unico negocio del modo demo sin base. Coincide con el primer negocio del seed. */
+export const DEMO_NEGOCIO = { nombre: "HL Laser", slug: "hl-laser" } as const;
+
 export const DEMO_CONFIG: Record<string, string> = {
-  nombreNegocio: "HL Laser",
+  nombreNegocio: DEMO_NEGOCIO.nombre,
   costoHoraManoObra: "3500",
+  ivaPorDefecto: "21",
   margenObjetivo: "40",
 };
 
@@ -33,11 +47,11 @@ const IVA_PCT = d(21);
 // ─── Clientes ─────────────────────────────────────────────────────────────────
 
 const CLIENTES = [
-  { id: "c1", nombre: "Ferretería El Tornillo", cuit: "30-71234567-8", telefono: "351 455-6677" },
-  { id: "c2", nombre: "Café La Esquina", cuit: "20-34567890-1", telefono: "351 411-2233" },
+  { id: "c1", nombre: "Ferretería El Tornillo", cuit: "30-71234567-1", telefono: "351 455-6677" },
+  { id: "c2", nombre: "Café La Esquina", cuit: "20-34567890-6", telefono: "351 411-2233" },
   { id: "c3", nombre: "Estudio Weber", cuit: null, telefono: "351 622-0981" },
-  { id: "c4", nombre: "Gimnasio Fuerza Total", cuit: "30-55555555-5", telefono: "351 733-4410" },
-  { id: "c5", nombre: "Cervecería Patagonia", cuit: "30-68991234-9", telefono: "351 590-8812" },
+  { id: "c4", nombre: "Gimnasio Fuerza Total", cuit: "30-55555555-1", telefono: "351 733-4410" },
+  { id: "c5", nombre: "Cervecería Patagonia", cuit: "30-68991234-2", telefono: "351 590-8812" },
 ] as const;
 
 // ─── Materiales y maquinas ────────────────────────────────────────────────────
@@ -314,6 +328,66 @@ export function demoMateriales(): MaterialListado[] {
             : ("OK" as const),
     };
   }).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+}
+
+const COMPRAS = [
+  { id: "k1", haceDias: 3, proveedor: "Vinilos del Plata", comprobante: "0003-00014521", items: [{ m: "m1", cantidad: "20", costo: "4200" }, { m: "m2", cantidad: "6", costo: "1400" }] },
+  { id: "k2", haceDias: 12, proveedor: "Acrílicos Córdoba", comprobante: null, items: [{ m: "m4", cantidad: "3", costo: "24000" }] },
+  { id: "k3", haceDias: 25, proveedor: "Maderas Sur", comprobante: "0001-00008890", items: [{ m: "m3", cantidad: "10", costo: "8500" }] },
+] as const;
+
+function fechaHace(dias: number): Date {
+  const hoy = new Date();
+  return new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - dias));
+}
+
+export function demoCompras(): CompraListada[] {
+  return COMPRAS.map((c) => {
+    const items = c.items.map((i) => {
+      const material = MATERIALES.find((m) => m.id === i.m)!;
+      return {
+        material: material.nombre,
+        unidad: material.unidad,
+        cantidad: d(i.cantidad),
+        costoUnitario: d(i.costo),
+      };
+    });
+    return {
+      id: c.id,
+      fecha: fechaHace(c.haceDias),
+      proveedor: c.proveedor,
+      comprobante: c.comprobante,
+      total: sumar(...items.map((i) => subtotalCompra(i.cantidad, i.costoUnitario))),
+      registradoPor: null,
+      items,
+    };
+  });
+}
+
+/**
+ * Movimientos de demostracion de un material: las compras demo que lo incluyen.
+ * El saldo se reconstruye hacia atras desde el stock actual, para que el ultimo
+ * movimiento cierre con lo que muestra la pantalla de materiales.
+ */
+export function demoMovimientos(materialId: string): MovimientoListado[] {
+  const material = MATERIALES.find((m) => m.id === materialId);
+  if (!material) return [];
+
+  const entradas = COMPRAS.filter((c) => c.items.some((i) => i.m === materialId))
+    .sort((a, b) => a.haceDias - b.haceDias)
+    .map((c) => ({
+      id: `${c.id}-${materialId}`,
+      fecha: fechaHace(c.haceDias),
+      cantidad: d(c.items.find((i) => i.m === materialId)!.cantidad),
+      motivo: `Compra a ${c.proveedor}`,
+    }));
+
+  let saldo = d(material.stock);
+  return entradas.map((e) => {
+    const resultante = saldo;
+    saldo = saldo.minus(e.cantidad);
+    return { ...e, tipo: "COMPRA" as const, stockResultante: resultante, registradoPor: null };
+  });
 }
 
 export function demoClientes(): ClienteListado[] {
