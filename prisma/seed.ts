@@ -613,6 +613,16 @@ async function limpiar() {
   }
 }
 
+/** Alta del usuario solo si no existe en el negocio (el perfil "cuentas" se puede repetir sin romper). */
+async function asegurarUsuario(negocioId: string, u: { usuario: string; clave: string; nombre: string; rol: Rol }) {
+  await conNegocioSeed(negocioId, async (tx) => {
+    const existe = await tx.usuario.findFirst({ where: { negocioId, usuario: u.usuario.toLowerCase() }, select: { id: true } });
+    if (existe) return console.log(`  Usuario ${u.usuario} ya existe: se deja como esta.`);
+    await crearUsuarioEnTx(tx, { ...u, negocioId });
+    console.log(`  Usuario ${u.usuario} creado.`);
+  });
+}
+
 /** Negocio sin datos: solo el negocio (con su logo), la configuracion minima y su dueno. */
 async function sembrarVacio(def: typeof CUENTA_HUGO) {
   const negocio = await prisma.negocio.upsert({
@@ -622,8 +632,8 @@ async function sembrarVacio(def: typeof CUENTA_HUGO) {
     select: { id: true },
   });
   console.log(`\n== ${def.nombre} (${def.slug}), sin datos ==`);
+  await asegurarUsuario(negocio.id, def.usuario);
   await conNegocioSeed(negocio.id, async (tx) => {
-    await crearUsuarioEnTx(tx, { ...def.usuario, negocioId: negocio.id });
     await tx.configuracion.upsert({
       where: { negocioId_clave: { negocioId: negocio.id, clave: "nombreNegocio" } },
       update: { valor: def.nombre },
@@ -821,7 +831,15 @@ async function sembrarNegocio(def: NegocioDeEjemplo, { conUsuarios = !PRODUCCION
 async function main() {
   if (PERFIL_CUENTAS) {
     // Solo agrega: no limpia nada (hl-laser, claude y lo que haya cargado quedan como estan).
-    await sembrarNegocio(CUENTA_DEMO, { conUsuarios: true });
+    // Si `demo` ya tiene datos (p. ej. lo creo el perfil "nube"), no se vuelven a sembrar: solo se agrega DEMO.
+    const demo = await prisma.negocio.findUnique({ where: { slug: CUENTA_DEMO.slug }, select: { id: true } });
+    const tieneDatos = demo ? (await prisma.cliente.count({ where: { negocioId: demo.id } })) > 0 : false;
+    if (demo && tieneDatos) {
+      console.log(`\n== ${CUENTA_DEMO.nombre} (${CUENTA_DEMO.slug}): ya tiene datos, solo se agrega el usuario ==`);
+      for (const u of CUENTA_DEMO.usuarios) await asegurarUsuario(demo.id, u);
+    } else {
+      await sembrarNegocio(CUENTA_DEMO, { conUsuarios: true });
+    }
     await sembrarVacio(CUENTA_HUGO);
     console.log("\nListo. Entrar en /login:");
     console.log(`  negocio ${CUENTA_DEMO.slug}: DEMO / DEMO.1234 (con datos de ejemplo)`);
