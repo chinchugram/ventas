@@ -44,7 +44,7 @@ export function esSuperadmin(usuario: SesionDeUsuario): usuario is SuperadminSes
 
 // ─── Claves ───────────────────────────────────────────────────────────────────
 
-export const CLAVE_MIN = 10;
+export const CLAVE_MIN = 9;
 /** Tope de largo: scrypt sobre entradas enormes seria una forma barata de cansar al servidor. */
 export const CLAVE_MAX = 200;
 

@@ -538,6 +538,25 @@ const CLAUDE: NegocioDeEjemplo = {
 const DEMO: NegocioDeEjemplo = { ...TALLER_DEMO, slug: "demo", nombre: "Demo" };
 const NEGOCIOS: NegocioDeEjemplo[] = process.env.SEED_PERFIL === "nube" ? [HL_LASER, CLAUDE, DEMO] : [HL_LASER, TALLER_DEMO];
 
+// Perfil "cuentas" (SEED_PERFIL=cuentas): agrega DOS cuentas sin tocar nada de lo que ya hay en la base
+// (no limpia, no pisa). Pensado para el entorno desplegado (que sigue siendo de desarrollo):
+//   - negocio `demo`: usuario DEMO / DEMO.1234, con datos de ejemplo.
+//   - negocio `hugo`: usuario HUGO / HUGO.1234, SIN datos y con el logo de HL Laser (/marca/logo.png).
+// Se corre una sola vez: si el negocio ya tiene usuarios, falla en vez de duplicar.
+const CUENTA_DEMO: NegocioDeEjemplo = {
+  ...TALLER_DEMO,
+  slug: "demo",
+  nombre: "Demo",
+  usuarios: [{ usuario: "DEMO", clave: "DEMO.1234", nombre: "Demo", rol: "DUENO" }],
+};
+const CUENTA_HUGO = {
+  slug: "hugo",
+  nombre: "Hugo",
+  logoUrl: "/marca/logo.png",
+  usuario: { usuario: "HUGO", clave: "HUGO.1234", nombre: "Hugo", rol: "DUENO" as Rol },
+};
+const PERFIL_CUENTAS = process.env.SEED_PERFIL === "cuentas";
+
 // ─── Siembra ───────────────────────────────────────────────────────────────────
 
 /**
@@ -594,7 +613,26 @@ async function limpiar() {
   }
 }
 
-async function sembrarNegocio(def: NegocioDeEjemplo) {
+/** Negocio sin datos: solo el negocio (con su logo), la configuracion minima y su dueno. */
+async function sembrarVacio(def: typeof CUENTA_HUGO) {
+  const negocio = await prisma.negocio.upsert({
+    where: { slug: def.slug },
+    update: { nombre: def.nombre, logoUrl: def.logoUrl, activo: true },
+    create: { nombre: def.nombre, slug: def.slug, logoUrl: def.logoUrl },
+    select: { id: true },
+  });
+  console.log(`\n== ${def.nombre} (${def.slug}), sin datos ==`);
+  await conNegocioSeed(negocio.id, async (tx) => {
+    await crearUsuarioEnTx(tx, { ...def.usuario, negocioId: negocio.id });
+    await tx.configuracion.upsert({
+      where: { negocioId_clave: { negocioId: negocio.id, clave: "nombreNegocio" } },
+      update: { valor: def.nombre },
+      create: { negocioId: negocio.id, clave: "nombreNegocio", valor: def.nombre },
+    });
+  });
+}
+
+async function sembrarNegocio(def: NegocioDeEjemplo, { conUsuarios = !PRODUCCION } = {}) {
   // `negocios` es la tabla global (sin RLS). El de HL Laser ya lo crea la migracion; se resuelve por slug.
   const negocio = await prisma.negocio.upsert({
     where: { slug: def.slug },
@@ -617,7 +655,7 @@ async function sembrarNegocio(def: NegocioDeEjemplo) {
   // Todo pasa por la misma logica que usan las pantallas (src/lib/dominio), asi
   // stock, movimientos, costos congelados y numeracion quedan coherentes.
   await conNegocioSeed(negocioId, async (tx) => {
-    if (!PRODUCCION) {
+    if (conUsuarios) {
       console.log("Creando usuarios de ejemplo...");
       for (const u of def.usuarios) await crearUsuarioEnTx(tx, { ...u, negocioId });
     }
@@ -781,6 +819,16 @@ async function sembrarNegocio(def: NegocioDeEjemplo) {
 }
 
 async function main() {
+  if (PERFIL_CUENTAS) {
+    // Solo agrega: no limpia nada (hl-laser, claude y lo que haya cargado quedan como estan).
+    await sembrarNegocio(CUENTA_DEMO, { conUsuarios: true });
+    await sembrarVacio(CUENTA_HUGO);
+    console.log("\nListo. Entrar en /login:");
+    console.log(`  negocio ${CUENTA_DEMO.slug}: DEMO / DEMO.1234 (con datos de ejemplo)`);
+    console.log(`  negocio ${CUENTA_HUGO.slug}: HUGO / HUGO.1234 (sin datos, logo de HL Laser)`);
+    return;
+  }
+
   await limpiar();
 
   if (PRODUCCION) {
