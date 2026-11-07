@@ -16,6 +16,7 @@ import {
 } from "@/components/form";
 import { decimalOCero, esDecimal } from "@/lib/acciones";
 import { d, fmtMoneda } from "@/lib/money";
+import { TituloBloque } from "@/components/ui";
 import { ETIQUETA_METODO, METODOS_PAGO, montoSugerido, validarMontoContraSaldo, type MetodoPago } from "@/lib/cobranzas";
 
 const OPCIONES_METODO = METODOS_PAGO.map((m) => ({ valor: m, etiqueta: ETIQUETA_METODO[m]! }));
@@ -44,16 +45,16 @@ export function RegistrarPagoForm({ ventaId, saldo, hoy }: { ventaId: string; sa
         setExito(null);
         enviar({ ventaId, monto, metodo, fecha, notas }, () => {
           const cobrado = decimalOCero(monto);
-          setExito(`Pago de ${fmtMoneda(cobrado)} registrado.`);
+          setExito(`¡Cobrado! ${fmtMoneda(cobrado)} ya están en caja.`);
           // Sugiere lo que queda para el proximo cobro.
           setMonto(montoSugerido(d(saldo).minus(cobrado).abs()));
           setNotas("");
           router.refresh();
         });
       }}
-      className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
-      <h2 className="text-sm font-semibold text-slate-900">Registrar pago</h2>
+      <TituloBloque className="">Registrar pago</TituloBloque>
       <NotaObligatorio />
       <CampoDecimal
         etiqueta="Monto"

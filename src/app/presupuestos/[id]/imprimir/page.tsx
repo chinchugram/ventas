@@ -7,6 +7,7 @@ import { getMarca } from "@/lib/marca";
 import { getPresupuesto } from "@/lib/queries/presupuestos";
 import { estadoDemo } from "@/lib/respaldo";
 import { requierePermisoPagina } from "@/lib/permisos";
+import { Aviso, Boton, claseBoton } from "@/components/ui";
 import { BotonImprimir } from "../../_componentes/boton-imprimir";
 import { SinBase } from "../../_componentes/sin-base";
 
@@ -39,20 +40,17 @@ export default async function ImprimirPresupuestoPage({ params }: { params: Prom
   }
 
   const volver = (
-    <Link
-      href={`/presupuestos/${p.id}`}
-      className="inline-flex min-h-12 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700"
-    >
+    <Boton href={`/presupuestos/${p.id}`} variante="secundario">
       Volver
-    </Link>
+    </Boton>
   );
 
   if (p.estado === "ANULADO") {
     return (
       <div className="space-y-4">
-        <p role="status" className="rounded-lg bg-slate-200 p-4 text-sm text-slate-700">
+        <Aviso tono="info" role="status">
           Este presupuesto está anulado: no se imprime ni se envía.
-        </p>
+        </Aviso>
         {volver}
       </div>
     );
@@ -79,61 +77,56 @@ export default async function ImprimirPresupuestoPage({ params }: { params: Prom
 
       <div className="space-y-3 print:hidden">
         {p.estado === "VENCIDO" ? (
-          <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-            Este presupuesto venció el {fmtFecha(p.validoHasta)}: no lo envíes así. Duplicalo desde el detalle para
-            actualizar los precios.
-          </p>
+          <Aviso tono="aviso" titulo={`Este presupuesto venció el ${fmtFecha(p.validoHasta)}.`} role="status">
+            No lo envíes así: duplicalo desde el detalle para actualizar los precios.
+          </Aviso>
         ) : null}
         {p.estado === "CONVERTIDO" ? (
-          <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">
+          <Aviso tono="ok" role="status">
             Este presupuesto ya se convirtió en venta.
-          </p>
+          </Aviso>
         ) : null}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-3">
           {volver}
           <BotonImprimir />
           {whatsapp?.valido ? (
-            <a
-              href={whatsapp.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex min-h-12 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
-            >
+            <a href={whatsapp.url} target="_blank" rel="noopener noreferrer" className={claseBoton()}>
               Enviar por WhatsApp
             </a>
           ) : null}
         </div>
         {whatsapp && !whatsapp.valido ? (
-          <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-            No se puede armar el WhatsApp: {whatsapp.motivo}{" "}
-            <Link href={`/clientes/${p.cliente.id}`} className="font-semibold underline">
+          <Aviso tono="aviso" titulo="No pudimos armar el WhatsApp." role="status">
+            {whatsapp.motivo}{" "}
+            <Link href={`/clientes/${p.cliente.id}`} className="enlace inline-flex min-h-11 items-center">
               Corregir el teléfono del cliente
             </Link>
-          </p>
+          </Aviso>
         ) : null}
       </div>
 
-      <article className="tema-documento rounded-xl border border-slate-200 bg-white p-5 text-slate-900 print:rounded-none print:border-0 print:p-0">
-        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
+      <article className="tema-documento rounded-lg border border-line bg-surface p-5 text-ink print:rounded-none print:border-0 print:p-0">
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
           <div>
             <p className="text-lg font-bold">{marca.nombre}</p>
-            <p className="text-sm text-slate-600">Presupuesto</p>
+            <p className="text-sm text-ink-muted">Presupuesto</p>
           </div>
           <div className="text-right">
             <p className="text-lg font-semibold tabular-nums">N° {numeroPresupuesto(p.numero, p.anio)}</p>
-            <p className="text-sm text-slate-600">Fecha: {fmtFecha(p.fecha)}</p>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-ink-muted">Fecha: {fmtFecha(p.fecha)}</p>
+            <p className="text-sm text-ink-muted">
               Válido hasta: {fmtFecha(p.validoHasta)} ({p.validezDias} {p.validezDias === 1 ? "día" : "días"})
             </p>
           </div>
         </header>
 
         <p className="mt-4 text-sm">
-          <span className="text-slate-600">Para: </span>
+          <span className="text-ink-muted">Para: </span>
           <span className="font-semibold">{p.cliente.nombre}</span>
         </p>
 
-        <table className="mt-4">
+        <div className="mt-4 overflow-x-auto">
+        <table>
           <thead>
             <tr>
               <th scope="col">Descripción</th>
@@ -159,24 +152,25 @@ export default async function ImprimirPresupuestoPage({ params }: { params: Prom
             ))}
           </tbody>
         </table>
+        </div>
 
         <dl className="mt-4 ml-auto w-full max-w-xs space-y-1 text-sm">
-          <div className="flex justify-between text-slate-600">
+          <div className="flex justify-between text-ink-muted">
             <dt>Subtotal neto</dt>
             <dd className="tabular-nums">{fmtMoneda(p.totales.totalNeto)}</dd>
           </div>
-          <div className="flex justify-between text-slate-600">
+          <div className="flex justify-between text-ink-muted">
             <dt>IVA</dt>
             <dd className="tabular-nums">{fmtMoneda(p.totales.totalIVA)}</dd>
           </div>
-          <div className="flex justify-between border-t border-slate-300 pt-1 text-base font-bold">
+          <div className="flex justify-between border-t border-line-strong pt-1 text-base font-bold">
             <dt>Total</dt>
             <dd className="tabular-nums">{fmtMoneda(p.totales.totalBruto)}</dd>
           </div>
         </dl>
-        <p className="mt-2 text-right text-xs text-slate-500">Precios con IVA incluido.</p>
+        <p className="mt-2 text-right text-xs text-ink-muted">Precios con IVA incluido.</p>
 
-        {p.observaciones ? <p className="mt-4 whitespace-pre-line border-t border-slate-200 pt-3 text-sm">{p.observaciones}</p> : null}
+        {p.observaciones ? <p className="mt-4 whitespace-pre-line border-t border-line pt-3 text-sm">{p.observaciones}</p> : null}
       </article>
     </div>
   );

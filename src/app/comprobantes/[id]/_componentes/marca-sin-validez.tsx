@@ -17,17 +17,32 @@ const MOTIVO = {
 
 const EXACTO = "[print-color-adjust:exact] [-webkit-print-color-adjust:exact]";
 
-/** Franja grande y legible. `className` para márgenes. */
-export function FranjaSinValidez({ ambiente, className = "" }: { ambiente: ComprobanteCompleto["ambiente"]; className?: string }) {
+/**
+ * Franja grande y legible. `className` para márgenes. Dos variantes:
+ *  - `documento` (por defecto): la que va DENTRO del comprobante impreso. Rojo del documento (el
+ *    `.tema-documento` lo fija, igual en claro y oscuro), texto blanco.
+ *  - `app`: la que va en la interfaz, afuera del papel. Relleno `critico` (acento) con `on-color`,
+ *    como un sticker de estado, y funciona en claro y oscuro.
+ */
+export function FranjaSinValidez({
+  ambiente,
+  className = "",
+  variante = "documento",
+}: {
+  ambiente: ComprobanteCompleto["ambiente"];
+  className?: string;
+  variante?: "documento" | "app";
+}) {
   if (!sinValidezFiscal(ambiente)) return null;
+  const colores = variante === "app" ? "border-press bg-critico text-on-color" : "border-critico-text bg-critico-text text-white";
   return (
     <div
       role="note"
       data-sin-validez="franja"
-      className={`${EXACTO} border-4 border-red-600 bg-red-600 px-3 py-2 text-center text-white ${className}`}
+      className={`${EXACTO} border-4 px-3 py-2 text-center ${colores} ${className}`}
     >
-      <p className="text-xl font-black tracking-widest uppercase sm:text-2xl">Sin validez fiscal</p>
-      <p className="text-xs font-semibold sm:text-sm">{MOTIVO[ambiente]}</p>
+      <p className="text-body-lg font-black tracking-widest uppercase sm:text-display-md">Sin validez fiscal</p>
+      <p className="text-body-sm font-semibold">{MOTIVO[ambiente]}</p>
     </div>
   );
 }
@@ -48,7 +63,7 @@ export function SelloSinValidez({ ambiente, textos = ["Sin validez", "fiscal"] }
       {[0, 1, 2, 3].map((i) => (
         <span
           key={i}
-          className={`${EXACTO} -rotate-[28deg] rounded-lg border-4 border-red-600/25 px-4 py-1 text-center text-4xl leading-tight font-black tracking-widest whitespace-nowrap text-red-600/25 uppercase sm:text-6xl`}
+          className={`${EXACTO} -rotate-[28deg] rounded-lg border-4 border-critico-text/25 px-4 py-1 text-center text-4xl leading-tight font-black tracking-widest whitespace-nowrap text-critico-text/25 uppercase sm:text-6xl`}
         >
           {textos.map((t) => (
             <span key={t} className="block">

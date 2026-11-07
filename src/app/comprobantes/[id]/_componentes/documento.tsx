@@ -57,25 +57,25 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
   return (
     <article
       data-comprobante={c.id}
-      className="documento tema-documento relative mx-auto w-full max-w-[210mm] border border-slate-400 bg-white text-sm text-slate-900"
+      className="documento tema-documento relative mx-auto w-full max-w-[210mm] border border-line-strong bg-surface text-sm text-ink"
     >
       <SelloSinValidez ambiente={c.ambiente} />
       <FranjaSinValidez ambiente={c.ambiente} />
 
       {/* Encabezado: tipo y letra, datos del comprobante. */}
-      <header className="grid gap-0 border-b border-slate-400 sm:grid-cols-[1fr_auto_1fr]">
+      <header className="grid gap-0 border-b border-line-strong sm:grid-cols-[1fr_auto_1fr]">
         <div className="p-3 sm:order-1">
           {/* Marca visual del negocio: solo cosmetica. El emisor fiscal es la foto (`c.emisor`), no la marca. */}
-          <div data-marca-visual className="mb-2 inline-block rounded-lg bg-tinta px-2 py-1">
+          <div data-marca-visual className="mb-2 inline-block rounded-lg bg-ink px-2 py-1">
             <LogoMarca nombre={marca.nombre} logo={marca.logo} alto="h-10" />
           </div>
           <p className="text-lg leading-tight font-bold">{c.emisor.razonSocial}</p>
-          <p className="mt-1 text-slate-700">{c.emisor.domicilio}</p>
+          <p className="mt-1 text-ink">{c.emisor.domicilio}</p>
           <p className="mt-1 font-medium">{ETIQUETA_CONDICION_IVA[c.emisor.condicionIva]}</p>
         </div>
 
-        <div className="flex flex-col items-center justify-center border-y border-slate-400 px-4 py-2 sm:order-2 sm:border-x sm:border-y-0">
-          <div className="flex h-14 w-14 flex-col items-center justify-center border-2 border-slate-900">
+        <div className="flex flex-col items-center justify-center border-y border-line-strong px-4 py-2 sm:order-2 sm:border-x sm:border-y-0">
+          <div className="flex h-14 w-14 flex-col items-center justify-center border-2 border-ink">
             <span className="text-3xl leading-none font-black">{letra}</span>
           </div>
           <span className="mt-1 text-xs font-semibold">Cód. {codigoDe(c.codigoArca)}</span>
@@ -85,7 +85,7 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
           <p className="text-lg leading-tight font-bold uppercase">{tituloDeTipo(c.tipo)}</p>
           <p className="mt-1 text-base font-semibold tabular-nums">N° {nroCompleto}</p>
           <p className="tabular-nums">Fecha de emisión: {fmtFecha(c.fecha)}</p>
-          <dl className="mt-1 space-y-0.5 text-slate-700">
+          <dl className="mt-1 space-y-0.5 text-ink">
             <div className="flex flex-wrap gap-x-1">
               <dt>CUIT:</dt>
               <dd className="tabular-nums">{formatearCuit(c.emisor.cuit)}</dd>
@@ -103,27 +103,27 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
       </header>
 
       {/* Receptor. */}
-      <section aria-label="Receptor" className="border-b border-slate-400 p-3">
-        <h2 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Cliente</h2>
+      <section aria-label="Receptor" className="border-b border-line-strong p-3">
+        <h2 className="text-xs font-semibold tracking-wide text-ink-muted uppercase">Cliente</h2>
         <p className="mt-0.5 text-base font-semibold">{c.receptor.nombre}</p>
         <dl className="mt-1 grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
           <div className="flex flex-wrap gap-x-1">
-            <dt className="text-slate-600">Documento:</dt>
+            <dt className="text-ink-muted">Documento:</dt>
             <dd className="tabular-nums">{textoDocumento(c.receptor.docTipo, c.receptor.docNro)}</dd>
           </div>
           <div className="flex flex-wrap gap-x-1">
-            <dt className="text-slate-600">Condición frente al IVA:</dt>
+            <dt className="text-ink-muted">Condición frente al IVA:</dt>
             <dd>{ETIQUETA_CONDICION_IVA[c.receptor.condicionIva]}</dd>
           </div>
           {c.receptor.domicilio ? (
             <div className="flex flex-wrap gap-x-1 sm:col-span-2">
-              <dt className="text-slate-600">Domicilio:</dt>
+              <dt className="text-ink-muted">Domicilio:</dt>
               <dd>{c.receptor.domicilio}</dd>
             </div>
           ) : null}
         </dl>
         {esNc && c.comprobanteAsociado ? (
-          <p className="mt-2 rounded border border-slate-400 bg-slate-50 px-2 py-1 font-medium" data-asociado>
+          <p className="mt-2 rounded border border-line-strong bg-surface-sunken px-2 py-1 font-medium" data-asociado>
             Comprobante asociado: {NOMBRE_TIPO[c.comprobanteAsociado.tipo]} N°{" "}
             {numeroFormateado(c.comprobanteAsociado.puntoVenta, c.comprobanteAsociado.numero)} del {fmtFecha(c.comprobanteAsociado.fecha)}
           </p>
@@ -131,15 +131,15 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
       </section>
 
       {/* Líneas: en celular una lista, desde sm una tabla (también en la hoja impresa). */}
-      <section aria-label="Detalle" className="border-b border-slate-400">
-        <ul className="divide-y divide-slate-200 sm:hidden">
+      <section aria-label="Detalle" className="border-b border-line-strong">
+        <ul className="divide-y divide-line sm:hidden">
           {c.items.map((i) => (
             <li key={i.orden} className="px-3 py-2">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="min-w-0 font-medium break-words">{i.descripcion}</span>
                 <span className="shrink-0 font-semibold tabular-nums">{fmtMoneda(discrimina && letra === "A" ? i.subtotalNeto : i.subtotalBruto)}</span>
               </div>
-              <p className="mt-0.5 text-xs text-slate-600 tabular-nums">
+              <p className="mt-0.5 text-xs text-ink-muted tabular-nums">
                 {fmtNumero(i.cantidad)} × {fmtUnitario(precioMostrado(i, letra))}
                 {letra === "A" ? ` + IVA ${fmtPorcentaje(i.ivaPct)}` : ""}
               </p>
@@ -148,7 +148,7 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
         </ul>
 
         <table className="hidden sm:table">
-          <thead className="bg-slate-100">
+          <thead className="bg-surface-sunken">
             <tr>
               <th scope="col" className="w-12 text-right">Cant.</th>
               <th scope="col">Descripción</th>
@@ -174,7 +174,7 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
       </section>
 
       {/* Totales. */}
-      <section aria-label="Totales" className="border-b border-slate-400 p-3">
+      <section aria-label="Totales" className="border-b border-line-strong p-3">
         <dl className="ml-auto max-w-sm space-y-1 tabular-nums">
           {letra === "A" ? (
             <>
@@ -191,7 +191,7 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
 
         {letra === "B" ? (
           // Régimen de transparencia fiscal (VERIFICAR CON EL CONTADOR: ver etiquetas.ts).
-          <div className="mt-3 rounded border border-slate-300 bg-slate-50 p-2 text-xs text-slate-700" data-transparencia>
+          <div className="mt-3 rounded border border-line-strong bg-surface-sunken p-2 text-xs text-ink" data-transparencia>
             <p className="font-semibold">{LEYENDA_TRANSPARENCIA}</p>
             <p className="tabular-nums">IVA contenido: {fmtMoneda(c.importeIva)}</p>
             <p className="tabular-nums">Otros impuestos nacionales indirectos: {fmtMoneda(0)}</p>
@@ -208,11 +208,11 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
                 role="img"
                 aria-label="Código QR de la factura electrónica"
                 data-qr
-                className="relative z-20 h-32 w-32 shrink-0 bg-white [&>svg]:h-full [&>svg]:w-full"
+                className="relative z-20 h-32 w-32 shrink-0 bg-surface [&>svg]:h-full [&>svg]:w-full"
                 dangerouslySetInnerHTML={{ __html: qr }}
               />
             ) : qrError ? (
-              <p className="max-w-[10rem] text-xs text-red-700">No se pudo generar el código QR.</p>
+              <p className="max-w-[10rem] text-xs text-critico-text">No se pudo generar el código QR.</p>
             ) : null}
             <dl className="min-w-0 space-y-1 tabular-nums">
               <div className="flex flex-wrap gap-x-1">
@@ -226,13 +226,13 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
             </dl>
           </div>
         ) : c.estado === "RECHAZADO" ? (
-          <div className="rounded border-2 border-red-700 bg-red-50 p-3 text-red-900" data-leyenda="rechazado">
+          <div className="rounded border-2 border-critico-text bg-critico-soft p-3 text-critico-text" data-leyenda="rechazado">
             <p className="font-bold">Comprobante rechazado</p>
             <p>No tiene CAE: no fue autorizado y no es válido como comprobante.</p>
             {c.observaciones ? <p className="mt-1 break-words whitespace-pre-line">Observaciones: {c.observaciones}</p> : null}
           </div>
         ) : (
-          <div className="rounded border-2 border-amber-600 bg-amber-50 p-3 text-amber-900" data-leyenda="pendiente">
+          <div className="rounded border-2 border-aviso-text bg-aviso-soft p-3 text-aviso-text" data-leyenda="pendiente">
             <p className="font-bold">Comprobante pendiente de autorización</p>
             <p>Todavía no tiene CAE: no es válido como comprobante hasta que se autorice.</p>
             {c.observaciones ? <p className="mt-1 break-words whitespace-pre-line">Observaciones: {c.observaciones}</p> : null}
@@ -244,7 +244,7 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
         <FranjaSinValidez ambiente={c.ambiente} className="pie-sin-validez" />
       ) : null}
 
-      <footer className="border-t border-slate-300 px-3 py-1 text-[11px] text-slate-500">
+      <footer className="border-t border-line-strong px-3 py-1 text-eyebrow text-ink-muted">
         {NOMBRE_TIPO[c.tipo]} {nroCompleto} · Ambiente: {ETIQUETA_AMBIENTE[c.ambiente]}
       </footer>
     </article>
@@ -259,7 +259,7 @@ function precioMostrado(i: ComprobanteCompleto["items"][number], letra: "A" | "B
 
 function Fila({ etiqueta, valor, fuerte, suave }: { etiqueta: string; valor: string; fuerte?: boolean; suave?: boolean }) {
   return (
-    <div className={`flex items-baseline justify-between gap-4 ${fuerte ? "border-t border-slate-400 pt-1 text-base font-bold" : ""} ${suave ? "text-slate-700" : ""}`}>
+    <div className={`flex items-baseline justify-between gap-4 ${fuerte ? "border-t border-line-strong pt-1 text-base font-bold" : ""} ${suave ? "text-ink" : ""}`}>
       <dt>{etiqueta}</dt>
       <dd>{valor}</dd>
     </div>

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { marcarEntregada } from "@/app/ventas/[id]/actions";
 import { BloqueError, useAccion } from "@/components/form";
+import { Boton } from "@/components/ui";
 
 /** PENDIENTE → ENTREGADA. No depende del cobro: puede entregarse y seguir debiendo. */
 export function MarcarEntregadaBoton({ ventaId, debe }: { ventaId: string; debe: boolean }) {
@@ -11,9 +12,11 @@ export function MarcarEntregadaBoton({ ventaId, debe }: { ventaId: string; debe:
 
   return (
     <div>
-      <button
-        type="button"
+      <Boton
+        variante="secundario"
+        ancho
         disabled={pendiente}
+        aria-busy={pendiente || undefined}
         onClick={() => {
           const texto = debe
             ? "¿Marcar la venta como entregada? Todavía tiene saldo: se va a seguir viendo en Cobranzas."
@@ -21,10 +24,9 @@ export function MarcarEntregadaBoton({ ventaId, debe }: { ventaId: string; debe:
           if (!window.confirm(texto)) return;
           enviar({ ventaId }, () => router.refresh());
         }}
-        className="w-full rounded-lg bg-tinta py-3 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
       >
         {pendiente ? "Guardando…" : "Marcar como entregada"}
-      </button>
+      </Boton>
       <div className="mt-2">
         <BloqueError mensaje={error} />
       </div>

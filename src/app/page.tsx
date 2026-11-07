@@ -11,7 +11,7 @@ import {
 } from "@/lib/queries/dashboard";
 import { getArticulosConMargen, type ArticuloConMargen } from "@/lib/queries/catalogo";
 import { getMateriales } from "@/lib/queries/materiales";
-import { Aviso, Boton, Etiqueta, Seccion, SemaforoMargen, Tarjeta, Vacio, type Tono } from "@/components/ui";
+import { Aviso, Boton, Etiqueta, Seccion, SemaforoMargen, Tarjeta, TONO_ESTADO_PAGO, Vacio } from "@/components/ui";
 import { GananciaDelMes, VentasPorDia, type DiaVentas } from "@/components/tablero";
 import { requierePermisoPagina } from "@/lib/permisos";
 import { puedeTodo } from "@/lib/permisos-pura";
@@ -32,13 +32,6 @@ const ETIQUETA_ESTADO_PAGO = {
   PENDIENTE: "Sin cobrar",
   PAGADA: "Pagada",
 } as const;
-
-const TONO_ESTADO_PAGO: Record<keyof typeof ETIQUETA_ESTADO_PAGO, Tono> = {
-  AL_DIA: "ok",
-  PARCIAL: "info",
-  PENDIENTE: "aviso",
-  PAGADA: "ok",
-};
 
 export default async function Dashboard() {
   const usuario = await requierePermisoPagina("verCostos", "verMargenes");

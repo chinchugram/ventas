@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { anularVenta } from "@/app/ventas/[id]/actions";
+import { BloqueError } from "@/components/form";
+import { Boton } from "@/components/ui";
 
 export function AnularVentaBoton({ ventaId }: { ventaId: string }) {
   const router = useRouter();
@@ -10,10 +12,12 @@ export function AnularVentaBoton({ ventaId }: { ventaId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <div>
-      <button
-        type="button"
+    <div className="space-y-2">
+      <Boton
+        variante="peligro"
+        ancho
         disabled={pendiente}
+        aria-busy={pendiente || undefined}
         onClick={() => {
           if (!window.confirm("¿Anular esta venta? El stock descontado vuelve a los materiales.")) return;
           setError(null);
@@ -23,11 +27,10 @@ export function AnularVentaBoton({ ventaId }: { ventaId: string }) {
             else setError(r.error);
           });
         }}
-        className="w-full rounded-lg border border-red-300 bg-white py-3 text-sm font-semibold text-red-700 disabled:opacity-60"
       >
         {pendiente ? "Anulando…" : "Anular venta"}
-      </button>
-      {error ? <p role="alert" className="mt-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      </Boton>
+      <BloqueError mensaje={error} />
     </div>
   );
 }

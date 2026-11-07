@@ -10,15 +10,24 @@ import { fmtMoneda, fmtPorcentaje, Dinero } from "@/lib/money";
 export type Tono = "neutro" | "ok" | "aviso" | "critico" | "info" | "marca";
 export type Acento = "sol" | "menta" | "cielo" | "frambuesa" | "brand";
 
+/** Tono de la etiqueta de cada estado de pago de una venta (el texto sale de `ETIQUETA_ESTADO_PAGO`). */
+export const TONO_ESTADO_PAGO: Record<"AL_DIA" | "PARCIAL" | "PENDIENTE" | "PAGADA", Tono> = {
+  AL_DIA: "ok",
+  PARCIAL: "info",
+  PENDIENTE: "aviso",
+  PAGADA: "ok",
+};
+
 // ─── Botón sticker ───────────────────────────────────────────────────────
 
-type VarianteBoton = "primario" | "secundario" | "peligro" | "fantasma";
+type VarianteBoton = "primario" | "secundario" | "peligro" | "fantasma" | "fantasma-peligro";
 
 const CLASE_VARIANTE: Record<VarianteBoton, string> = {
   primario: "boton-primario",
   secundario: "boton-secundario",
   peligro: "boton-peligro",
   fantasma: "boton-fantasma",
+  "fantasma-peligro": "boton-fantasma-peligro",
 };
 
 /** Clases del botón sticker, para usarlas en algo que no sea <Boton> (un <summary>, un <label>…). */
@@ -122,6 +131,39 @@ export function Sticker({
 /** Epígrafe sobre un título (mono, ink-muted). */
 export function Epigrafe({ className = "", children }: { className?: string; children: ReactNode }) {
   return <p className={`eyebrow ${className}`}>{children}</p>;
+}
+
+/** Título de un bloque dentro de una pantalla ("Pagos", "Últimas ventas"): display body-lg bold. */
+export function TituloBloque({ id, className = "mb-3", children }: { id?: string; className?: string; children: ReactNode }) {
+  return (
+    <h2 id={id} className={`font-display text-body-lg font-bold text-ink ${className}`}>
+      {children}
+    </h2>
+  );
+}
+
+/**
+ * Chip elegible (artículo del catálogo, método de cobro, filtro): botón con `aria-pressed`. Seleccionado
+ * se pinta con el acento cielo de ventas. Para un filtro que navega, usar `<Link className="chip" aria-current="page">`.
+ *
+ *   <Chip activo={metodo === "EFECTIVO"} onClick={…}>Efectivo</Chip>
+ */
+export function Chip({
+  activo,
+  className = "",
+  children,
+  ...resto
+}: { activo: boolean; className?: string; children: ReactNode } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className" | "children">) {
+  return (
+    <button type="button" aria-pressed={activo} className={`chip ${className}`} {...resto}>
+      {children}
+    </button>
+  );
+}
+
+/** Lista de filas dentro de una tarjeta, separadas por `line` (el patrón del tablero, para reusar en las listas). */
+export function ListaPanel({ className = "", children }: { className?: string; children: ReactNode }) {
+  return <ul className={`tarjeta divide-y-(length:--border-width) divide-line overflow-hidden ${className}`}>{children}</ul>;
 }
 
 // ─── Contenedores ────────────────────────────────────────────────────────

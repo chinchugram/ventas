@@ -3,14 +3,14 @@ import { notFound } from "next/navigation";
 import { fmtFecha, fmtMoneda, fmtNumero } from "@/lib/money";
 import { hoyArgentinaISO } from "@/lib/acciones";
 import { ETIQUETA_METODO, tieneSaldo } from "@/lib/cobranzas";
-import { ESTILO_ESTADO_PAGO, ETIQUETA_ESTADO_PAGO, getVenta } from "@/lib/queries/ventas";
+import { ETIQUETA_ESTADO_PAGO, getVenta } from "@/lib/queries/ventas";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { dbDisponible, prisma } from "@/lib/prisma";
 import { conNegocio } from "@/lib/negocio";
 import { negocioUnico } from "@/lib/dominio/auth";
 import { facturaAnulableDeVenta } from "@/lib/dominio/notas-credito";
 import { AnularVentaBoton } from "@/components/anular-venta-boton";
-import { Seccion, Tarjeta } from "@/components/ui";
+import { Boton, Etiqueta, ListaPanel, Panel, Seccion, Tarjeta, TituloBloque, TONO_ESTADO_PAGO, type Tono } from "@/components/ui";
 import { RegistrarPagoForm } from "./_componentes/registrar-pago-form";
 import { AnularPagoBoton } from "./_componentes/anular-pago-boton";
 import { MarcarEntregadaBoton } from "./_componentes/marcar-entregada-boton";
@@ -21,6 +21,7 @@ import { BloqueProduccion } from "@/app/produccion/_componentes/bloque-produccio
 export const dynamic = "force-dynamic";
 
 const TEXTO_ESTADO = { PENDIENTE: "Pedido pendiente", ENTREGADA: "Entregada", ANULADA: "Anulada" } as const;
+const TONO_ESTADO: Record<keyof typeof TEXTO_ESTADO, Tono> = { PENDIENTE: "aviso", ENTREGADA: "ok", ANULADA: "critico" };
 
 /** Momento de la anulacion (timestamp), en hora argentina. */
 function fechaHoraAR(momento: Date): string {
@@ -61,30 +62,21 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
         titulo={`Venta #${venta.numero}/${venta.anio}`}
         descripcion={`${venta.clienteNombre} · ${fmtFecha(venta.fecha)}`}
         accion={
-          <Link
-            href="/ventas"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/ventas" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <span className="rounded-md bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">
-          {TEXTO_ESTADO[venta.estado]}
-        </span>
-        {!anulada ? (
-          <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${ESTILO_ESTADO_PAGO[venta.estadoPago]}`}>
-            {ETIQUETA_ESTADO_PAGO[venta.estadoPago]}
-          </span>
-        ) : null}
-        <Link href={`/clientes/${venta.clienteId}`} className="inline-flex min-h-11 items-center text-sm font-medium text-slate-600 underline underline-offset-2">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Etiqueta tono={TONO_ESTADO[venta.estado]}>{TEXTO_ESTADO[venta.estado]}</Etiqueta>
+        {!anulada ? <Etiqueta tono={TONO_ESTADO_PAGO[venta.estadoPago]}>{ETIQUETA_ESTADO_PAGO[venta.estadoPago]}</Etiqueta> : null}
+        <Link href={`/clientes/${venta.clienteId}`} className="enlace inline-flex min-h-11 items-center">
           Ver cliente
         </Link>
       </div>
 
-      <p className="mb-4 text-sm text-slate-500">Registrado por {venta.registradoPor ?? "—"}</p>
+      <p className="mb-4 text-body-sm text-ink-muted">Registrado por {venta.registradoPor ?? "—"}</p>
 
       <div className="mb-4 grid grid-cols-2 gap-3">
         <Tarjeta titulo="Total" valor={fmtMoneda(venta.totalBruto)} detalle={`IVA ${fmtMoneda(venta.totalIVA)}`} />
@@ -110,55 +102,51 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
 
       <FacturarPanel ventaId={venta.id} />
 
-      <ul className="mb-4 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+      <ListaPanel className="mb-4">
         {venta.items.map((i) => (
           <li key={i.id} className="flex justify-between gap-3 p-4">
             <div className="min-w-0">
-              <p className="font-medium text-slate-900">{i.descripcion}</p>
-              <p className="text-sm text-slate-500">
+              <p className="text-body font-semibold text-ink">{i.descripcion}</p>
+              <p className="text-body-sm text-ink-muted tabular-nums">
                 {fmtNumero(i.cantidad)} × {fmtMoneda(i.precioUnitario)}
               </p>
             </div>
-            <p className="shrink-0 font-semibold tabular-nums text-slate-900">{fmtMoneda(i.subtotalBruto)}</p>
+            <p className="monto-fila shrink-0 text-ink">{fmtMoneda(i.subtotalBruto)}</p>
           </li>
         ))}
-      </ul>
+      </ListaPanel>
 
       <BloqueProduccion ventaId={venta.id} />
 
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-2 text-sm font-semibold text-slate-900">Pagos</h2>
+      <Panel className="mb-4">
+        <TituloBloque className="mb-2">Pagos</TituloBloque>
         {anulada && venta.pagos.length > 0 ? (
-          <p className="mb-2 text-xs text-slate-500">Venta anulada: sus pagos se muestran, pero no cuentan.</p>
+          <p className="mb-2 text-body-sm text-ink-muted">Venta anulada: sus pagos se muestran, pero no cuentan.</p>
         ) : null}
         {venta.pagos.length === 0 ? (
-          <p className="text-sm text-slate-500">Todavía no hay pagos.</p>
+          <p className="text-body text-ink-muted">Todavía no se cobró nada de esta venta.</p>
         ) : (
-          <ul className="divide-y divide-slate-100 text-sm">
+          <ul className="divide-y-(length:--border-width) divide-line">
             {venta.pagos.map((p) => {
               const pagoAnulado = p.anuladoEn !== null;
               return (
-                <li key={p.id} className="py-2">
+                <li key={p.id} className="py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className={pagoAnulado ? "text-slate-500 line-through" : "text-slate-900"}>
+                      <p className={`text-body ${pagoAnulado ? "text-ink-muted line-through" : "text-ink"}`}>
                         {fmtFecha(p.fecha)} · {ETIQUETA_METODO[p.metodo] ?? p.metodo}
                       </p>
-                      {p.notas ? <p className="break-words text-slate-500">{p.notas}</p> : null}
-                      <p className="text-xs text-slate-500">Registrado por {p.registradoPor ?? "—"}</p>
+                      {p.notas ? <p className="text-body-sm break-words text-ink-muted">{p.notas}</p> : null}
+                      <p className="text-body-sm text-ink-muted">Registrado por {p.registradoPor ?? "—"}</p>
                       {pagoAnulado ? (
-                        <p className="break-words text-xs text-red-700">
+                        <p className="text-body-sm font-semibold break-words text-critico-text">
                           Anulado el {fechaHoraAR(p.anuladoEn!)}: {p.motivoAnulacion}
                         </p>
                       ) : null}
                     </div>
-                    <div className="shrink-0">
-                      <span
-                        className={`font-semibold tabular-nums ${pagoAnulado || anulada ? "text-slate-500 line-through" : "text-slate-900"}`}
-                      >
-                        {fmtMoneda(p.monto)}
-                      </span>
-                    </div>
+                    <p className={`monto-fila shrink-0 ${pagoAnulado || anulada ? "text-ink-muted line-through" : "text-ink"}`}>
+                      {fmtMoneda(p.monto)}
+                    </p>
                   </div>
                   {!pagoAnulado && puedeAnularPago ? (
                     <div className="flex flex-wrap justify-end">
@@ -170,12 +158,13 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
             })}
           </ul>
         )}
-      </div>
+      </Panel>
 
       {venta.observaciones ? (
-        <p className="mb-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-          {venta.observaciones}
-        </p>
+        <Panel className="mb-4">
+          <p className="eyebrow mb-1">Observaciones</p>
+          <p className="text-body whitespace-pre-line text-ink">{venta.observaciones}</p>
+        </Panel>
       ) : null}
 
       {facturaAnulable ? (

@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { getArticulosConMargen, getArticulosParaVender } from "@/lib/queries/catalogo";
 import { getClientes } from "@/lib/queries/clientes";
 import { NuevaVentaForm, type ArticuloConCostosDTO, type ArticuloDTO } from "@/components/nueva-venta-form";
-import { Seccion } from "@/components/ui";
+import { Boton, Seccion } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
 import { requierePermisoPagina, puedeTodo } from "@/lib/permisos";
 
@@ -52,12 +51,9 @@ export default async function NuevaVentaPage() {
         titulo="Nueva venta"
         descripcion={verCostos ? "Costo, IVA y margen se calculan en vivo" : "Precio, IVA y total se calculan en vivo"}
         accion={
-          <Link
-            href="/ventas"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/ventas" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
       {conCostos ? (

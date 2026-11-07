@@ -1,7 +1,7 @@
 import { fmtFecha, fmtMonedaCorta as fmtMoneda, fmtNumero, sumar } from "@/lib/money";
-import { ETIQUETA_ESTADO_PAGO, ESTILO_ESTADO_PAGO, getVentas, getVentasSinCostos, tieneGanancia } from "@/lib/queries/ventas";
-import { puedeTodo, requierePermisoPagina } from "@/lib/permisos";
-import { Seccion, Tarjeta, Vacio } from "@/components/ui";
+import { ETIQUETA_ESTADO_PAGO, getVentas, getVentasSinCostos, tieneGanancia } from "@/lib/queries/ventas";
+import { puede, puedeTodo, requierePermisoPagina } from "@/lib/permisos";
+import { Boton, Etiqueta, Seccion, Tarjeta, TONO_ESTADO_PAGO, Vacio } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
 import Link from "next/link";
 
@@ -20,7 +20,11 @@ export default async function VentasPage() {
 
   return (
     <>
-      <Seccion titulo="Ventas" descripcion={`Últimas ${ventas.length}`} />
+      <Seccion
+        epigrafe="Lo vendido"
+        titulo="Ventas"
+        descripcion={ventas.length === 0 ? "Todavía no hay ninguna." : `Las últimas ${ventas.length}, de la más nueva a la más vieja.`}
+      />
 
       <div className="mb-4 grid grid-cols-2 gap-3">
         {/* El total facturado es una cifra de gestion del negocio: se reserva a quien ve margenes. */}
@@ -29,66 +33,57 @@ export default async function VentasPage() {
           titulo="Sin cobrar"
           valor={fmtMoneda(pendiente)}
           tono={pendiente.cmp(0) > 0 ? "aviso" : "ok"}
+          detalle={pendiente.cmp(0) > 0 ? undefined : "todo cobrado"}
         />
       </div>
 
       {ventas.length === 0 ? (
         <Vacio
-          mensaje="No hay ventas registradas"
-          hint="La primera venta es la que empieza a darle sentido al sistema."
+          mensaje="Ni una venta todavía. Buen momento para la primera."
+          hint="Cargala y acá vas a ver cuánto cobraste y cuánto te dejó."
+          accion={puede(usuario, "cargarVenta") ? <Boton href="/ventas/nueva">Cargar una venta</Boton> : undefined}
         />
       ) : (
         <ul className="space-y-2">
           {ventas.map((v) => (
-            <li key={v.id} className="rounded-xl border border-slate-200 bg-white p-4">
+            <li key={v.id} className="tarjeta p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium text-slate-900">
+                  <p className="text-body font-semibold text-ink">
                     {conDetalle ? (
-                      <Link href={`/ventas/${v.id}`} className="inline-flex min-h-11 items-center underline underline-offset-2">
+                      <Link href={`/ventas/${v.id}`} className="enlace inline-flex min-h-11 items-center font-mono text-mono">
                         #{v.numero}/{v.anio}
                       </Link>
                     ) : (
-                      `#${v.numero}/${v.anio}`
+                      <span className="font-mono text-mono text-ink-muted">
+                        #{v.numero}/{v.anio}
+                      </span>
                     )}{" "}
                     · {v.clienteNombre}
                   </p>
-                  <p className="text-sm text-slate-500">
-                    {fmtFecha(v.fecha)} · {fmtNumero(v.items)}{" "}
-                    {v.items === 1 ? "item" : "items"}
+                  <p className="text-body-sm text-ink-muted">
+                    {fmtFecha(v.fecha)} · {fmtNumero(v.items)} {v.items === 1 ? "ítem" : "ítems"}
                   </p>
                 </div>
-                <span
-                  className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold ${
-                    ESTILO_ESTADO_PAGO[v.estadoPago]
-                  }`}
-                >
+                <Etiqueta tono={TONO_ESTADO_PAGO[v.estadoPago]} className="shrink-0">
                   {ETIQUETA_ESTADO_PAGO[v.estadoPago]}
-                </span>
+                </Etiqueta>
               </div>
 
-              <dl className={`mt-3 grid gap-x-4 gap-y-2 text-sm ${tieneGanancia(v) ? "grid-cols-3" : "grid-cols-2"}`}>
+              <dl className={`mt-3 grid gap-x-4 gap-y-2 ${tieneGanancia(v) ? "grid-cols-3" : "grid-cols-2"}`}>
                 <div>
-                  <dt className="text-xs text-slate-500">Total</dt>
-                  <dd className="font-semibold tabular-nums text-slate-900">
-                    {fmtMoneda(v.totalBruto)}
-                  </dd>
+                  <dt className="eyebrow">Total</dt>
+                  <dd className="monto-fila text-ink">{fmtMoneda(v.totalBruto)}</dd>
                 </div>
                 {tieneGanancia(v) ? (
                   <div>
-                    <dt className="text-xs text-slate-500">Ganancia</dt>
-                    <dd className="font-semibold tabular-nums text-emerald-700">
-                      {fmtMoneda(v.ganancia)}
-                    </dd>
+                    <dt className="eyebrow">Ganancia</dt>
+                    <dd className="monto-fila text-ok-text">{fmtMoneda(v.ganancia)}</dd>
                   </div>
                 ) : null}
                 <div>
-                  <dt className="text-xs text-slate-500">Saldo</dt>
-                  <dd
-                    className={`font-semibold tabular-nums ${
-                      v.saldo.cmp(0) > 0 ? "text-amber-700" : "text-slate-500"
-                    }`}
-                  >
+                  <dt className="eyebrow">Saldo</dt>
+                  <dd className={`monto-fila ${v.saldo.cmp(0) > 0 ? "text-aviso-text" : "text-ink-muted"}`}>
                     {v.saldo.cmp(0) > 0 ? fmtMoneda(v.saldo) : "al día"}
                   </dd>
                 </div>
