@@ -76,6 +76,8 @@ export default async function ImprimirPresupuestoPage({ params }: { params: Prom
       <style>{CSS_IMPRESION}</style>
 
       <div className="space-y-3 print:hidden">
+        {/* El título visible es el del documento (del negocio): este es el de la página. */}
+        <h1 className="sr-only">Presupuesto N° {numeroPresupuesto(p.numero, p.anio)} para imprimir</h1>
         {p.estado === "VENCIDO" ? (
           <Aviso tono="aviso" titulo={`Este presupuesto venció el ${fmtFecha(p.validoHasta)}.`} role="status">
             No lo envíes así: duplicalo desde el detalle para actualizar los precios.

@@ -47,7 +47,8 @@ export function GananciaDelMes({
           role="img"
           aria-label={`Margen ${fmtPorcentaje(margenPct)} sobre una meta de ${fmtPorcentaje(metaPct)}`}
         >
-          <div className="h-full rounded-full bg-cielo" style={{ width: `${acotar(margen, 0, 100)}%` }} />
+          {/* Relleno cielo con borde `press`: el cielo solo da menos de 3:1 contra el carril claro. */}
+          <div className="borde h-full rounded-full border-press bg-cielo" style={{ width: `${acotar(margen, 0, 100)}%` }} />
           {/* Marca de la meta. */}
           <div
             className="absolute -top-1.5 h-5 w-1 -translate-x-1/2 rounded-full bg-ink"
@@ -99,12 +100,13 @@ export function VentasPorDia({ dias }: { dias: DiaVentas[] }) {
       ) : (
         <>
           <p className="monto mt-1 text-ink">{fmtMonedaCorta(total)}</p>
-          {/* Las barras son solo visuales (aria-hidden): los montos los lee el lector de pantalla en la tabla de abajo. */}
+          {/* Hoy en brand-text (el mandarina de relleno no llega a 3:1 sobre la tarjeta clara).
+              Las barras son solo visuales (aria-hidden): los montos los lee el lector de pantalla en la tabla de abajo. */}
           <div className="mt-4 flex h-24 items-end gap-1" aria-hidden="true">
             {dias.map((d) => (
               <div key={d.clave} className="flex h-full flex-1 items-end" title={`${d.dia}: ${fmtMonedaCorta(d.total)}`}>
                 <div
-                  className={`w-full rounded-t-sm ${d.hoy ? "bg-brand" : d.total > 0 ? "bg-ink-muted" : "bg-line"}`}
+                  className={`w-full rounded-t-sm ${d.hoy ? "bg-brand-text" : d.total > 0 ? "bg-ink-muted" : "bg-line"}`}
                   style={{
                     height: d.total > 0 ? `${Math.max((d.total / maximo) * 100, 6)}%` : "var(--border-width)",
                   }}

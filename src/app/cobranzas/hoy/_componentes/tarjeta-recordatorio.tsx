@@ -37,12 +37,13 @@ export function TarjetaRecordatorio({ recordatorio: r, hoyISO }: { recordatorio:
 
       {r.telefono ? (
         <div className="mt-3 space-y-2">
+          {/* Llamar y WhatsApp son opciones parejas (secundarios): el primario de la tarjeta es "Guardar contacto". */}
           <div className="grid grid-cols-2 gap-3">
             <a href={`tel:${r.telefono}`} className={claseBoton({ variante: "secundario" })}>
               Llamar<span className="sr-only"> a {r.nombre}</span>
             </a>
             {wa?.valido ? (
-              <a href={wa.url} target="_blank" rel="noopener noreferrer" className={claseBoton()}>
+              <a href={wa.url} target="_blank" rel="noopener noreferrer" className={claseBoton({ variante: "secundario" })}>
                 WhatsApp<span className="sr-only"> a {r.nombre}</span>
               </a>
             ) : null}

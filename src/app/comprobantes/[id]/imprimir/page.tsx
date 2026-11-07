@@ -17,7 +17,7 @@ const CSS_IMPRESION = `
 @media print {
   html, body { background: #fff !important; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  body > header, body > nav, body > dialog, body > a, .no-imprimir { display: none !important; }
+  body > header, body > nav, body > dialog, body > a, body > div, .no-imprimir { display: none !important; }
   main { max-width: none !important; margin: 0 !important; padding: 0 !important; }
   .documento { border: 0 !important; max-width: none !important; }
   .documento section, .documento header { break-inside: avoid; }
@@ -35,6 +35,8 @@ export default async function ImprimirComprobantePage({ params }: { params: Prom
     <>
       <style>{CSS_IMPRESION}</style>
       <div className="no-imprimir mb-4 flex flex-wrap items-center gap-3">
+        {/* El título visible es el del documento (del negocio, sin títulos de la app): este es el de la página. */}
+        <h1 className="sr-only">Comprobante para imprimir</h1>
         <BotonImprimir />
         <Boton href={`/comprobantes/${comprobante.id}`} variante="secundario">
           Volver al detalle

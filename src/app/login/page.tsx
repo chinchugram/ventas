@@ -4,6 +4,7 @@ import { usuarioActual } from "@/lib/auth";
 import { destinoSeguro, inicioDeRol, normalizarSlug, slugValido } from "@/lib/auth-pura";
 import { LogoKiwitt } from "@/components/logo-kiwitt";
 import { LogoMarca } from "@/components/logo-marca";
+import { InterruptorSonido } from "@/components/sonido";
 import { Panel } from "@/components/ui";
 import { getMarcaPorSlug, MARCA_NEUTRA } from "@/lib/marca";
 import { FormularioLogin } from "./formulario-login";
@@ -61,11 +62,11 @@ export default async function LoginPage({
         </div>
         <FormularioLogin siguiente={siguiente} negocioInicial={negocioInicial} />
       </Panel>
-      {marca === MARCA_NEUTRA ? null : (
-        <div className="mt-6 flex justify-center">
-          <LogoKiwitt tamano="sm" />
-        </div>
-      )}
+      {/* Firma de la app (con negocio elegido) y el interruptor de sonido, que está en todas las pantallas. */}
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+        {marca === MARCA_NEUTRA ? null : <LogoKiwitt tamano="sm" />}
+        <InterruptorSonido />
+      </div>
     </div>
   );
 }

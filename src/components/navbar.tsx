@@ -478,14 +478,15 @@ function ItemBarra({ seccion, activa }: { seccion: Seccion; activa: boolean }) {
 
 /**
  * Icono de la barra inferior. En la sección activa va dentro de una píldora `cielo` (el acento de
- * ventas, como un sticker); la etiqueta pasa a `ink`. La píldora siempre ocupa su lugar: nada salta.
+ * ventas, como un sticker, con su sombra sólida: el cielo solo no llega a 3:1 sobre la barra); la
+ * etiqueta pasa a `ink`. La píldora siempre ocupa su lugar: nada salta.
  */
 function FichaIcono({ nombre, activa }: { nombre: NombreIcono; activa: boolean }) {
   return (
     <span
       aria-hidden="true"
       className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors duration-(--dur-rutina) ${
-        activa ? "bg-cielo text-on-color" : ""
+        activa ? "bg-cielo text-on-color shadow-press" : ""
       }`}
     >
       <Icono nombre={nombre} className="h-5 w-5" grosor={2} />

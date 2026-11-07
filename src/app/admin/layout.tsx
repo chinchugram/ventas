@@ -1,5 +1,6 @@
 import { salir } from "@/app/login/actions";
 import { LogoKiwitt } from "@/components/logo-kiwitt";
+import { InterruptorSonido } from "@/components/sonido";
 import { claseBoton } from "@/components/ui";
 import { requierePermisoPagina } from "@/lib/permisos";
 
@@ -21,11 +22,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             Administración <span className="font-normal text-ink-muted">· {actual.nombre}</span>
           </p>
         </div>
-        <form action={salir}>
-          <button type="submit" className={claseBoton({ variante: "secundario" })}>
-            Salir
-          </button>
-        </form>
+        <div className="flex items-center gap-2">
+          {/* Sonido (momentos.md): el interruptor va en todas las pantallas; acá no hay navbar. */}
+          <InterruptorSonido conTexto={false} className="min-h-11 px-3" />
+          <form action={salir}>
+            <button type="submit" className={claseBoton({ variante: "secundario" })}>
+              Salir
+            </button>
+          </form>
+        </div>
       </header>
       {children}
     </>

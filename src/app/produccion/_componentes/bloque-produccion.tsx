@@ -29,7 +29,7 @@ export async function BloqueProduccion({ ventaId }: { ventaId: string }) {
             </div>
             <Boton
               href={l.trabajoId ? `/produccion/trabajo/${l.trabajoId}` : `/produccion/cargar/${l.ventaItemId}`}
-              variante={l.trabajoId ? "secundario" : "primario"}
+              variante={l.trabajoId ? "fantasma" : "secundario"}
               className="shrink-0"
             >
               {l.trabajoId ? "Ver trabajo" : "Cargar"}
