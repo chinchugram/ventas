@@ -77,7 +77,7 @@ export function PresupuestoForm({
     let vigente = true;
     preciosParaPresupuesto({ clienteId, articuloIds: articulos.map((a) => a.id) })
       .then((r) => vigente && setCargados({ ...r, clienteId }))
-      .catch(() => vigente && setCargados({ ok: false, error: "No se pudo conectar con el servidor.", clienteId }));
+      .catch(() => vigente && setCargados({ ok: false, error: "Se cortó la comunicación con el servidor.", clienteId }));
     return () => {
       vigente = false;
     };

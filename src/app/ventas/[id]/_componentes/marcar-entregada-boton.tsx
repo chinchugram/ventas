@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { marcarEntregada } from "@/app/ventas/[id]/actions";
-import { BloqueError, useAccion } from "@/components/form";
-import { Boton } from "@/components/ui";
+import { ConfirmarAccion } from "@/components/confirmar-accion";
+import { useAccion } from "@/components/form";
 
 /** PENDIENTE → ENTREGADA. No depende del cobro: puede entregarse y seguir debiendo. */
 export function MarcarEntregadaBoton({ ventaId, debe }: { ventaId: string; debe: boolean }) {
@@ -11,25 +11,18 @@ export function MarcarEntregadaBoton({ ventaId, debe }: { ventaId: string; debe:
   const { pendiente, error, enviar } = useAccion(marcarEntregada);
 
   return (
-    <div>
-      <Boton
-        variante="secundario"
-        ancho
-        disabled={pendiente}
-        aria-busy={pendiente || undefined}
-        onClick={() => {
-          const texto = debe
-            ? "¿Marcar la venta como entregada? Todavía tiene saldo: se va a seguir viendo en Cobranzas."
-            : "¿Marcar la venta como entregada?";
-          if (!window.confirm(texto)) return;
-          enviar({ ventaId }, () => router.refresh());
-        }}
-      >
-        {pendiente ? "Guardando…" : "Marcar como entregada"}
-      </Boton>
-      <div className="mt-2">
-        <BloqueError mensaje={error} />
-      </div>
-    </div>
+    <ConfirmarAccion
+      texto="Marcar como entregada"
+      pregunta="¿Marcar la venta como entregada?"
+      textoConfirmar="Sí, entregada"
+      textoPendiente="Guardando…"
+      variante="primario"
+      varianteBoton="secundario"
+      pendiente={pendiente}
+      error={error}
+      onConfirmar={() => enviar({ ventaId }, () => router.refresh())}
+    >
+      {debe ? "Todavía tiene saldo: se va a seguir viendo en Cobranzas." : null}
+    </ConfirmarAccion>
   );
 }

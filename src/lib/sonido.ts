@@ -141,6 +141,15 @@ export function prepararAudio(): void {
   }
 }
 
+/**
+ * ¿Ya hay audio listo (creado por un gesto del usuario)? Para momentos que no salen de un toque
+ * (p. ej. se cortó internet): suenan solo si el usuario ya tocó algo con el sonido encendido, así
+ * nunca se crea un AudioContext sin gesto.
+ */
+export function audioPreparado(): boolean {
+  return contexto !== undefined && sonidoEncendido();
+}
+
 function cortarAnterior(ctx: AudioContext) {
   for (const { osc, vol } of sonando) {
     try {

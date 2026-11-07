@@ -1,4 +1,5 @@
 import { fmtMonedaCorta, fmtPorcentaje, type Dinero } from "@/lib/money";
+import { LogroMeta } from "@/components/momentos";
 import { Etiqueta, Sticker } from "@/components/ui";
 
 function acotar(valor: number, min: number, max: number): number {
@@ -57,7 +58,10 @@ export function GananciaDelMes({
           <span>
             Meta de margen <span className="font-bold tabular-nums text-ink">{fmtPorcentaje(metaPct)}</span>
           </span>
-          <Etiqueta tono={sobreMeta ? "ok" : "aviso"}>{sobreMeta ? "Arriba de la meta" : "Debajo de la meta"}</Etiqueta>
+          {/* Momento "logro" (momentos.md): la primera vez del mes arriba de la meta, estallido (sin sonido: es al cargar). */}
+          <LogroMeta activo={sobreMeta}>
+            <Etiqueta tono={sobreMeta ? "ok" : "aviso"}>{sobreMeta ? "Arriba de la meta" : "Debajo de la meta"}</Etiqueta>
+          </LogroMeta>
         </p>
       </div>
     </section>

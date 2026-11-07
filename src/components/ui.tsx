@@ -230,7 +230,8 @@ export function BarraInferior({ error, children }: { error?: string | null; chil
   return (
     <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t-(length:--border-width) border-line bg-surface-raised md:bottom-0">
       {error ? (
-        <p role="alert" className="mx-auto max-w-page bg-critico-soft px-4 py-2 text-body-sm font-semibold text-critico-text">
+        // Momento "error" (momentos.md): se sacude al aparecer; el sonido lo pone `useAccion`.
+        <p role="alert" className="mx-auto max-w-page animate-sacudir bg-critico-soft px-4 py-2 text-body-sm font-semibold text-critico-text">
           {error}
         </p>
       ) : null}

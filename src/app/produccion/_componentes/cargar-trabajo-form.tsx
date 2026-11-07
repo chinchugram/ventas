@@ -35,7 +35,10 @@ const aEditable = (v: string) => v.replace(".", ",");
 
 export function CargarTrabajoForm(p: Props) {
   const router = useRouter();
-  const { pendiente, error, enviar } = useAccion(cargarTrabajo);
+  // Momento "guardado" (rutina, sin sonido): el aviso con el tilde acompaña la llegada al trabajo.
+  const { pendiente, error, enviar } = useAccion(cargarTrabajo, {
+    anuncio: (_r, datos) => (datos.ajustarStock ? "Trabajo cargado y stock ajustado." : "Trabajo cargado."),
+  });
 
   const [fecha, setFecha] = useState(p.hoyISO);
   const [maquinas, setMaquinas] = useState<FilaMaquina[]>(() =>

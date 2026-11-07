@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { emitirFactura, type ResultadoEmision } from "@/app/comprobantes/actions";
 import { BloqueError, useAccion } from "@/components/form";
-import { Aviso, Boton } from "@/components/ui";
+import { ConfirmarAccion } from "@/components/confirmar-accion";
+import { Aviso } from "@/components/ui";
 
 type Emitida = Extract<ResultadoEmision, { ok: true }>;
 
@@ -37,26 +38,30 @@ export function FacturarBoton({
   return (
     <div>
       {visible ? (
-        <Boton
-          ancho
-          disabled={pendiente}
-          aria-busy={pendiente || undefined}
-          onClick={() => {
-            const que = tipoPrevisto ? `una ${tipoPrevisto}` : "la factura";
-            if (!window.confirm(`¿Emitir ${que} de esta venta? Una vez emitida no se puede borrar: solo se anula con una nota de crédito.`)) return;
+        <ConfirmarAccion
+          texto={texto}
+          pregunta={`¿Emitir ${tipoPrevisto ? `una ${tipoPrevisto}` : "la factura"} de esta venta?`}
+          textoConfirmar="Sí, emitir"
+          textoPendiente="Emitiendo…"
+          variante="primario"
+          pendiente={pendiente}
+          error={error}
+          onConfirmar={(cerrar) => {
             setResultado(null);
             enviar({ ventaId }, (r) => {
               setResultado(r);
+              cerrar();
               router.refresh();
             });
           }}
         >
-          {pendiente ? "Emitiendo…" : texto}
-        </Boton>
+          Una vez emitida no se puede borrar: solo se anula con una nota de crédito.
+        </ConfirmarAccion>
       ) : null}
 
       <div className="mt-2 space-y-2">
-        <BloqueError mensaje={error} />
+        {/* Con el botón oculto (ya facturada), el error de la última emisión se sigue viendo acá. */}
+        {visible ? null : <BloqueError mensaje={error} />}
         {resultado ? (
           <Aviso tono={exito ? "ok" : resultado.estado === "RECHAZADO" ? "critico" : "aviso"} role="status">
             {resultado.mensaje}

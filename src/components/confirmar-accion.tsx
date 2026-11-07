@@ -23,6 +23,7 @@ export function ConfirmarAccion({
   textoConfirmar,
   textoPendiente = "Un momento…",
   variante = "peligro",
+  varianteBoton,
   pendiente,
   error,
   deshabilitado = false,
@@ -39,6 +40,8 @@ export function ConfirmarAccion({
   textoPendiente?: string;
   /** `peligro` (por defecto, panel rojo suave) para anular y dar de baja; `primario` (panel ámbar suave) para cambios que se pueden revertir. */
   variante?: "peligro" | "primario";
+  /** Aspecto del botón que abre el panel, si no es el de `variante` (p. ej. `secundario`, para no sumar otro primario a la pantalla). */
+  varianteBoton?: "peligro" | "primario" | "secundario";
   pendiente: boolean;
   error: string | null;
   deshabilitado?: boolean;
@@ -73,7 +76,7 @@ export function ConfirmarAccion({
           type="button"
           disabled={deshabilitado}
           onClick={() => setAbierto(true)}
-          className={claseBoton({ variante, ancho })}
+          className={claseBoton({ variante: varianteBoton ?? variante, ancho })}
         >
           {texto}
         </button>

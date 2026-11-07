@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { aMoneda, d, fmtMoneda, fmtNumero, fmtPorcentaje, type Dinero } from "@/lib/money";
 import { registrarVenta } from "@/app/ventas/actions";
 import { Aviso, BarraInferior, Boton, Chip, Etiqueta, Sticker, TituloBloque, Vacio } from "@/components/ui";
-import { CampoCheckbox, CampoNotas, CampoSelect } from "@/components/form";
+import { CampoCheckbox, CampoNotas, CampoSelect, useAccion } from "@/components/form";
 import { preciosParaCliente, type PreciosCliente } from "@/app/ventas/nueva/actions";
 import type { OrigenPrecio } from "@/lib/precios";
 import {
@@ -115,8 +115,13 @@ export function NuevaVentaForm({ articulos, clientes, esModoDemo = false, verCos
   const [observaciones, setObservaciones] = useState("");
   const [comprobante, setComprobante] = useState<Simulacion | null>(null);
   const [entregada, setEntregada] = useState(true);
-  const [guardando, iniciarGuardado] = useTransition();
-  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+  // Momento al guardar (momentos.md): si entró plata es un cobro (caja registradora); si no, una
+  // acción completada (pop doble). El comprobante aparece con un salto.
+  const {
+    pendiente: guardando,
+    error: errorGuardado,
+    enviar: enviarVenta,
+  } = useAccion(registrarVenta, { momento: (_r, datos) => (datos.pago ? "cobro" : "turno") });
   const [preciosCargados, setPreciosCargados] = useState<(PreciosCliente & { clienteId: string }) | null>(null);
   const [reintento, setReintento] = useState(0);
 
@@ -130,7 +135,7 @@ export function NuevaVentaForm({ articulos, clientes, esModoDemo = false, verCos
       .catch(
         () =>
           vigente &&
-          setPreciosCargados({ ok: false, error: "No se pudo conectar con el servidor.", clienteId }),
+          setPreciosCargados({ ok: false, error: "Se cortó la comunicación con el servidor.", clienteId }),
       );
     return () => {
       vigente = false;
@@ -259,21 +264,16 @@ export function NuevaVentaForm({ articulos, clientes, esModoDemo = false, verCos
       return;
     }
 
-    setErrorGuardado(null);
-    iniciarGuardado(async () => {
-      const r = await registrarVenta({
+    enviarVenta(
+      {
         clienteId,
         observaciones,
         entregada,
         items: lineasCalculadas.map((l) => ({ articuloId: l.articulo.id, cantidad: l.linea.cantidad })),
         pago: cobrado.gt(0) ? { monto: cobrado.toString(), metodo: metodo as "EFECTIVO" } : null,
-      });
-      if (r.ok) {
-        setComprobante({ ...base, numero: `${r.numero}/${r.anio}`, guardada: true, advertencias: r.advertencias, ventaId: r.id });
-      } else {
-        setErrorGuardado(r.error);
-      }
-    });
+      },
+      (r) => setComprobante({ ...base, numero: `${r.numero}/${r.anio}`, guardada: true, advertencias: r.advertencias, ventaId: r.id }),
+    );
   }
 
   if (comprobante) {
@@ -589,7 +589,7 @@ function ComprobanteSimulado({
         </Aviso>
       ) : null}
 
-      <div className="tarjeta overflow-hidden">
+      <div className={`tarjeta overflow-hidden ${sim.guardada ? "animate-salto" : "animate-entrada"}`} data-momento={sim.guardada ? "turno" : undefined}>
         <div className="border-b-(length:--border-width) border-dashed border-line-strong p-4 text-center">
           <p className="eyebrow">Comprobante interno</p>
           <p className="font-display text-display-md text-ink">Nº {sim.numero}</p>

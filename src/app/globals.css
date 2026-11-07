@@ -298,6 +298,10 @@
   --animate-sacudir: sacudir var(--dur-momento) ease-in-out;
   --animate-latido: latido 1.6s ease-in-out infinite;
   --animate-entrada: entrada var(--dur-momento) var(--ease-momento);
+  /* Momentos de src/components/momentos.tsx: tilde (guardado), moneda (cobro), estallido (logro). */
+  --animate-tilde: tilde var(--dur-momento) ease-out both;
+  --animate-caer: caer var(--dur-momento) var(--ease-momento) both;
+  --animate-estallido: estallido var(--dur-momento) ease-out both;
 }
 
 /* Momento "turno/cobro": la pieza salta como un sticker y vuelve con rebote. */
@@ -349,6 +353,40 @@
   to {
     transform: none;
     opacity: 1;
+  }
+}
+
+/* Momento "guardado": se dibuja un tilde (el trazo del SVG usa pathLength="1"). */
+@keyframes tilde {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Momento "cobro": cae una moneda y rebota al apoyarse. */
+@keyframes caer {
+  from {
+    transform: translateY(calc(-4 * var(--press-depth)));
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* Momento "logro": cada punto sale del centro hacia (--dx, --dy) y se apaga. */
+@keyframes estallido {
+  from {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(0.4);
+    opacity: 0;
   }
 }
 
@@ -607,6 +645,13 @@
   .boton-chico {
     min-height: 2.25rem;
     padding: 0.5rem 1rem;
+  }
+
+  /* En pantallas táctiles, el chico también llega al área táctil de 44px: solo cambia el relleno. */
+  @media (any-pointer: coarse) {
+    .boton-chico {
+      min-height: 2.75rem;
+    }
   }
 
   .boton-ancho {

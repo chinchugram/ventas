@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { registrarCompra } from "@/app/compras/actions";
 import {
@@ -10,6 +10,7 @@ import {
   CampoSelect,
   CampoTexto,
   NotaObligatorio,
+  useAccion,
 } from "@/components/form";
 import { BarraInferior, Boton, TituloBloque } from "@/components/ui";
 import { fmtMoneda } from "@/lib/money";
@@ -35,8 +36,10 @@ export function NuevaCompraForm({
   esModoDemo: boolean;
 }) {
   const router = useRouter();
-  const [pendiente, iniciar] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  // Momento "guardado" (rutina, sin sonido): el aviso con el tilde sobrevive a la vuelta a /compras.
+  const { pendiente, error, enviar } = useAccion(registrarCompra, {
+    anuncio: (_r, datos) => `Listo, la compra a ${datos.proveedor.trim()} quedó guardada.`,
+  });
   const [fecha, setFecha] = useState(hoy);
   const [proveedor, setProveedor] = useState("");
   const [comprobante, setComprobante] = useState("");
@@ -64,18 +67,16 @@ export function NuevaCompraForm({
   const total = totalizarCompra(lineas.map((l) => ({ cantidad: numero(l.cantidad), costoUnitario: numero(l.costoUnitario) })));
 
   const guardar = () => {
-    setError(null);
-    iniciar(async () => {
-      const r = await registrarCompra({
+    enviar(
+      {
         fecha,
         proveedor,
         comprobante,
         actualizarCosto,
         items: lineas.map(({ materialId, cantidad, costoUnitario }) => ({ materialId, cantidad, costoUnitario })),
-      });
-      if (r.ok) router.push("/compras");
-      else setError(r.error);
-    });
+      },
+      () => router.push("/compras"),
+    );
   };
 
   return (

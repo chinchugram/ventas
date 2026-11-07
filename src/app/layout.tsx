@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Figtree, IBM_Plex_Mono } from "next/font/google";
 import { Navbar } from "@/components/navbar";
+import { MomentosProvider } from "@/components/momentos";
 import { SonidoProvider } from "@/components/sonido";
 import { getMarca } from "@/lib/marca";
 import { usuarioActual } from "@/lib/auth";
@@ -51,20 +52,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="es-AR" className={`${bricolage.variable} ${figtree.variable} ${plexMono.variable}`}>
       <body className="min-h-dvh bg-surface font-sans text-ink">
         <SonidoProvider>
-          <a
-            href="#contenido"
-            className="boton boton-primario sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[70]"
-          >
-            Saltar al contenido
-          </a>
-          {/* Sin sesion (la pantalla de /login) no hay navegacion. Al cliente solo viajan nombre y rol. */}
-          {usuario ? (
-            <Navbar nombre={marca.nombre} logo={marca.logo} usuario={{ nombre: usuario.nombre, rol: usuario.rol }} />
-          ) : null}
+          <MomentosProvider>
+            <a
+              href="#contenido"
+              className="boton boton-primario sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[70]"
+            >
+              Saltar al contenido
+            </a>
+            {/* Sin sesion (la pantalla de /login) no hay navegacion. Al cliente solo viajan nombre y rol. */}
+            {usuario ? (
+              <Navbar nombre={marca.nombre} logo={marca.logo} usuario={{ nombre: usuario.nombre, rol: usuario.rol }} />
+            ) : null}
 
-          <main id="contenido" className={`mx-auto max-w-page px-4 pt-6 ${usuario ? "pb-32 md:pb-10" : "pb-10"}`}>
-            {children}
-          </main>
+            <main id="contenido" className={`mx-auto max-w-page px-4 pt-6 ${usuario ? "pb-32 md:pb-10" : "pb-10"}`}>
+              {children}
+            </main>
+          </MomentosProvider>
         </SonidoProvider>
       </body>
     </html>
