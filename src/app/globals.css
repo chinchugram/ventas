@@ -341,7 +341,7 @@
   }
 }
 
-/* Aparición de hojas y paneles (antes `sheet-in`). */
+/* Aparición de hojas y paneles (animate-entrada: la hoja "Más" del navbar). */
 @keyframes entrada {
   from {
     transform: translateY(1.5rem);
@@ -703,11 +703,6 @@
 @utility borde {
   border-width: var(--border-width);
   border-style: solid;
-}
-
-/* Animación de entrada de la hoja "Más" del navbar (nombre viejo, lo usa navbar.tsx). */
-.sheet-in {
-  animation: var(--animate-entrada);
 }
 
 /* Movimiento reducido: todo pasa sin desplazamientos (momentos.md, forma.md). */

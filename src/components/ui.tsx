@@ -216,17 +216,13 @@ export function Tarjeta({
 
   // El numero se achica segun su largo para no desbordar la tarjeta en pantallas
   // angostas (dos tarjetas por fila en un celular de 375px).
-  const tamano =
-    valor.length > 14
-      ? "text-body-lg sm:text-xl"
-      : valor.length > 11
-        ? "text-xl sm:text-2xl"
-        : "text-2xl sm:text-display-md";
+  // `.monto` es display-md con números tabulares (tipografia.md); los muy largos bajan a body-lg.
+  const tamano = valor.length > 14 ? "text-body-lg" : valor.length > 11 ? "text-body-lg sm:text-display-md" : "";
 
   return (
     <div className="tarjeta min-w-0 p-3 sm:p-4">
       <p className="eyebrow truncate">{titulo}</p>
-      <p className={`mt-1 font-display font-bold tabular-nums tracking-tight whitespace-nowrap ${tamano} ${colorValor}`}>{valor}</p>
+      <p className={`monto mt-1 whitespace-nowrap ${tamano} ${colorValor}`}>{valor}</p>
       {detalle ? <p className="mt-1 text-body-sm text-ink-muted">{detalle}</p> : null}
     </div>
   );

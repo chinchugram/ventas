@@ -62,7 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <Navbar nombre={marca.nombre} logo={marca.logo} usuario={{ nombre: usuario.nombre, rol: usuario.rol }} />
           ) : null}
 
-          <main id="contenido" className={`mx-auto max-w-5xl px-4 pt-5 ${usuario ? "pb-32 md:pb-10" : "pb-10"}`}>
+          <main id="contenido" className={`mx-auto max-w-page px-4 pt-6 ${usuario ? "pb-32 md:pb-10" : "pb-10"}`}>
             {children}
           </main>
         </SonidoProvider>

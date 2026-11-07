@@ -1,4 +1,5 @@
 import { fmtMonedaCorta, fmtPorcentaje, type Dinero } from "@/lib/money";
+import { Etiqueta, Sticker } from "@/components/ui";
 
 function acotar(valor: number, min: number, max: number): number {
   return Math.min(Math.max(valor, min), max);
@@ -23,39 +24,40 @@ export function GananciaDelMes({
   const valor = fmtMonedaCorta(ganancia);
 
   return (
-    <section className="rounded-2xl bg-tinta p-5 text-white shadow-md">
-      <p className="text-xs font-medium tracking-wide text-slate-400 uppercase">Ganancia del mes</p>
+    <section className="tarjeta p-5 sm:p-6" aria-labelledby="ganancia-del-mes">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h2 id="ganancia-del-mes" className="eyebrow">
+          Ganancia del mes
+        </h2>
+        {/* El acento de ventas (cielo) es el color fuerte de esta pantalla: marca el margen. */}
+        <Sticker acento="cielo" className="tabular-nums">
+          Margen {fmtPorcentaje(margenPct)}
+        </Sticker>
+      </div>
       <p
-        className={`mt-1 font-bold tabular-nums tracking-tight whitespace-nowrap ${
-          valor.length > 13 ? "text-3xl" : "text-4xl"
-        }`}
+        className={`monto mt-2 whitespace-nowrap text-ink ${valor.length > 13 ? "" : "sm:text-display-lg"}`}
       >
         {valor}
       </p>
 
-      <div className="mt-4">
+      <div className="mt-5">
         <div
-          className="relative h-2 rounded-full bg-white/15"
+          className="borde relative h-3 rounded-full border-line-strong bg-surface-sunken"
           role="img"
           aria-label={`Margen ${fmtPorcentaje(margenPct)} sobre una meta de ${fmtPorcentaje(metaPct)}`}
         >
-          <div
-            className="h-full rounded-full bg-marca"
-            style={{ width: `${acotar(margen, 0, 100)}%` }}
-          />
+          <div className="h-full rounded-full bg-cielo" style={{ width: `${acotar(margen, 0, 100)}%` }} />
           {/* Marca de la meta. */}
           <div
-            className="absolute -top-1 h-4 w-0.5 rounded-full bg-white"
+            className="absolute -top-1.5 h-5 w-1 -translate-x-1/2 rounded-full bg-ink"
             style={{ left: `${acotar(meta, 0, 100)}%` }}
           />
         </div>
-        <p className="mt-2.5 flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
-          <span className="text-slate-300">
-            Margen <span className="font-semibold text-white">{fmtPorcentaje(margenPct)}</span>
+        <p className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-body-sm text-ink-muted">
+          <span>
+            Meta de margen <span className="font-bold tabular-nums text-ink">{fmtPorcentaje(metaPct)}</span>
           </span>
-          <span className={`sticker sobre-color ${sobreMeta ? "bg-ok" : "bg-aviso"}`}>
-            {sobreMeta ? "Sobre" : "Bajo"} la meta de {fmtPorcentaje(metaPct)}
-          </span>
+          <Etiqueta tono={sobreMeta ? "ok" : "aviso"}>{sobreMeta ? "Arriba de la meta" : "Debajo de la meta"}</Etiqueta>
         </p>
       </div>
     </section>
@@ -78,33 +80,29 @@ export function VentasPorDia({ dias }: { dias: DiaVentas[] }) {
   const maximo = Math.max(...dias.map((d) => d.total), 0);
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
+    <section className="tarjeta p-4 sm:p-5" aria-labelledby="ventas-por-dia">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold text-slate-900">Ventas por día</h2>
-        <p className="text-xs text-slate-500">últimos {dias.length} días</p>
+        <h2 id="ventas-por-dia" className="eyebrow">
+          Ventas por día
+        </h2>
+        <p className="text-body-sm text-ink-muted">últimos {dias.length} días</p>
       </div>
 
       {total === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">Sin ventas en este período.</p>
+        <p className="mt-4 text-body text-ink-muted">
+          Ni una venta en estos {dias.length} días. Cuando cargues la próxima, aparece acá.
+        </p>
       ) : (
         <>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
-            {fmtMonedaCorta(total)}
-          </p>
+          <p className="monto mt-1 text-ink">{fmtMonedaCorta(total)}</p>
           {/* Las barras son solo visuales (aria-hidden): los montos los lee el lector de pantalla en la tabla de abajo. */}
           <div className="mt-4 flex h-24 items-end gap-1" aria-hidden="true">
             {dias.map((d) => (
-              <div
-                key={d.clave}
-                className="flex h-full flex-1 items-end"
-                title={`${d.dia}: ${fmtMonedaCorta(d.total)}`}
-              >
+              <div key={d.clave} className="flex h-full flex-1 items-end" title={`${d.dia}: ${fmtMonedaCorta(d.total)}`}>
                 <div
-                  className={`w-full rounded-t-sm ${
-                    d.hoy ? "bg-tinta" : d.total > 0 ? "bg-marca" : "bg-slate-200"
-                  }`}
+                  className={`w-full rounded-t-sm ${d.hoy ? "bg-brand" : d.total > 0 ? "bg-ink-muted" : "bg-line"}`}
                   style={{
-                    height: d.total > 0 ? `${Math.max((d.total / maximo) * 100, 6)}%` : "2px",
+                    height: d.total > 0 ? `${Math.max((d.total / maximo) * 100, 6)}%` : "var(--border-width)",
                   }}
                 />
               </div>
@@ -130,10 +128,10 @@ export function VentasPorDia({ dias }: { dias: DiaVentas[] }) {
               </tbody>
             </table>
           </div>
-          <div className="mt-1.5 flex justify-between text-xs text-slate-500 tabular-nums" aria-hidden="true">
+          <div className="eyebrow mt-2 flex justify-between tabular-nums" aria-hidden="true">
             <span>{dias[0]?.dia}</span>
             <span>{dias[Math.floor(dias.length / 2)]?.dia}</span>
-            <span>hoy</span>
+            <span className="font-bold text-brand-text">hoy</span>
           </div>
         </>
       )}
