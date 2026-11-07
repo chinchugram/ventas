@@ -168,8 +168,8 @@ async function main() {
     }
     comprobar("ninguno de esos se creo", String(await tx.usuario.count({ where: { usuario: "test44.rolmalo" } })), "0");
 
-    await rechaza("clave corta (9)", "al menos 10", () =>
-      crearUsuarioComoDuenoEnTx(tx, d, { usuario: "test44.corta", nombre: "X", rol: "EMPLEADO", clave: "123456789" }),
+    await rechaza("clave corta (8)", "al menos 9", () =>
+      crearUsuarioComoDuenoEnTx(tx, d, { usuario: "test44.corta", nombre: "X", rol: "EMPLEADO", clave: "12345678" }),
     );
     await rechaza("clave de solo espacios", "no puede ser solo espacios", () =>
       crearUsuarioComoDuenoEnTx(tx, d, { usuario: "test44.espacios", nombre: "X", rol: "EMPLEADO", clave: "          " }),
@@ -339,7 +339,7 @@ async function main() {
     comprobar("el empleado quedo en pausa por 5 fallos", `${fila.intentosFallidos}/${fila.bloqueadoHasta !== null}`, "5/true");
     comprobar("en pausa ni la clave correcta entra", String((await verificarCredenciales(tx, negocioId, "test44.empleado", CLAVE, new Date(t.getTime() + 6000))).ok), "false");
 
-    await rechaza("clave corta", "al menos 10", () => resetearClaveUsuarioEnTx(tx, d, e.id, "corta"));
+    await rechaza("clave corta", "al menos 9", () => resetearClaveUsuarioEnTx(tx, d, e.id, "corta"));
     await rechaza("clave de solo espacios", "solo espacios", () => resetearClaveUsuarioEnTx(tx, d, e.id, " ".repeat(12)));
     await rechaza("clave enorme", "hasta 200", () => resetearClaveUsuarioEnTx(tx, d, e.id, "x".repeat(201)));
     fila = await tx.usuario.findUniqueOrThrow({ where: { id: e.id } });
@@ -416,8 +416,8 @@ async function main() {
     comprobar("la clave no cambio", String(fila.hashClave === hashDeCLAVE), "true");
     comprobar("las sesiones siguen", String(await sesiones(tx, e.id)), "2");
 
-    await rechaza("nueva corta", "al menos 10", () => cambiarClavePropia(tx, e, { ...datos, nueva: "corta", repetir: "corta" }));
-    await rechaza("nueva de 9 caracteres", "al menos 10", () => cambiarClavePropia(tx, e, { ...datos, nueva: "123456789", repetir: "123456789" }));
+    await rechaza("nueva corta", "al menos 9", () => cambiarClavePropia(tx, e, { ...datos, nueva: "corta", repetir: "corta" }));
+    await rechaza("nueva de 8 caracteres", "al menos 9", () => cambiarClavePropia(tx, e, { ...datos, nueva: "12345678", repetir: "12345678" }));
     await rechaza("las dos nuevas no coinciden", "no coinciden", () => cambiarClavePropia(tx, e, { ...datos, repetir: `${CLAVE_NUEVA}x` }));
     await rechaza("nueva igual a la actual", "distinta de la actual", () => cambiarClavePropia(tx, e, { ...datos, nueva: CLAVE, repetir: CLAVE }));
     fila = await tx.usuario.findUniqueOrThrow({ where: { id: e.id } });

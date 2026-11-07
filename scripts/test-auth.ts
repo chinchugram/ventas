@@ -326,8 +326,8 @@ async function main() {
     await rechaza("usuario repetido", "Ya existe un usuario", () =>
       crearUsuarioEnTx(tx, { negocioId, usuario: "PRIMER.DUENO", nombre: "Otro", rol: "EMPLEADO", clave: CLAVE }),
     );
-    await rechaza("clave corta", "al menos 10", () =>
-      crearUsuarioEnTx(tx, { negocioId, usuario: "corta", nombre: "Corta", rol: "EMPLEADO", clave: "123456789" }),
+    await rechaza("clave corta", "al menos 9", () =>
+      crearUsuarioEnTx(tx, { negocioId, usuario: "corta", nombre: "Corta", rol: "EMPLEADO", clave: "12345678" }),
     );
     await rechaza("usuario invalido", "entre 3 y 40", () =>
       crearUsuarioEnTx(tx, { negocioId, usuario: "con espacio", nombre: "X", rol: "EMPLEADO", clave: CLAVE }),

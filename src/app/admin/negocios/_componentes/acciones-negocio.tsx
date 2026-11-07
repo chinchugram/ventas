@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { cambiarActivoNegocio, crearPrimerDueno } from "@/app/admin/negocios/actions";
 import { BloqueError, BloqueExito, BotonEnviar, CampoTexto, useAccion } from "@/components/form";
 
-const CLAVE_MIN = 10;
+const CLAVE_MIN = 9;
 
 /**
  * Controles de un negocio: baja logica / reactivacion y, mientras no tenga usuarios, crear su primer
