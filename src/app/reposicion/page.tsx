@@ -11,7 +11,7 @@ import {
 import type { LineaReposicion } from "@/lib/reposicion";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { estadoDemo } from "@/lib/respaldo";
-import { Seccion, Tarjeta, Vacio } from "@/components/ui";
+import { BarraInferior, Boton, Dato, Etiqueta, Seccion, Tarjeta, Vacio } from "@/components/ui";
 import { FactorForm } from "./_componentes/factor-form";
 
 export const dynamic = "force-dynamic";
@@ -36,18 +36,18 @@ export default async function ReposicionPage() {
   const factor = (completa ?? reducida)!.factor;
   const conMinimo = (completa ?? reducida)!.conMinimo;
 
+  const hayBarra = total !== null && puedeComprar && lineas.length > 0;
+
   return (
-    <>
+    <div className={hayBarra ? "pb-28" : undefined}>
       <Seccion
+        epigrafe="Qué falta comprar"
         titulo="Reposición"
         descripcion={verCostos ? "Materiales bajo el mínimo: cuánto comprar y cuánto va a salir" : "Materiales bajo el mínimo y cuánto falta comprar"}
         accion={
-          <Link
-            href="/materiales"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/materiales" variante="secundario">
             Materiales
-          </Link>
+          </Boton>
         }
       />
 
@@ -59,11 +59,11 @@ export default async function ReposicionPage() {
 
       {lineas.length === 0 ? (
         <Vacio
-          mensaje="Nada para reponer"
+          mensaje="Nada para reponer."
           hint={
             conMinimo === 0
               ? "Ningún material tiene stock mínimo cargado. Cargalo al editar cada material para recibir sugerencias."
-              : "Todos los materiales con mínimo cargado están en el mínimo o por encima."
+              : "Todos los materiales con mínimo cargado están en el mínimo o por encima. Buen momento para un mate."
           }
         />
       ) : (
@@ -81,77 +81,58 @@ export default async function ReposicionPage() {
 
           {total && puedeComprar ? (
             <>
-              <div className="sticky bottom-20 mt-4 flex items-center justify-between gap-3 rounded-xl bg-tinta p-4 text-white md:bottom-4">
-                <div className="min-w-0">
-                  <p className="text-xs text-slate-300 uppercase">Compra sugerida</p>
-                  <p className="text-xl font-semibold tabular-nums">{fmtMoneda(total)}</p>
-                </div>
-                <Link
-                  href={urlNuevaCompra(lineas)}
-                  className="shrink-0 rounded-lg bg-marca px-4 py-3 text-center font-semibold text-on-color"
-                >
-                  Armar compra
-                </Link>
-              </div>
-              <p className="mt-2 text-center text-xs text-slate-500">
-                Abre Nueva compra con estas cantidades y el costo actual; podés cambiarlas antes de guardar.
+              <p className="mt-3 text-center text-body-sm text-ink-muted">
+                Armar compra abre Nueva compra con estas cantidades y el costo actual; podés cambiarlas antes de guardar.
               </p>
+              <BarraInferior>
+                <div className="min-w-0 flex-1">
+                  <p className="eyebrow">Compra sugerida</p>
+                  <p className="monto leading-tight text-ink">{fmtMoneda(total)}</p>
+                </div>
+                <Boton href={urlNuevaCompra(lineas)} className="shrink-0">
+                  Armar compra
+                </Boton>
+              </BarraInferior>
             </>
           ) : null}
         </>
       )}
-    </>
+    </div>
   );
 }
 
 function LineaTarjeta({ linea: l }: { linea: LineaReposicionSinCostos }) {
   const agotado = l.stockActual.lte(0);
   return (
-    <li className="rounded-xl border border-slate-200 bg-white p-4">
+    <li className="tarjeta p-4">
       <div className="flex items-start justify-between gap-3">
         <Link
           href={`/materiales/${l.id}`}
-          className="inline-flex min-h-11 min-w-0 items-center font-medium text-slate-900 underline-offset-2 hover:underline"
+          className="inline-flex min-h-11 min-w-0 items-center text-body font-semibold text-ink hover:underline"
         >
           {l.nombre}
         </Link>
-        <span
-          className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold ${
-            agotado ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
-          }`}
-        >
+        <Etiqueta tono={agotado ? "critico" : "aviso"} className="shrink-0">
           {agotado ? "Sin stock" : "Bajo mínimo"}
-        </span>
+        </Etiqueta>
       </div>
 
-      <p className="mt-2 text-lg font-semibold tabular-nums text-slate-900">
-        Comprar {fmtNumero(l.cantidad)} <span className="text-base font-normal text-slate-500">{l.etiquetaUnidad}</span>
+      <p className="mt-1 font-display text-body-lg font-bold text-ink tabular-nums">
+        Comprar {fmtNumero(l.cantidad)} <span className="font-sans text-body font-normal text-ink-muted">{l.etiquetaUnidad}</span>
       </p>
 
-      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-        <div>
-          <dt className="text-xs text-slate-500">Stock / mínimo</dt>
-          <dd className="text-sm font-semibold tabular-nums text-slate-900">
-            {fmtNumero(l.stockActual)} / {fmtNumero(l.stockMinimo)}{" "}
-            <span className="font-normal text-slate-500">{l.etiquetaUnidad}</span>
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs text-slate-500">Vendido en {DIAS_CONSUMO} días</dt>
-          <dd className="text-sm font-semibold tabular-nums text-slate-500">
-            {l.consumo.gt(0) ? `${fmtNumero(l.consumo)} ${l.etiquetaUnidad}` : "-"}
-          </dd>
-        </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+        <Dato etiqueta="Stock / mínimo">
+          {fmtNumero(l.stockActual)} / {fmtNumero(l.stockMinimo)}{" "}
+          <span className="font-sans text-body-sm font-normal text-ink-muted">{l.etiquetaUnidad}</span>
+        </Dato>
+        <Dato etiqueta={`Vendido en ${DIAS_CONSUMO} días`} tono="apagado">
+          {l.consumo.gt(0) ? `${fmtNumero(l.consumo)} ${l.etiquetaUnidad}` : "-"}
+        </Dato>
         {conCostos(l) ? (
           <>
-            <div>
-              <dt className="text-xs text-slate-500">Costo por {l.etiquetaUnidad}</dt>
-              <dd className="text-sm font-semibold tabular-nums text-slate-900">{fmtMoneda(l.costoUnitario)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">Costo estimado</dt>
-              <dd className="text-sm font-semibold tabular-nums text-slate-900">{fmtMoneda(l.costoEstimado)}</dd>
-            </div>
+            <Dato etiqueta={`Costo por ${l.etiquetaUnidad}`}>{fmtMoneda(l.costoUnitario)}</Dato>
+            <Dato etiqueta="Costo estimado">{fmtMoneda(l.costoEstimado)}</Dato>
           </>
         ) : null}
       </dl>

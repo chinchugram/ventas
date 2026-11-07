@@ -44,6 +44,7 @@ export function BotonEnviar({
   texto,
   textoPendiente = "Guardando…",
   variante = "principal",
+  ancho = true,
   disabled,
   className,
 }: {
@@ -51,6 +52,8 @@ export function BotonEnviar({
   texto: string;
   textoPendiente?: string;
   variante?: "principal" | "marca" | "peligro";
+  /** Ancho completo (por defecto). `false` para un botón al lado de un campo o de un total. */
+  ancho?: boolean;
   disabled?: boolean;
   className?: string;
 }) {
@@ -59,7 +62,7 @@ export function BotonEnviar({
       type="submit"
       disabled={pendiente || disabled}
       aria-busy={pendiente || undefined}
-      className={claseBoton({ variante: variante === "peligro" ? "peligro" : "primario", ancho: true }) + ` ${className ?? ""}`}
+      className={claseBoton({ variante: variante === "peligro" ? "peligro" : "primario", ancho }) + ` ${className ?? ""}`}
     >
       {pendiente ? textoPendiente : texto}
     </button>

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { aMoneda, d, fmtMoneda, fmtNumero, fmtPorcentaje, type Dinero } from "@/lib/money";
 import { registrarVenta } from "@/app/ventas/actions";
-import { Aviso, Boton, Chip, Etiqueta, Sticker, TituloBloque, Vacio } from "@/components/ui";
+import { Aviso, BarraInferior, Boton, Chip, Etiqueta, Sticker, TituloBloque, Vacio } from "@/components/ui";
 import { CampoCheckbox, CampoNotas, CampoSelect } from "@/components/form";
 import { preciosParaCliente, type PreciosCliente } from "@/app/ventas/nueva/actions";
 import type { OrigenPrecio } from "@/lib/precios";
@@ -521,7 +521,7 @@ export function NuevaVentaForm({ articulos, clientes, esModoDemo = false, verCos
         />
       </section>
 
-      <BarraInferior
+      <BarraConfirmar
         total={totales.totalBruto}
         ganancia={verCostos ? totales.ganancia : null}
         margenPct={verCostos ? totales.margenPct : null}
@@ -664,7 +664,7 @@ function ComprobanteSimulado({
   );
 }
 
-function BarraInferior({
+function BarraConfirmar({
   total,
   ganancia,
   margenPct,
@@ -683,27 +683,20 @@ function BarraInferior({
   onConfirmar: () => void;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t-(length:--border-width) border-line bg-surface-raised md:bottom-0">
-      {error ? (
-        <p role="alert" className="mx-auto max-w-page bg-critico-soft px-4 py-2 text-body-sm font-semibold text-critico-text">
-          {error}
-        </p>
-      ) : null}
-      <div className="mx-auto flex max-w-page items-center gap-3 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="eyebrow">Total</p>
-          <p className="monto leading-tight text-ink">{fmtMoneda(total)}</p>
-          {ganancia && margenPct ? (
-            <p className="text-body-sm tabular-nums text-ok-text">
-              ganancia {fmtMoneda(ganancia)} · {fmtPorcentaje(margenPct)}
-            </p>
-          ) : null}
-        </div>
-        <Boton onClick={onConfirmar} disabled={!habilitado} aria-busy={guardando || undefined} className="shrink-0">
-          {guardando ? "Guardando…" : "Guardar venta"}
-        </Boton>
+    <BarraInferior error={error}>
+      <div className="min-w-0 flex-1">
+        <p className="eyebrow">Total</p>
+        <p className="monto leading-tight text-ink">{fmtMoneda(total)}</p>
+        {ganancia && margenPct ? (
+          <p className="text-body-sm tabular-nums text-ok-text">
+            ganancia {fmtMoneda(ganancia)} · {fmtPorcentaje(margenPct)}
+          </p>
+        ) : null}
       </div>
-    </div>
+      <Boton onClick={onConfirmar} disabled={!habilitado} aria-busy={guardando || undefined} className="shrink-0">
+        {guardando ? "Guardando…" : "Guardar venta"}
+      </Boton>
+    </BarraInferior>
   );
 }
 

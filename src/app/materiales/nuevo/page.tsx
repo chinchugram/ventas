@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { requierePermisoPagina } from "@/lib/permisos";
-import { Seccion } from "@/components/ui";
+import { Boton, Seccion } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
 import { getMateriales } from "@/lib/queries/materiales";
 import { MaterialForm } from "../_componentes/material-form";
@@ -15,15 +14,13 @@ export default async function NuevoMaterialPage() {
   return (
     <>
       <Seccion
+        epigrafe="Lo que hay en el taller"
         titulo="Nuevo material"
         descripcion="Insumo de producción, producto de reventa o las dos cosas"
         accion={
-          <Link
-            href="/materiales"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/materiales" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
       <MaterialForm

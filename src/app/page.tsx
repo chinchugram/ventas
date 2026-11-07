@@ -11,7 +11,8 @@ import {
 } from "@/lib/queries/dashboard";
 import { getArticulosConMargen, type ArticuloConMargen } from "@/lib/queries/catalogo";
 import { getMateriales } from "@/lib/queries/materiales";
-import { Aviso, Boton, Etiqueta, Seccion, SemaforoMargen, Tarjeta, TONO_ESTADO_PAGO, Vacio } from "@/components/ui";
+import { ETIQUETA_ESTADO_PAGO } from "@/lib/queries/ventas";
+import { Aviso, Boton, Etiqueta, ListaPanel, Seccion, SemaforoMargen, Tarjeta, TituloBloque, TONO_ESTADO_PAGO, Vacio } from "@/components/ui";
 import { GananciaDelMes, VentasPorDia, type DiaVentas } from "@/components/tablero";
 import { requierePermisoPagina } from "@/lib/permisos";
 import { puedeTodo } from "@/lib/permisos-pura";
@@ -25,13 +26,6 @@ const NOMBRES_MES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ];
-
-const ETIQUETA_ESTADO_PAGO = {
-  AL_DIA: "Al día",
-  PARCIAL: "Parcial",
-  PENDIENTE: "Sin cobrar",
-  PAGADA: "Pagada",
-} as const;
 
 export default async function Dashboard() {
   const usuario = await requierePermisoPagina("verCostos", "verMargenes");
@@ -109,7 +103,7 @@ export default async function Dashboard() {
 
       {alertas.length > 0 && (
         <section className="mt-8" aria-labelledby="para-mirar">
-          <TituloSeccion id="para-mirar">Para mirar</TituloSeccion>
+          <TituloBloque id="para-mirar">Para mirar</TituloBloque>
           <ul className="space-y-2">
             {alertas.map((a) => (
               <li key={a.mensaje + a.detalle}>
@@ -123,7 +117,7 @@ export default async function Dashboard() {
       )}
 
       <section className="mt-8" aria-labelledby="ultimas-ventas">
-        <TituloSeccion id="ultimas-ventas">Últimas ventas</TituloSeccion>
+        <TituloBloque id="ultimas-ventas">Últimas ventas</TituloBloque>
         {ultimas.length === 0 ? (
           <Vacio
             mensaje="Ni una venta todavía. Buen momento para la primera."
@@ -131,7 +125,7 @@ export default async function Dashboard() {
             accion={puedeNuevaVenta ? <Boton href="/ventas/nueva">Cargar una venta</Boton> : undefined}
           />
         ) : (
-          <ul className={CLASE_LISTA}>
+          <ListaPanel>
             {ultimas.map((v) => (
               <li key={v.id} className="flex items-center gap-3 p-3 sm:px-4">
                 <div className="min-w-0 flex-1">
@@ -149,14 +143,14 @@ export default async function Dashboard() {
                 </div>
               </li>
             ))}
-          </ul>
+          </ListaPanel>
         )}
       </section>
 
       {deudas.length > 0 && (
         <section className="mt-8" aria-labelledby="quien-debe">
-          <TituloSeccion id="quien-debe">Quién debe</TituloSeccion>
-          <ul className={CLASE_LISTA}>
+          <TituloBloque id="quien-debe">Quién debe</TituloBloque>
+          <ListaPanel>
             {deudas.slice(0, 5).map((d) => (
               <li key={d.clienteId} className="flex items-center gap-3 p-3 sm:px-4">
                 <div className="min-w-0 flex-1">
@@ -169,14 +163,14 @@ export default async function Dashboard() {
                 <p className="font-display text-body-lg font-bold tabular-nums text-aviso-text">{fmtMoneda(d.saldo)}</p>
               </li>
             ))}
-          </ul>
+          </ListaPanel>
         </section>
       )}
 
       {articulos.length > 0 && (
         <section className="mt-8" aria-labelledby="margen-catalogo">
-          <TituloSeccion id="margen-catalogo">Margen del catálogo</TituloSeccion>
-          <ul className={CLASE_LISTA}>
+          <TituloBloque id="margen-catalogo">Margen del catálogo</TituloBloque>
+          <ListaPanel>
             {articulos.slice(0, 6).map((a) => (
               <li key={a.id} className="flex items-center gap-3 p-3 sm:px-4">
                 <div className="min-w-0 flex-1">
@@ -188,25 +182,13 @@ export default async function Dashboard() {
                 <SemaforoMargen margenPct={a.margen.margenPct} metaPct={metaMargenPct} />
               </li>
             ))}
-          </ul>
+          </ListaPanel>
           <Link href="/catalogo" className="enlace mt-2 inline-flex min-h-11 items-center text-label">
             Ver el catálogo completo
           </Link>
         </section>
       )}
     </>
-  );
-}
-
-/** Lista de filas dentro de una tarjeta, separadas por `line`. */
-const CLASE_LISTA = "tarjeta divide-y-(length:--border-width) divide-line overflow-hidden";
-
-/** Título de cada bloque del tablero. */
-function TituloSeccion({ id, children }: { id: string; children: React.ReactNode }) {
-  return (
-    <h2 id={id} className="mb-3 font-display text-body-lg font-bold text-ink">
-      {children}
-    </h2>
   );
 }
 

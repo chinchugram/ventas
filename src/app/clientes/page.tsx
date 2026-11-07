@@ -3,7 +3,7 @@ import { fmtFecha, fmtMonedaCorta as fmtMoneda, fmtNumero } from "@/lib/money";
 import { formatearCuit } from "@/lib/cuit";
 import { getClientes, getClientesDeBaja } from "@/lib/queries/clientes";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
-import { Seccion, Vacio } from "@/components/ui";
+import { Boton, Dato, Etiqueta, Plegable, Seccion, Vacio } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -12,15 +12,12 @@ export default async function ClientesPage() {
   const [clientes, bajas] = await Promise.all([getClientes(), getClientesDeBaja()]);
 
   const deudores = clientes.filter((c) => c.saldo.cmp(0) > 0);
-  const botonNuevo = (
-    <Link href="/clientes/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-on-color">
-      Nuevo cliente
-    </Link>
-  );
+  const botonNuevo = <Boton href="/clientes/nuevo">Nuevo cliente</Boton>;
 
   return (
     <>
       <Seccion
+        epigrafe="Quién te compra"
         titulo="Clientes"
         descripcion={
           clientes.length === 0
@@ -33,52 +30,42 @@ export default async function ClientesPage() {
       />
 
       {clientes.length === 0 ? (
-        <Vacio mensaje="No hay clientes cargados" hint="Cargá el primero con «Nuevo cliente»." />
+        <Vacio mensaje="Ni un cliente a la vista." hint="Cargá el primero con «Nuevo cliente» y ya podés venderle." />
       ) : (
         <ul className="space-y-2">
           {clientes.map((c) => (
             <li key={c.id}>
-              <Link
-                href={`/clientes/${c.id}`}
-                className="block rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-slate-300"
-              >
+              <Link href={`/clientes/${c.id}`} className="tarjeta block p-4 hover:bg-surface-sunken">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-medium text-slate-900">{c.nombre}</p>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-body font-semibold break-words text-ink">{c.nombre}</p>
+                    <p className="text-body-sm text-ink-muted">
                       {c.telefono ?? "sin teléfono"}
                       {c.cuit ? (
                         <>
                           {" · "}
-                          <span className="whitespace-nowrap">{formatearCuit(c.cuit)}</span>
+                          <span className="font-mono text-mono whitespace-nowrap">{formatearCuit(c.cuit)}</span>
                         </>
                       ) : null}
                     </p>
                   </div>
                   {c.saldo.cmp(0) > 0 ? (
-                    <span className="shrink-0 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                    <Etiqueta tono="aviso" className="shrink-0 tabular-nums">
                       debe {fmtMoneda(c.saldo)}
-                    </span>
+                    </Etiqueta>
                   ) : (
-                    <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                    <Etiqueta tono="ok" className="shrink-0">
                       al día
-                    </span>
+                    </Etiqueta>
                   )}
                 </div>
 
-                <dl className="mt-3 grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
-                  <div>
-                    <dt className="text-xs text-slate-500">Ventas</dt>
-                    <dd className="font-semibold tabular-nums text-slate-900">{fmtNumero(c.ventas)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-500">Facturado</dt>
-                    <dd className="font-semibold tabular-nums text-slate-900">{fmtMoneda(c.facturado)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-500">Última venta</dt>
-                    <dd className="font-semibold text-slate-900">{fmtFecha(c.ultimaVenta)}</dd>
-                  </div>
+                <dl className="mt-3 grid grid-cols-3 gap-x-4 gap-y-2">
+                  <Dato etiqueta="Ventas">{fmtNumero(c.ventas)}</Dato>
+                  <Dato etiqueta="Facturado">{fmtMoneda(c.facturado)}</Dato>
+                  <Dato etiqueta="Última venta" tipo="texto">
+                    {fmtFecha(c.ultimaVenta)}
+                  </Dato>
                 </dl>
               </Link>
             </li>
@@ -87,21 +74,18 @@ export default async function ClientesPage() {
       )}
 
       {bajas.length > 0 ? (
-        <details className="mt-6">
-          <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-slate-600">
-            Dados de baja ({bajas.length})
-          </summary>
-          <ul className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+        <Plegable titulo={`Dados de baja (${bajas.length})`} className="mt-6">
+          <ul className="divide-y-(length:--border-width) divide-line">
             {bajas.map((c) => (
               <li key={c.id}>
-                <Link href={`/clientes/${c.id}`} className="block p-4">
-                  <p className="font-medium text-slate-500">{c.nombre}</p>
-                  <p className="text-sm text-slate-500">
+                <Link href={`/clientes/${c.id}`} className="block min-h-11 px-4 py-3 hover:underline">
+                  <p className="text-body font-semibold text-ink-muted">{c.nombre}</p>
+                  <p className="text-body-sm text-ink-muted">
                     {c.telefono ?? "sin teléfono"}
                     {c.cuit ? (
                       <>
                         {" · "}
-                        <span className="whitespace-nowrap">{formatearCuit(c.cuit)}</span>
+                        <span className="font-mono text-mono whitespace-nowrap">{formatearCuit(c.cuit)}</span>
                       </>
                     ) : null}
                   </p>
@@ -109,7 +93,7 @@ export default async function ClientesPage() {
               </li>
             ))}
           </ul>
-        </details>
+        </Plegable>
       ) : null}
     </>
   );

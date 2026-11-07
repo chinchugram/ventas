@@ -39,7 +39,7 @@ export function ListaForm({
           crear.enviar(valores, (r) => router.push(`/listas-precios/${r.id}`));
         }
       }}
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
       <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="las listas de precios" />

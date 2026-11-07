@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Aviso, Panel, TituloBloque, Vacio } from "@/components/ui";
 import { esDecimal, normalizarDecimal } from "@/lib/acciones";
 import { d, fmtMoneda, fmtPorcentaje } from "@/lib/money";
 import { deserializarArticulos, impactoDeCambioDeCosto, type ArticuloSerial } from "@/lib/materiales";
@@ -46,61 +47,60 @@ export function ImpactoMargen({
 
   if (articulos.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
-        Ningún artículo activo usa este material en su receta: cambiar el costo no mueve ningún margen.
-      </p>
+      <Vacio
+        mensaje="Ningún artículo activo usa este material."
+        hint="Cambiar el costo no mueve ningún margen."
+      />
     );
   }
 
   const bajanDeMeta = impactos.filter((i) => i.quedaBajoMeta).length;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-slate-900">
-        {cambio ? "Así cambian los márgenes" : "Artículos que usan este material"}
-      </h2>
-      <p className="mt-0.5 text-sm text-slate-500">
+    <Panel como="section">
+      <TituloBloque className="mb-0.5">{cambio ? "Así cambian los márgenes" : "Artículos que usan este material"}</TituloBloque>
+      <p className="text-body-sm text-ink-muted">
         {cambio
           ? `Con el costo nuevo (${fmtMoneda(costoNuevo)}) cambian ${impactos.filter((i) => !i.costoActual.eq(i.costoNuevo)).length} de ${impactos.length}. Meta: ${fmtPorcentaje(margenObjetivoPct)}.`
           : `Cambiá el costo para ver el margen nuevo de cada uno. Meta: ${fmtPorcentaje(margenObjetivoPct)}.`}
       </p>
       {cambio && bajanDeMeta > 0 ? (
-        <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-800">
+        <Aviso tono="aviso" className="mt-2">
           {bajanDeMeta === 1 ? "1 artículo queda" : `${bajanDeMeta} artículos quedan`} por debajo del margen objetivo.
-        </p>
+        </Aviso>
       ) : null}
 
-      <ul className="mt-3 divide-y divide-slate-100">
+      <ul className="mt-3 divide-y-(length:--border-width) divide-line">
         {impactos.map((i) => {
           const varia = cambio && !i.costoActual.eq(i.costoNuevo);
           const bajoMeta = i.margenNuevoPct.lt(d(margenObjetivoPct));
           return (
-            <li key={i.id} className="py-2">
+            <li key={i.id} className="py-3">
               <div className="flex items-start justify-between gap-3">
-                <p className="min-w-0 text-sm font-medium text-slate-900">{i.nombre}</p>
-                <p className="shrink-0 text-sm tabular-nums">
+                <p className="min-w-0 text-body font-semibold break-words text-ink">{i.nombre}</p>
+                <p className="shrink-0 text-body tabular-nums">
                   {varia ? (
                     <>
-                      <span className="text-slate-500">{fmtPorcentaje(i.margenActualPct)}</span>
-                      <span className="text-slate-400"> → </span>
-                      <span className={`font-semibold ${bajoMeta ? "text-amber-700" : "text-emerald-700"}`}>
+                      <span className="text-ink-muted">{fmtPorcentaje(i.margenActualPct)}</span>
+                      <span className="text-ink-muted"> → </span>
+                      <span className={`font-semibold ${bajoMeta ? "text-aviso-text" : "text-ok-text"}`}>
                         {fmtPorcentaje(i.margenNuevoPct)}
                       </span>
                     </>
                   ) : (
-                    <span className={`font-semibold ${bajoMeta ? "text-amber-700" : "text-slate-700"}`}>
+                    <span className={`font-semibold ${bajoMeta ? "text-aviso-text" : "text-ink"}`}>
                       {fmtPorcentaje(i.margenActualPct)}
                     </span>
                   )}
                 </p>
               </div>
-              <p className="mt-0.5 text-xs text-slate-500 tabular-nums">
+              <p className="mt-0.5 text-body-sm text-ink-muted tabular-nums">
                 Costo {fmtMoneda(i.costoActual)}
                 {varia ? ` → ${fmtMoneda(i.costoNuevo)}` : ""} · vende {fmtMoneda(i.precioVenta)}
                 {i.soloOverride ? " · costo fijado en la receta, no cambia" : ""}
               </p>
               {varia && i.quedaBajoMeta ? (
-                <p className="mt-0.5 text-xs text-amber-700">
+                <p className="mt-0.5 text-body-sm text-aviso-text">
                   Para volver a la meta: vender a {fmtMoneda(i.precioSugerido)}
                 </p>
               ) : null}
@@ -108,6 +108,6 @@ export function ImpactoMargen({
           );
         })}
       </ul>
-    </section>
+    </Panel>
   );
 }

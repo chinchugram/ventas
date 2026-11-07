@@ -166,6 +166,79 @@ export function ListaPanel({ className = "", children }: { className?: string; c
   return <ul className={`tarjeta divide-y-(length:--border-width) divide-line overflow-hidden ${className}`}>{children}</ul>;
 }
 
+/**
+ * Bloque plegable (<details>) dentro de una tarjeta: "Dados de baja (3)". Cerrado ocupa una línea de
+ * 44px; el contenido va debajo, separado por una línea `line`.
+ *
+ *   <Plegable titulo={`Dados de baja (${n})`}>…</Plegable>
+ */
+export function Plegable({ titulo, className = "", children }: { titulo: ReactNode; className?: string; children: ReactNode }) {
+  return (
+    <details className={`tarjeta ${className}`}>
+      <summary className="flex min-h-11 cursor-pointer items-center px-4 text-label text-ink">{titulo}</summary>
+      <div className="border-t-(length:--border-width) border-line">{children}</div>
+    </details>
+  );
+}
+
+const CLASE_COLOR_DATO = {
+  neutro: "text-ink",
+  apagado: "text-ink-muted",
+  ok: "text-ok-text",
+  aviso: "text-aviso-text",
+  critico: "text-critico-text",
+} as const;
+
+/**
+ * Dato rotulado para una grilla `<dl>`: epígrafe arriba y el valor abajo. `monto` (por defecto) es para
+ * plata y cantidades (display bold, números tabulares); `texto` es para fechas, nombres y frases.
+ *
+ *   <dl className="grid grid-cols-2 gap-x-4 gap-y-2"><Dato etiqueta="Costo">{fmtMoneda(c)}</Dato></dl>
+ */
+export function Dato({
+  etiqueta,
+  tono = "neutro",
+  tipo = "monto",
+  className = "",
+  children,
+}: {
+  etiqueta: ReactNode;
+  tono?: keyof typeof CLASE_COLOR_DATO;
+  tipo?: "monto" | "texto";
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <dt className="eyebrow">{etiqueta}</dt>
+      <dd className={`${tipo === "monto" ? "monto-fila" : "text-body font-semibold break-words"} ${CLASE_COLOR_DATO[tono]}`}>{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * Barra de acción fija abajo (encima de la barra de navegación en el celular): el total que se está
+ * armando y el botón que lo guarda. El formulario que la usa deja `pb-28` para que no tape el final.
+ * Un `error` aparece arriba de la barra.
+ *
+ *   <BarraInferior error={error}>
+ *     <div className="min-w-0 flex-1"><p className="eyebrow">Total</p><p className="monto">…</p></div>
+ *     <Boton type="submit">Guardar</Boton>
+ *   </BarraInferior>
+ */
+export function BarraInferior({ error, children }: { error?: string | null; children: ReactNode }) {
+  return (
+    <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t-(length:--border-width) border-line bg-surface-raised md:bottom-0">
+      {error ? (
+        <p role="alert" className="mx-auto max-w-page bg-critico-soft px-4 py-2 text-body-sm font-semibold text-critico-text">
+          {error}
+        </p>
+      ) : null}
+      <div className="mx-auto flex max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">{children}</div>
+    </div>
+  );
+}
+
 // ─── Contenedores ────────────────────────────────────────────────────────
 
 /**

@@ -5,19 +5,13 @@ import { formatearCuit } from "@/lib/cuit";
 import { ETIQUETA_CONDICION_IVA } from "@/lib/datos-fiscales";
 import { getCliente } from "@/lib/queries/clientes";
 import { getListaDeCliente } from "@/lib/queries/listas-precios";
-import { ESTILO_ESTADO_PAGO, ETIQUETA_ESTADO_PAGO } from "@/lib/queries/ventas";
+import { ETIQUETA_METODO } from "@/lib/cobranzas";
+import { ETIQUETA_ESTADO_PAGO } from "@/lib/queries/ventas";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
-import { Seccion, Tarjeta, Vacio } from "@/components/ui";
+import { Aviso, Boton, Dato, Etiqueta, ListaPanel, Panel, Seccion, Tarjeta, TituloBloque, TONO_ESTADO_PAGO, Vacio } from "@/components/ui";
 import { BotonActivoCliente } from "../_componentes/boton-activo";
 
 export const dynamic = "force-dynamic";
-
-const METODO: Record<string, string> = {
-  EFECTIVO: "Efectivo",
-  TRANSFERENCIA: "Transferencia",
-  TARJETA: "Tarjeta",
-  OTRO: "Otro",
-};
 
 export default async function ClientePage({ params }: { params: Promise<{ id: string }> }) {
   const usuario = await requierePermisoPagina("verClientes");
@@ -47,32 +41,23 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
   return (
     <>
       <Seccion
+        epigrafe="Cliente"
         titulo={c.nombre}
         descripcion={debe && c.deudaDesde ? `Debe desde el ${fmtFecha(c.deudaDesde)}` : "Al día"}
         accion={
-          <div className="flex gap-2">
-            <Link
-              href="/clientes"
-              className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-            >
+          <div className="flex flex-wrap gap-2">
+            <Boton href="/clientes" variante="secundario">
               Volver
-            </Link>
-            {!c.esDemo && puedeEditar ? (
-              <Link
-                href={`/clientes/${c.id}/editar`}
-                className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-on-color"
-              >
-                Editar
-              </Link>
-            ) : null}
+            </Boton>
+            {!c.esDemo && puedeEditar ? <Boton href={`/clientes/${c.id}/editar`}>Editar</Boton> : null}
           </div>
         }
       />
 
       {!c.activo ? (
-        <p className="mb-4 rounded-lg bg-slate-200 p-3 text-sm text-slate-700">
-          Cliente dado de baja: no aparece al cargar ventas nuevas. Sus ventas y pagos se conservan.
-        </p>
+        <Aviso tono="aviso" titulo="Cliente dado de baja." className="mb-4">
+          No aparece al cargar ventas nuevas. Sus ventas y pagos se conservan.
+        </Aviso>
       ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-3">
@@ -85,96 +70,106 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
       </div>
 
       {datos.length > 0 || c.notas ? (
-        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+        <Panel className="mb-4">
           {datos.length > 0 ? (
-            <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
+            <dl className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
               {datos.map((x) => (
-                <div key={x.etiqueta} className="min-w-0">
-                  <dt className="text-xs text-slate-500">{x.etiqueta}</dt>
-                  <dd className="break-words text-slate-900">{x.valor}</dd>
-                </div>
+                <Dato key={x.etiqueta} etiqueta={x.etiqueta} tipo="texto">
+                  {x.valor}
+                </Dato>
               ))}
             </dl>
           ) : null}
           {c.notas ? (
-            <p className={`whitespace-pre-line text-sm text-slate-600 ${datos.length > 0 ? "mt-3 border-t border-slate-100 pt-3" : ""}`}>
+            <p
+              className={`text-body whitespace-pre-line text-ink-muted ${datos.length > 0 ? "mt-3 border-t-(length:--border-width) border-line pt-3" : ""}`}
+            >
               {c.notas}
             </p>
           ) : null}
-        </div>
+        </Panel>
       ) : null}
 
-      <h2 className="mb-2 text-sm font-semibold text-slate-900">Ventas</h2>
+      <TituloBloque>Ventas</TituloBloque>
       {c.ventas.length === 0 ? (
         <div className="mb-4">
-          <Vacio mensaje="Todavía no tiene ventas" />
+          <Vacio mensaje="Todavía no le vendiste nada." hint="Cuando cargues una venta para este cliente aparece acá." />
         </div>
       ) : (
-        <ul className="mb-4 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+        <ListaPanel className="mb-4">
           {c.ventas.map((v) => {
             const anulada = v.estado === "ANULADA";
             const contenido = (
               <div className="flex items-start justify-between gap-3 p-4">
                 <div className="min-w-0">
-                  <p className={`font-medium ${anulada ? "text-slate-500 line-through" : "text-slate-900"}`}>
+                  <p className={`font-mono text-mono ${anulada ? "text-ink-muted line-through" : "text-ink"}`}>
                     #{v.numero}/{v.anio}
                   </p>
-                  <p className="text-sm text-slate-500">{fmtFecha(v.fecha)}</p>
+                  <p className="text-body-sm text-ink-muted">{fmtFecha(v.fecha)}</p>
                 </div>
-                <div className="shrink-0 text-right">
-                  <p className={`font-semibold tabular-nums ${anulada ? "text-slate-500" : "text-slate-900"}`}>
-                    {fmtMoneda(v.totalBruto)}
-                  </p>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <p className={`monto-fila ${anulada ? "text-ink-muted" : "text-ink"}`}>{fmtMoneda(v.totalBruto)}</p>
                   {anulada ? (
-                    <span className="rounded-md bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600">Anulada</span>
+                    <Etiqueta tono="critico">Anulada</Etiqueta>
                   ) : (
-                    <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${ESTILO_ESTADO_PAGO[v.estadoPago]}`}>
+                    <Etiqueta tono={TONO_ESTADO_PAGO[v.estadoPago]}>
                       {v.saldo.cmp(0) > 0 && v.estadoPago === "PARCIAL"
                         ? `debe ${fmtMoneda(v.saldo)}`
                         : ETIQUETA_ESTADO_PAGO[v.estadoPago]}
-                    </span>
+                    </Etiqueta>
                   )}
                 </div>
               </div>
             );
             return (
               <li key={v.id}>
-                {c.esDemo ? contenido : <Link href={`/ventas/${v.id}`} className="block">{contenido}</Link>}
+                {c.esDemo ? (
+                  contenido
+                ) : (
+                  <Link href={`/ventas/${v.id}`} className="block min-h-11 hover:bg-surface-sunken">
+                    {contenido}
+                  </Link>
+                )}
               </li>
             );
           })}
-        </ul>
+        </ListaPanel>
       )}
 
-      <h2 className="mb-2 text-sm font-semibold text-slate-900">Pagos</h2>
+      <TituloBloque>Pagos</TituloBloque>
       {c.pagos.length === 0 ? (
         <div className="mb-4">
-          <Vacio mensaje="Todavía no hay pagos registrados" />
+          <Vacio mensaje="Todavía no hay pagos." hint="Los cobros se registran desde el detalle de cada venta." />
         </div>
       ) : (
-        <ul className="mb-4 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+        <ListaPanel className="mb-4">
           {c.pagos.map((p) => (
-            <li key={p.id} className="flex items-start justify-between gap-3 p-4 text-sm">
+            <li key={p.id} className="flex items-start justify-between gap-3 p-4">
               <div className="min-w-0">
-                <p className="text-slate-900">
-                  {fmtFecha(p.fecha)} · {METODO[p.metodo] ?? p.metodo}
+                <p className="text-body text-ink">
+                  {fmtFecha(p.fecha)} · {ETIQUETA_METODO[p.metodo] ?? p.metodo}
                 </p>
-                <p className="text-slate-500">
-                  Venta #{p.ventaNumero}/{p.ventaAnio}
+                <p className="text-body-sm break-words text-ink-muted">
+                  Venta <span className="font-mono text-mono">#{p.ventaNumero}/{p.ventaAnio}</span>
                   {p.ventaAnulada ? " (anulada, no descuenta saldo)" : ""}
                   {p.anulado ? ` · Pago anulado: ${p.motivoAnulacion ?? ""}` : ""}
                   {p.notas ? ` · ${p.notas}` : ""}
                 </p>
               </div>
-              <p className={`shrink-0 font-semibold tabular-nums ${p.ventaAnulada || p.anulado ? "text-slate-500 line-through" : "text-slate-900"}`}>
+              <p className={`monto-fila shrink-0 ${p.ventaAnulada || p.anulado ? "text-ink-muted line-through" : "text-ink"}`}>
                 {fmtMoneda(p.monto)}
               </p>
             </li>
           ))}
-        </ul>
+        </ListaPanel>
       )}
 
-      {!c.esDemo && puedeEditar ? <BotonActivoCliente id={c.id} activo={c.activo} tieneSaldo={debe} /> : null}
+      {!c.esDemo && puedeEditar ? (
+        <Panel className="space-y-3">
+          <TituloBloque className="mb-0">{c.activo ? "Dar de baja" : "Cliente dado de baja"}</TituloBloque>
+          <BotonActivoCliente id={c.id} activo={c.activo} tieneSaldo={debe} />
+        </Panel>
+      ) : null}
     </>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ajustarStock } from "@/app/materiales/[id]/actions";
 import { BloqueError, BotonEnviar, CampoDecimal, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
+import { TituloBloque } from "@/components/ui";
 
 export function AjusteStockForm({ materialId, unidad }: { materialId: string; unidad: string }) {
   const router = useRouter();
@@ -21,9 +22,9 @@ export function AjusteStockForm({ materialId, unidad }: { materialId: string; un
           router.refresh();
         });
       }}
-      className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-3 p-4 sm:p-6"
     >
-      <h2 className="text-sm font-semibold text-slate-900">Ajustar por conteo</h2>
+      <TituloBloque className="mb-0">Ajustar por conteo</TituloBloque>
       <NotaObligatorio />
       <CampoDecimal etiqueta="Stock contado" sufijo={unidad} valor={stockContado} alCambiar={setStockContado} required />
       <CampoTexto

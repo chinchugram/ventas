@@ -2,7 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { cambiarActivoCliente } from "@/app/clientes/actions";
-import { BloqueError, useAccion } from "@/components/form";
+import { useAccion } from "@/components/form";
+import { BajaReactivar } from "@/components/baja-reactivar";
+import { Aviso } from "@/components/ui";
 
 /**
  * Dar de baja o reactivar un cliente. La baja es logica: sus ventas y pagos
@@ -20,30 +22,26 @@ export function BotonActivoCliente({
   const router = useRouter();
   const { pendiente, error, enviar } = useAccion(cambiarActivoCliente);
 
-  const confirmar = activo
-    ? `¿Dar de baja este cliente? No se borra nada: sus ventas y pagos quedan, pero no se va a poder elegir en ventas nuevas.${
-        tieneSaldo ? "\n\nOjo: todavía tiene saldo pendiente." : ""
-      }`
-    : null;
+  const cambiar = (nuevo: boolean) => enviar({ id, activo: nuevo }, () => router.refresh());
 
   return (
-    <div>
-      <button
-        type="button"
-        disabled={pendiente}
-        onClick={() => {
-          if (confirmar && !window.confirm(confirmar)) return;
-          enviar({ id, activo: !activo }, () => router.refresh());
-        }}
-        className={`w-full rounded-lg border bg-white py-3 text-sm font-semibold disabled:opacity-60 ${
-          activo ? "border-red-300 text-red-700" : "border-emerald-300 text-emerald-700"
-        }`}
-      >
-        {pendiente ? "Guardando…" : activo ? "Dar de baja" : "Reactivar cliente"}
-      </button>
-      <div className="mt-2">
-        <BloqueError mensaje={error} />
-      </div>
+    <div className="space-y-3">
+      {activo ? (
+        <>
+          <p className="text-body-sm text-ink-muted">
+            No se borra nada: sus ventas y pagos quedan, pero no se va a poder elegir en ventas nuevas.
+          </p>
+          {tieneSaldo ? <Aviso tono="aviso">Ojo: todavía tiene saldo pendiente.</Aviso> : null}
+        </>
+      ) : null}
+      <BajaReactivar
+        activo={activo}
+        pendiente={pendiente}
+        error={error}
+        textoReactivar="Reactivar cliente"
+        onBaja={() => cambiar(false)}
+        onReactivar={() => cambiar(true)}
+      />
     </div>
   );
 }

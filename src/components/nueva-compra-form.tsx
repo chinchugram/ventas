@@ -3,7 +3,15 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { registrarCompra } from "@/app/compras/actions";
-import { MarcaObligatorio, NotaObligatorio } from "@/components/form";
+import {
+  AvisoDemo,
+  CampoCheckbox,
+  CampoDecimal,
+  CampoSelect,
+  CampoTexto,
+  NotaObligatorio,
+} from "@/components/form";
+import { BarraInferior, Boton, TituloBloque } from "@/components/ui";
 import { fmtMoneda } from "@/lib/money";
 import { totalizarCompra } from "@/lib/stock";
 
@@ -76,144 +84,96 @@ export function NuevaCompraForm({
         e.preventDefault();
         guardar();
       }}
-      className="space-y-4"
+      className="space-y-4 pb-28"
     >
       <NotaObligatorio />
-      {esModoDemo ? (
-        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          Modo demostración: sin base de datos conectada, la compra no se guarda.
-        </p>
-      ) : null}
+      <AvisoDemo visible={esModoDemo} que="los datos de la compra" />
 
-      <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-3">
-        <div className="sm:col-span-2">
-          <label htmlFor="proveedor">
-            Proveedor
-            <MarcaObligatorio />
-          </label>
-          <input id="proveedor" value={proveedor} onChange={(e) => setProveedor(e.target.value)} required />
-        </div>
-        <div>
-          <label htmlFor="fecha">
-            Fecha
-            <MarcaObligatorio />
-          </label>
-          <input id="fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required />
-        </div>
-        <div className="sm:col-span-3">
-          <label htmlFor="comprobante">Nº de comprobante (opcional)</label>
-          <input id="comprobante" value={comprobante} onChange={(e) => setComprobante(e.target.value)} />
-        </div>
+      <div className="tarjeta grid gap-3 p-4 sm:grid-cols-3 sm:p-6">
+        <CampoTexto etiqueta="Proveedor" valor={proveedor} alCambiar={setProveedor} className="sm:col-span-2" required />
+        <CampoTexto etiqueta="Fecha" tipo="date" valor={fecha} alCambiar={setFecha} required />
+        <CampoTexto etiqueta="Nº de comprobante (opcional)" valor={comprobante} alCambiar={setComprobante} className="sm:col-span-3" />
       </div>
 
-      <ul className="space-y-2">
-        {lineas.map((l, i) => {
-          const unidad = materiales.find((m) => m.id === l.materialId)?.unidad;
-          return (
-            <li key={l.clave} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-end gap-2">
-                <div className="min-w-0 flex-1">
-                  <label htmlFor={`material-${l.clave}`}>
-                    Material {i + 1}
-                    <MarcaObligatorio />
-                  </label>
-                  <select
-                    id={`material-${l.clave}`}
-                    value={l.materialId}
-                    onChange={(e) => elegirMaterial(l.clave, e.target.value)}
+      <section aria-labelledby="titulo-materiales-compra" className="space-y-2">
+        <TituloBloque id="titulo-materiales-compra" className="mb-0">
+          Qué compraste
+        </TituloBloque>
+        <ul className="space-y-2">
+          {lineas.map((l, i) => {
+            const unidad = materiales.find((m) => m.id === l.materialId)?.unidad;
+            return (
+              <li key={l.clave} className="tarjeta space-y-3 p-4">
+                <div className="flex items-end gap-2">
+                  <CampoSelect
+                    className="min-w-0 flex-1"
+                    etiqueta={`Material ${i + 1}`}
+                    valor={l.materialId}
+                    alCambiar={(materialId) => elegirMaterial(l.clave, materialId)}
+                    opciones={materiales.map((m) => ({ valor: m.id, etiqueta: `${m.nombre} (${m.unidad})` }))}
+                    placeholder="Elegí un material…"
                     required
-                  >
-                    <option value="">Elegir…</option>
-                    {materiales.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.nombre} ({m.unidad})
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  {lineas.length > 1 ? (
+                    <Boton
+                      variante="fantasma-peligro"
+                      onClick={() => setLineas((ls) => ls.filter((x) => x.clave !== l.clave))}
+                      aria-label={`Quitar material ${i + 1}`}
+                      className="shrink-0 px-3"
+                    >
+                      Quitar
+                    </Boton>
+                  ) : null}
                 </div>
-                {lineas.length > 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => setLineas((ls) => ls.filter((x) => x.clave !== l.clave))}
-                    className="h-11 shrink-0 rounded-lg border border-slate-300 px-3 text-sm text-slate-600"
-                    aria-label={`Quitar material ${i + 1}`}
-                  >
-                    Quitar
-                  </button>
-                ) : null}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor={`cantidad-${l.clave}`}>
-                    Cantidad{unidad ? ` (${unidad})` : ""}
-                    <MarcaObligatorio />
-                  </label>
-                  <input
-                    id={`cantidad-${l.clave}`}
-                    inputMode="decimal"
-                    value={l.cantidad}
-                    onChange={(e) => cambiar(l.clave, { cantidad: e.target.value })}
+                <div className="grid grid-cols-2 gap-3">
+                  <CampoDecimal
+                    etiqueta="Cantidad"
+                    sufijo={unidad}
+                    valor={l.cantidad}
+                    alCambiar={(cantidad) => cambiar(l.clave, { cantidad })}
+                    required
+                  />
+                  <CampoDecimal
+                    etiqueta={`Costo por ${unidad ?? "unidad"}`}
+                    prefijo="$"
+                    valor={l.costoUnitario}
+                    alCambiar={(costoUnitario) => cambiar(l.clave, { costoUnitario })}
                     required
                   />
                 </div>
-                <div>
-                  <label htmlFor={`costo-${l.clave}`}>
-                    Costo por {unidad ?? "unidad"}
-                    <MarcaObligatorio />
-                  </label>
-                  <input
-                    id={`costo-${l.clave}`}
-                    inputMode="decimal"
-                    value={l.costoUnitario}
-                    onChange={(e) => cambiar(l.clave, { costoUnitario: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+              </li>
+            );
+          })}
+        </ul>
 
-      <button
-        type="button"
-        onClick={() => {
-          setLineas((ls) => [...ls, { clave: siguiente, materialId: "", cantidad: "", costoUnitario: "" }]);
-          setSiguiente((n) => n + 1);
-        }}
-        className="w-full rounded-lg border border-dashed border-slate-300 bg-white py-3 text-sm font-medium text-slate-700"
-      >
-        + Agregar otro material
-      </button>
-
-      <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-normal text-slate-700">
-        <input
-          type="checkbox"
-          checked={actualizarCosto}
-          onChange={(e) => setActualizarCosto(e.target.checked)}
-          className="mt-0.5 h-5 w-5 shrink-0"
-        />
-        <span>
-          Usar estos precios como costo actual de cada material.
-          <span className="block text-slate-500">Las recetas y los márgenes se recalculan solos.</span>
-        </span>
-      </label>
-
-      {error ? <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
-
-      <div className="sticky bottom-20 flex items-center justify-between gap-3 rounded-xl bg-tinta p-4 text-white md:bottom-4">
-        <div>
-          <p className="text-xs text-slate-300 uppercase">Total de la compra</p>
-          <p className="text-xl font-semibold tabular-nums">{fmtMoneda(total)}</p>
-        </div>
-        <button
-          type="submit"
-          disabled={pendiente}
-          className="rounded-lg bg-marca px-5 py-3 font-semibold text-on-color disabled:opacity-60"
+        <Boton
+          variante="secundario"
+          ancho
+          onClick={() => {
+            setLineas((ls) => [...ls, { clave: siguiente, materialId: "", cantidad: "", costoUnitario: "" }]);
+            setSiguiente((n) => n + 1);
+          }}
         >
+          + Agregar otro material
+        </Boton>
+      </section>
+
+      <CampoCheckbox
+        etiqueta="Usar estos precios como costo actual de cada material"
+        ayuda="Las recetas y los márgenes se recalculan solos."
+        marcado={actualizarCosto}
+        alCambiar={setActualizarCosto}
+      />
+
+      <BarraInferior error={error}>
+        <div className="min-w-0 flex-1">
+          <p className="eyebrow">Total de la compra</p>
+          <p className="monto leading-tight text-ink">{fmtMoneda(total)}</p>
+        </div>
+        <Boton type="submit" disabled={pendiente} aria-busy={pendiente || undefined} className="shrink-0">
           {pendiente ? "Guardando…" : "Guardar compra"}
-        </button>
-      </div>
+        </Boton>
+      </BarraInferior>
     </form>
   );
 }

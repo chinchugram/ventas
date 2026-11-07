@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCliente } from "@/lib/queries/clientes";
 import { formatearCuit } from "@/lib/cuit";
 import { getListaDeCliente, getListasParaElegir } from "@/lib/queries/listas-precios";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
-import { Seccion } from "@/components/ui";
+import { Boton, Seccion } from "@/components/ui";
 import { ClienteForm } from "../../_componentes/cliente-form";
 
 export const dynamic = "force-dynamic";
@@ -21,15 +20,13 @@ export default async function EditarClientePage({ params }: { params: Promise<{ 
   return (
     <>
       <Seccion
+        epigrafe="Cliente"
         titulo="Editar cliente"
         descripcion={cliente.nombre}
         accion={
-          <Link
-            href={`/clientes/${cliente.id}`}
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href={`/clientes/${cliente.id}`} variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
       <ClienteForm
