@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { requierePermisoPagina } from "@/lib/permisos";
 import { dbDisponible } from "@/lib/prisma";
-import { Seccion } from "@/components/ui";
+import { Boton, Seccion } from "@/components/ui";
 import { UsuarioForm } from "../_componentes/usuario-form";
 
 export const dynamic = "force-dynamic";
@@ -16,15 +15,13 @@ export default async function NuevoUsuarioPage() {
   return (
     <>
       <Seccion
+        epigrafe="Usuarios"
         titulo="Nuevo usuario"
-        descripcion="Vos elegís su clave inicial y se la pasás"
+        descripcion="Vos elegís su clave inicial y se la pasás."
         accion={
-          <Link
-            href="/usuarios"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/usuarios" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
       <UsuarioForm esModoDemo={esModoDemo} />

@@ -34,7 +34,7 @@ export function FranjaSinValidez({
   variante?: "documento" | "app";
 }) {
   if (!sinValidezFiscal(ambiente)) return null;
-  const colores = variante === "app" ? "border-press bg-critico text-on-color" : "border-critico-text bg-critico-text text-white";
+  const colores = variante === "app" ? "border-press bg-critico text-on-color" : "border-critico-text bg-critico-text text-surface";
   return (
     <div
       role="note"

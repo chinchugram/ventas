@@ -7,8 +7,8 @@ import { BloqueError, BloqueExito, BotonEnviar, CampoCheckbox, useAccion } from 
 
 /**
  * Ajuste de stock por la diferencia contra la receta, DESPUES de cargar el trabajo.
- * Solo se monta para quien puede `ajustarStock` (el dueño). Pide marcar la casilla y
- * confirmar: nada se ajusta por defecto.
+ * Solo se monta para quien puede `ajustarStock` (el dueño). Pide marcar la casilla de
+ * confirmación: nada se ajusta por defecto.
  */
 export function AjustarStockForm({ trabajoId }: { trabajoId: string }) {
   const router = useRouter();
@@ -21,7 +21,6 @@ export function AjustarStockForm({ trabajoId }: { trabajoId: string }) {
       aria-label="Ajustar stock"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!window.confirm("¿Ajustar el stock por la diferencia contra la receta? Queda registrado en el libro de movimientos.")) return;
         setListo(false);
         enviar({ trabajoId, confirmar: confirmar as true }, () => {
           setListo(true);
@@ -38,7 +37,7 @@ export function AjustarStockForm({ trabajoId }: { trabajoId: string }) {
         ayuda="Se registra un movimiento de ajuste por cada material con diferencia. No se descuenta dos veces."
       />
       <BloqueError mensaje={error} />
-      <BloqueExito mensaje={listo && !error ? "Stock ajustado." : null} />
+      <BloqueExito mensaje={listo && !error ? "Listo, el stock quedó ajustado." : null} />
       <BotonEnviar pendiente={pendiente} disabled={!confirmar} texto="Ajustar stock" textoPendiente="Ajustando…" />
     </form>
   );

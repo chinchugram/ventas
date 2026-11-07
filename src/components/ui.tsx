@@ -251,14 +251,21 @@ export function Panel({
   como: Etiqueta = "div",
   compacto = false,
   className = "",
+  "aria-label": ariaLabel,
   children,
 }: {
   como?: "div" | "section" | "article" | "aside";
   compacto?: boolean;
   className?: string;
+  /** Nombre de la región cuando es una `section` sin título visible que la nombre. */
+  "aria-label"?: string;
   children: ReactNode;
 }) {
-  return <Etiqueta className={`tarjeta ${compacto ? "p-3 sm:p-4" : "p-4 sm:p-6"} ${className}`}>{children}</Etiqueta>;
+  return (
+    <Etiqueta aria-label={ariaLabel} className={`tarjeta ${compacto ? "p-3 sm:p-4" : "p-4 sm:p-6"} ${className}`}>
+      {children}
+    </Etiqueta>
+  );
 }
 
 const CLASE_AVISO: Record<Exclude<Tono, "neutro">, string> = {

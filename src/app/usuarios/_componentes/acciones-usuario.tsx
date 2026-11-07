@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cambiarActivoUsuario, cambiarRolUsuario, resetearClaveUsuario } from "@/app/usuarios/actions";
-import { BloqueError, BloqueExito, BotonEnviar, CampoSelect, CampoTexto, useAccion } from "@/components/form";
+import { BloqueError, BloqueExito, CampoSelect, CampoTexto, useAccion } from "@/components/form";
+import { ConfirmarAccion } from "@/components/confirmar-accion";
+import { Aviso, Boton, Panel, TituloBloque } from "@/components/ui";
 import { MostrarClaves } from "./mostrar-claves";
 import { CLAVE_MIN } from "./reglas";
 
@@ -14,12 +16,11 @@ const OPCIONES_ROL = [
   { valor: "DUENO", etiqueta: "Dueño" },
 ];
 
-const TARJETA = "space-y-3 rounded-xl border border-slate-200 bg-white p-4";
-
 /**
  * Controles de administracion de OTRO usuario (la pagina no los muestra para uno
  * mismo). Que un boton este deshabilitado es solo ayuda: las reglas (ultimo
- * dueno, uno mismo, permisos) las hace cumplir el servidor.
+ * dueno, uno mismo, permisos) las hace cumplir el servidor. Cada cambio pide
+ * confirmación en el lugar (`ConfirmarAccion`), sin `confirm()` del navegador.
  */
 export function AccionesUsuario({
   id,
@@ -51,25 +52,8 @@ function CambiarRol({ id, nombre, rol, protegido }: { id: string; nombre: string
   const sinCambio = nuevo === rol;
 
   return (
-    <form
-      className={TARJETA}
-      onSubmit={(e) => {
-        e.preventDefault();
-        setHecho(false);
-        if (
-          !window.confirm(
-            `¿Cambiar el rol de ${nombre}?\n\nSe le cierran las sesiones abiertas y tiene que volver a entrar con los permisos nuevos.`,
-          )
-        ) {
-          return;
-        }
-        enviar({ id, rol: nuevo }, () => {
-          setHecho(true);
-          router.refresh();
-        });
-      }}
-    >
-      <h2 className="text-base font-semibold text-slate-900">Rol</h2>
+    <Panel como="section" className="space-y-3" aria-label="Rol">
+      <TituloBloque className="mb-0">Rol</TituloBloque>
       <CampoSelect
         etiqueta="Rol de este usuario"
         valor={nuevo}
@@ -85,10 +69,28 @@ function CambiarRol({ id, nombre, rol, protegido }: { id: string; nombre: string
             : "Al cambiarlo se le cierran las sesiones abiertas."
         }
       />
-      <BloqueError mensaje={error} />
-      {hecho && sinCambio ? <BloqueExito mensaje="Rol actualizado." /> : null}
-      <BotonEnviar pendiente={pendiente} texto="Cambiar rol" disabled={sinCambio || protegido} className="min-h-11" />
-    </form>
+      {hecho && sinCambio ? <BloqueExito mensaje="Listo, el rol quedó actualizado." /> : null}
+      <ConfirmarAccion
+        texto="Cambiar rol"
+        pregunta={`¿Cambiar el rol de ${nombre}?`}
+        textoConfirmar="Sí, cambiar rol"
+        textoPendiente="Cambiando…"
+        variante="primario"
+        pendiente={pendiente}
+        error={error}
+        deshabilitado={sinCambio || protegido}
+        onConfirmar={(cerrar) => {
+          setHecho(false);
+          enviar({ id, rol: nuevo }, () => {
+            setHecho(true);
+            cerrar();
+            router.refresh();
+          });
+        }}
+      >
+        Se le cierran las sesiones abiertas y tiene que volver a entrar con los permisos nuevos.
+      </ConfirmarAccion>
+    </Panel>
   );
 }
 
@@ -99,26 +101,8 @@ function ResetearClave({ id, nombre }: { id: string; nombre: string }) {
   const { pendiente, error, enviar } = useAccion(resetearClaveUsuario);
 
   return (
-    <form
-      className={TARJETA}
-      onSubmit={(e) => {
-        e.preventDefault();
-        setHecho(false);
-        if (
-          !window.confirm(
-            `¿Cambiar la clave de ${nombre}?\n\nSe le cierran las sesiones abiertas y se limpia la pausa por intentos fallidos.`,
-          )
-        ) {
-          return;
-        }
-        enviar({ id, clave }, () => {
-          setClave("");
-          setMostrar(false);
-          setHecho(true);
-        });
-      }}
-    >
-      <h2 className="text-base font-semibold text-slate-900">Cambiar su clave</h2>
+    <Panel como="section" className="space-y-3" aria-label="Clave">
+      <TituloBloque className="mb-0">Cambiar su clave</TituloBloque>
       <div>
         <CampoTexto
           etiqueta="Clave nueva"
@@ -138,10 +122,29 @@ function ResetearClave({ id, nombre }: { id: string; nombre: string }) {
         />
         <MostrarClaves marcado={mostrar} alCambiar={setMostrar} />
       </div>
-      <BloqueError mensaje={error} />
-      {hecho ? <BloqueExito mensaje="Clave cambiada. Se cerraron sus sesiones abiertas." /> : null}
-      <BotonEnviar pendiente={pendiente} texto="Cambiar clave" disabled={clave.length === 0} className="min-h-11" />
-    </form>
+      {hecho ? <BloqueExito mensaje="Listo, cambiaste la clave. Se cerraron sus sesiones abiertas." /> : null}
+      <ConfirmarAccion
+        texto="Cambiar clave"
+        pregunta={`¿Cambiar la clave de ${nombre}?`}
+        textoConfirmar="Sí, cambiar clave"
+        textoPendiente="Cambiando…"
+        variante="primario"
+        pendiente={pendiente}
+        error={error}
+        deshabilitado={clave.length === 0}
+        onConfirmar={(cerrar) => {
+          setHecho(false);
+          enviar({ id, clave }, () => {
+            setClave("");
+            setMostrar(false);
+            setHecho(true);
+            cerrar();
+          });
+        }}
+      >
+        Se le cierran las sesiones abiertas y se limpia la pausa por intentos fallidos.
+      </ConfirmarAccion>
+    </Panel>
   );
 }
 
@@ -158,34 +161,42 @@ function BajaOReactivacion({
 }) {
   const router = useRouter();
   const { pendiente, error, enviar } = useAccion(cambiarActivoUsuario);
+  const cambiar = (nuevo: boolean, alTerminar?: () => void) =>
+    enviar({ id, activo: nuevo }, () => {
+      alTerminar?.();
+      router.refresh();
+    });
 
   return (
-    <div className={TARJETA}>
-      <h2 className="text-base font-semibold text-slate-900">{activo ? "Dar de baja" : "Reactivar"}</h2>
-      <p className="text-sm text-slate-600">
+    <Panel como="section" className="space-y-3" aria-label={activo ? "Dar de baja" : "Reactivar"}>
+      <TituloBloque className="mb-0">{activo ? "Dar de baja" : "Reactivar"}</TituloBloque>
+      <p className="text-body-sm text-ink-muted">
         {activo
           ? "No se borra nada: queda su historial, pero no puede entrar y se le cierran las sesiones abiertas. Se puede reactivar cuando quieras."
           : "Vuelve a poder entrar con su usuario y su clave."}
       </p>
-      {activo && protegido ? (
-        <p className="text-sm text-amber-800">Es el único dueño activo: no se lo puede dar de baja.</p>
-      ) : null}
-      <BloqueError mensaje={error} />
-      <button
-        type="button"
-        disabled={pendiente || (activo && protegido)}
-        onClick={() => {
-          if (activo && !window.confirm(`¿Dar de baja a ${nombre}?\n\nNo va a poder entrar y se le cierran las sesiones abiertas.`)) {
-            return;
-          }
-          enviar({ id, activo: !activo }, () => router.refresh());
-        }}
-        className={`min-h-11 w-full rounded-lg border bg-white py-3 text-sm font-semibold disabled:opacity-60 ${
-          activo ? "border-red-300 text-red-700" : "border-emerald-300 text-emerald-700"
-        }`}
-      >
-        {pendiente ? "Guardando…" : activo ? "Dar de baja" : "Reactivar usuario"}
-      </button>
-    </div>
+      {activo && protegido ? <Aviso tono="aviso">Es el único dueño activo: no se lo puede dar de baja.</Aviso> : null}
+      {activo ? (
+        <ConfirmarAccion
+          texto="Dar de baja"
+          pregunta={`¿Dar de baja a ${nombre}?`}
+          textoConfirmar="Sí, dar de baja"
+          textoPendiente="Dando de baja…"
+          pendiente={pendiente}
+          error={error}
+          deshabilitado={protegido}
+          onConfirmar={(cerrar) => cambiar(false, cerrar)}
+        >
+          No va a poder entrar y se le cierran las sesiones abiertas.
+        </ConfirmarAccion>
+      ) : (
+        <>
+          <BloqueError mensaje={error} />
+          <Boton ancho disabled={pendiente} aria-busy={pendiente || undefined} onClick={() => cambiar(true)}>
+            {pendiente ? "Reactivando…" : "Reactivar usuario"}
+          </Boton>
+        </>
+      )}
+    </Panel>
   );
 }

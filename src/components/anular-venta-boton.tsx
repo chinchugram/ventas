@@ -1,36 +1,26 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { anularVenta } from "@/app/ventas/[id]/actions";
-import { BloqueError } from "@/components/form";
-import { Boton } from "@/components/ui";
+import { useAccion } from "@/components/form";
+import { ConfirmarAccion } from "@/components/confirmar-accion";
 
+/** Anular una venta: pide confirmación en el lugar (no `window.confirm`) y, si sale bien, refresca el detalle. */
 export function AnularVentaBoton({ ventaId }: { ventaId: string }) {
   const router = useRouter();
-  const [pendiente, iniciar] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const { pendiente, error, enviar } = useAccion(anularVenta);
 
   return (
-    <div className="space-y-2">
-      <Boton
-        variante="peligro"
-        ancho
-        disabled={pendiente}
-        aria-busy={pendiente || undefined}
-        onClick={() => {
-          if (!window.confirm("¿Anular esta venta? El stock descontado vuelve a los materiales.")) return;
-          setError(null);
-          iniciar(async () => {
-            const r = await anularVenta({ ventaId });
-            if (r.ok) router.refresh();
-            else setError(r.error);
-          });
-        }}
-      >
-        {pendiente ? "Anulando…" : "Anular venta"}
-      </Boton>
-      <BloqueError mensaje={error} />
-    </div>
+    <ConfirmarAccion
+      texto="Anular venta"
+      pregunta="¿Anular esta venta?"
+      textoConfirmar="Sí, anular"
+      textoPendiente="Anulando…"
+      pendiente={pendiente}
+      error={error}
+      onConfirmar={() => enviar({ ventaId }, () => router.refresh())}
+    >
+      El stock descontado vuelve a los materiales. La venta queda en el historial como anulada.
+    </ConfirmarAccion>
   );
 }

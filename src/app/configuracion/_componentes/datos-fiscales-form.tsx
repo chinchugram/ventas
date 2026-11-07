@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarDatosFiscales, type DatosFiscalesFormulario } from "@/app/configuracion/actions";
 import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoSelect, CampoTexto, NotaObligatorio, useAccion, type Opcion } from "@/components/form";
+import { Aviso, TituloBloque } from "@/components/ui";
 import { CONDICIONES_IVA_EMISOR, ETIQUETA_CONDICION_IVA, validarDatosFiscales, type CampoFiscal } from "@/lib/datos-fiscales";
 
 /** Lo que tipea el dueño: todo texto, igual que en la base. */
@@ -59,31 +60,26 @@ export function DatosFiscalesForm({
           router.refresh();
         });
       }}
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
       <NotaObligatorio />
       <div>
-        <h2 className="text-base font-semibold text-slate-900">Datos fiscales</h2>
-        <p className="text-sm text-slate-500">Quién figura como emisor en cada factura o nota de crédito.</p>
+        <TituloBloque className="mb-0">Datos fiscales</TituloBloque>
+        <p className="text-body-sm text-ink-muted">Quién figura como emisor en cada factura o nota de crédito.</p>
       </div>
 
-      <p className="rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">
-        Sin conexión con ARCA, todo comprobante sale SIN VALIDEZ FISCAL.
-      </p>
+      <Aviso tono="critico" titulo="Sin conexión con ARCA, todo comprobante sale SIN VALIDEZ FISCAL." />
 
       {faltantes.length > 0 ? (
-        <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          <p className="font-semibold">Según lo guardado, falta para poder emitir:</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+        <Aviso tono="aviso" titulo="Según lo guardado, falta para poder emitir:">
+          <ul className="list-disc space-y-0.5 pl-5">
             {faltantes.map((f) => (
               <li key={f}>{f}</li>
             ))}
           </ul>
-        </div>
+        </Aviso>
       ) : (
-        <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
-          Lo guardado alcanza para emitir.
-        </p>
+        <Aviso tono="ok" titulo="Lo guardado alcanza para emitir." />
       )}
 
       <CampoTexto

@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "./legado.css";
 
 /*
  * Tokens de diseño: marca Kiwitt (manual en docs/brand/, copia del de Kiwitt).
@@ -16,8 +15,8 @@
  *     use `var(--surface)` y no una copia del valor, así cambian solas con el tema.
  *  4. `@theme static` declara lo que ya tiene nombre de Tailwind (fuentes, escala, radios, sombras,
  *     curvas, animaciones, anchos).
- *  5. `legado.css` traduce la paleta vieja (slate, red, emerald, amber, marca, tinta…) a estos tokens
- *     mientras las pantallas se migran. Se borra cuando ya no quede ninguna clase vieja.
+ *  5. No hay capa de compatibilidad: la paleta vieja de Tailwind (slate, red, emerald, amber…) y los
+ *     nombres del branding de HL Laser (marca, tinta…) ya no se usan en ninguna pantalla.
  *
  * Los valores marcados "(ventas)" no están en el manual de Kiwitt: los necesita un ERP (estados
  * ok/aviso/crítico/info y un fondo suave de marca para lo seleccionado). Están calculados para dar
@@ -423,6 +422,7 @@
     border-radius: var(--radius-md);
     background: var(--surface-sunken);
     color: var(--ink);
+    min-height: 2.75rem;
     padding: 0.625rem 0.75rem;
     font-size: var(--input-size);
     line-height: var(--body-line);

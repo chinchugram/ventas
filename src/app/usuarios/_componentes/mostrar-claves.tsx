@@ -11,14 +11,14 @@ export function MostrarClaves({ marcado, alCambiar }: { marcado: boolean; alCamb
   return (
     <label
       htmlFor={id}
-      className="mb-0 flex min-h-11 w-fit cursor-pointer items-center gap-3 text-sm font-normal text-slate-700"
+      className="mb-0 flex min-h-11 w-fit cursor-pointer items-center gap-3 text-body-sm font-normal text-ink"
     >
       <input
         id={id}
         type="checkbox"
         checked={marcado}
         onChange={(e) => alCambiar(e.target.checked)}
-        className="h-5 w-5 shrink-0"
+        className="size-5 shrink-0"
       />
       Mostrar lo que escribo
     </label>

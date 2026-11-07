@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { fmtMoneda, fmtMonedaCorta, fmtNumero, fmtPorcentaje, type Dinero } from "@/lib/money";
 import {
   getConsumoRealVsTeorico,
@@ -7,9 +6,10 @@ import {
   getValorizacionStock,
   type ConsumoRealVsTeorico,
 } from "@/lib/queries/stock";
-import { parseRangoFechas, rangoDeMes, type ParamsFecha, type RangoFechas } from "@/lib/rango-fechas";
-import { Seccion, Tabla, Tarjeta, Vacio } from "@/components/ui";
+import { parseRangoFechas, type ParamsFecha, type RangoFechas } from "@/lib/rango-fechas";
+import { Boton, claseBoton, Etiqueta, Seccion, Tabla, Tarjeta, Vacio } from "@/components/ui";
 import { requierePermisoPagina } from "@/lib/permisos";
+import { AvisosFiltro, FiltroFechas, Reporte } from "../_componentes/comunes";
 
 export const dynamic = "force-dynamic";
 
@@ -36,11 +36,6 @@ const ESTADO_ROTACION = {
   SIN_ACTIVIDAD: "Sin actividad",
 } as const;
 
-const CLASE_INPUT = "min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900";
-const CLASE_BOTON = "min-h-11 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700";
-const CLASE_BOTON_SECUNDARIO =
-  "flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700";
-
 export default async function ReporteStockPage({ searchParams }: { searchParams: Promise<ParamsFecha> }) {
   await requierePermisoPagina("verReportes", "verCostos");
   const params = await searchParams;
@@ -58,26 +53,21 @@ export default async function ReporteStockPage({ searchParams }: { searchParams:
   return (
     <>
       <Seccion
+        epigrafe="Lo que hay en el taller"
         titulo="Reportes de stock"
         descripcion={`Período: ${rango.etiqueta} · sin movimiento: ${dias} ${dias === 1 ? "día" : "días"}`}
         accion={
-          <Link href="/reportes" className={CLASE_BOTON_SECUNDARIO}>
+          <Boton href="/reportes" variante="secundario">
             Reportes
-          </Link>
+          </Boton>
         }
       />
 
-      <FiltroStock rango={rango} dias={dias} />
+      <FiltroFechas rango={rango} ruta="/reportes/stock" conservar={{ dias }}>
+        <FormularioDias rango={rango} dias={dias} />
+      </FiltroFechas>
 
-      {avisos.length > 0 ? (
-        <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          <ul className="space-y-1">
-            {avisos.map((a) => (
-              <li key={a}>{a}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <AvisosFiltro avisos={avisos} />
 
       <Reporte
         titulo="1. Valorización"
@@ -92,7 +82,7 @@ export default async function ReporteStockPage({ searchParams }: { searchParams:
           />
         </div>
         {valorizacion.lineas.length === 0 ? (
-          <Vacio mensaje="No hay materiales con stock" hint="Cuando haya materiales activos, se valoriza su stock acá." />
+          <Vacio mensaje="Ningún material con stock." hint="Cuando haya materiales activos, se valoriza su stock acá." />
         ) : (
           <Tabla
             columnas={["Material", "Stock", "Costo unitario", "Valor", "Participación"]}
@@ -122,7 +112,7 @@ export default async function ReporteStockPage({ searchParams }: { searchParams:
         </div>
         {sinMov.lineas.length === 0 ? (
           <Vacio
-            mensaje="Ningún material parado"
+            mensaje="Ningún material parado."
             hint={`Todo el stock tuvo movimiento en los últimos ${fmtNumero(sinMov.dias)} días.`}
           />
         ) : (
@@ -154,7 +144,7 @@ export default async function ReporteStockPage({ searchParams }: { searchParams:
           />
         </div>
         {consumo.lineas.length === 0 ? (
-          <Vacio mensaje="Sin consumo en el período" hint="No hubo ventas con recetas de materiales en estas fechas." />
+          <Vacio mensaje="No salió ningún material en el período." hint="No hubo ventas con recetas de materiales en estas fechas." />
         ) : (
           <TablaConsumo lineas={consumo.lineas} />
         )}
@@ -178,7 +168,7 @@ export default async function ReporteStockPage({ searchParams }: { searchParams:
           />
         </div>
         {rotacion.lineas.length === 0 ? (
-          <Vacio mensaje="No hay materiales activos" />
+          <Vacio mensaje="Todavía no hay materiales activos." hint="Cargá el primero en Materiales y acá ves cuánto rota." />
         ) : (
           <Tabla
             columnas={["Material", "Consumo", "Rotación", "Cobertura (días)", "Estado"]}
@@ -225,35 +215,6 @@ function cantidadConDesvio(consumo: ConsumoRealVsTeorico): number {
   return consumo.lineas.filter(hayDesvio).length;
 }
 
-function Reporte({
-  titulo,
-  descripcion,
-  badge,
-  children,
-}: {
-  titulo: string;
-  descripcion?: string;
-  badge: "Por período" | "A hoy";
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mb-8">
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-semibold text-slate-900">{titulo}</h2>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            badge === "A hoy" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"
-          }`}
-        >
-          {badge}
-        </span>
-      </div>
-      {descripcion ? <p className="mb-3 text-sm text-slate-500">{descripcion}</p> : null}
-      {children}
-    </section>
-  );
-}
-
 /**
  * Consumo real vs teorico. Igual que `Tabla` (tabla en desktop, tarjetas en
  * mobile), pero con los desvios resaltados: `Tabla` no puede pintar celdas.
@@ -272,21 +233,23 @@ function TablaConsumo({ lineas }: { lineas: ConsumoRealVsTeorico["lineas"] }) {
   return (
     <>
       {/* Desktop: tabla normal. */}
-      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white sm:block">
+      <div className="tarjeta hidden overflow-x-auto sm:block">
         <table>
           <thead>
             <tr>
               {columnas.map((c) => (
-                <th key={c}>{c}</th>
+                <th key={c} scope="col">
+                  {c}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {lineas.map((l) => (
-              <tr key={l.id} className={hayDesvio(l) ? "bg-amber-50" : undefined}>
-                <td className="font-medium text-slate-900">
+              <tr key={l.id} className={hayDesvio(l) ? "bg-aviso-soft" : undefined}>
+                <td className="font-semibold text-ink">
                   {l.nombre}
-                  {hayDesvio(l) ? <BadgeDesvio /> : null}
+                  {hayDesvio(l) ? <EtiquetaDesvio /> : null}
                 </td>
                 {celdas(l).map((c, j) => (
                   <td key={j} className="tabular-nums">
@@ -302,19 +265,16 @@ function TablaConsumo({ lineas }: { lineas: ConsumoRealVsTeorico["lineas"] }) {
       {/* Mobile: tarjetas apiladas; el desvio se marca con borde y texto, no solo color. */}
       <div className="space-y-2 sm:hidden">
         {lineas.map((l) => (
-          <div
-            key={l.id}
-            className={`rounded-xl border p-3 ${hayDesvio(l) ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`}
-          >
-            <p className="font-medium text-slate-900">
+          <div key={l.id} className={`tarjeta p-3 ${hayDesvio(l) ? "border-aviso-line bg-aviso-soft" : ""}`}>
+            <p className="font-semibold text-ink">
               {l.nombre}
-              {hayDesvio(l) ? <BadgeDesvio /> : null}
+              {hayDesvio(l) ? <EtiquetaDesvio /> : null}
             </p>
             <dl className="mt-2 space-y-1">
               {celdas(l).map((c, j) => (
                 <div key={j} className="flex items-baseline justify-between gap-3">
-                  <dt className="text-xs text-slate-500">{columnas[j + 1]}</dt>
-                  <dd className="text-sm font-medium tabular-nums text-slate-800">{c}</dd>
+                  <dt className="eyebrow">{columnas[j + 1]}</dt>
+                  <dd className="text-body-sm font-semibold tabular-nums text-ink">{c}</dd>
                 </div>
               ))}
             </dl>
@@ -325,103 +285,36 @@ function TablaConsumo({ lineas }: { lineas: ConsumoRealVsTeorico["lineas"] }) {
   );
 }
 
-function BadgeDesvio() {
+function EtiquetaDesvio() {
   return (
-    <span className="ml-2 inline-block rounded-md bg-amber-100 px-1.5 py-0.5 align-middle text-xs font-semibold text-amber-800">
+    <Etiqueta tono="aviso" className="ml-2 align-middle">
       Desvío
-    </span>
+    </Etiqueta>
   );
 }
 
-/** Mes anterior y siguiente del filtro, si el periodo es un mes. */
-function mesesVecinos(rango: RangoFechas) {
-  if (rango.anio === undefined || rango.mes === undefined) return null;
-  const { anio, mes } = rango;
-  return {
-    anterior: mes === 1 ? rangoDeMes(anio - 1, 12) : rangoDeMes(anio, mes - 1),
-    siguiente: mes === 12 ? rangoDeMes(anio + 1, 1) : rangoDeMes(anio, mes + 1),
-  };
-}
-
 /**
- * Filtros: formularios GET independientes (mes; desde/hasta; dias). Cada uno
- * lleva el resto del filtro en hidden inputs, para no perder el periodo ni los
- * dias al cambiar otro. El parser da prioridad al rango, por eso van separados.
+ * Días sin movimiento: tercer formulario GET del filtro. Lleva el período en hidden inputs, para no
+ * perderlo al cambiar los días.
  */
-function FiltroStock({ rango, dias }: { rango: RangoFechas; dias: number }) {
-  const esMes = rango.tipo === "mes";
-  const mes = rango.desdeISO.slice(0, 7);
-  const vecinos = mesesVecinos(rango);
-
+function FormularioDias({ rango, dias }: { rango: RangoFechas; dias: number }) {
   return (
-    <div className="mb-5 space-y-3 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-      <form method="get" action="/reportes/stock" className="flex flex-wrap items-end gap-2">
-        <input type="hidden" name="dias" value={dias} />
-        <label className="min-w-0 flex-1 basis-40 text-xs font-medium text-slate-600">
-          Mes
-          <input type="month" name="mes" defaultValue={mes} min="2000-01" max="2100-12" required className={`mt-1 ${CLASE_INPUT}`} />
-        </label>
-        <button type="submit" className={CLASE_BOTON}>
-          Ver mes
-        </button>
-        {vecinos ? (
-          <span className="flex items-center gap-1">
-            <a
-              href={`/reportes/stock?${vecinos.anterior.query}&dias=${dias}`}
-              aria-label={`Mes anterior: ${vecinos.anterior.etiqueta}`}
-              className={CLASE_BOTON_SECUNDARIO}
-            >
-              &larr;
-            </a>
-            <a
-              href={`/reportes/stock?${vecinos.siguiente.query}&dias=${dias}`}
-              aria-label={`Mes siguiente: ${vecinos.siguiente.etiqueta}`}
-              className={CLASE_BOTON_SECUNDARIO}
-            >
-              &rarr;
-            </a>
-          </span>
-        ) : null}
-      </form>
-
-      <form method="get" action="/reportes/stock" className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
-        <input type="hidden" name="dias" value={dias} />
-        <label className="min-w-0 flex-1 basis-36 text-xs font-medium text-slate-600">
-          Desde
-          <input type="date" name="desde" defaultValue={rango.desdeISO} min="2000-01-01" max="2100-12-31" required className={`mt-1 ${CLASE_INPUT}`} />
-        </label>
-        <label className="min-w-0 flex-1 basis-36 text-xs font-medium text-slate-600">
-          Hasta (incluido)
-          <input type="date" name="hasta" defaultValue={rango.hastaISO} min="2000-01-01" max="2100-12-31" required className={`mt-1 ${CLASE_INPUT}`} />
-        </label>
-        <button type="submit" className={CLASE_BOTON}>
-          Ver rango
-        </button>
-      </form>
-
-      <form method="get" action="/reportes/stock" className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
-        {esMes ? (
-          <input type="hidden" name="mes" value={mes} />
-        ) : (
-          <>
-            <input type="hidden" name="desde" value={rango.desdeISO} />
-            <input type="hidden" name="hasta" value={rango.hastaISO} />
-          </>
-        )}
-        <label className="min-w-0 flex-1 basis-40 text-xs font-medium text-slate-600">
-          Días sin movimiento (1 a {DIAS_MAX})
-          <input type="number" name="dias" defaultValue={dias} min={1} max={DIAS_MAX} step={1} inputMode="numeric" required className={`mt-1 ${CLASE_INPUT}`} />
-        </label>
-        <button type="submit" className={CLASE_BOTON}>
-          Aplicar días
-        </button>
-      </form>
-
-      {rango.tipo === "rango" || !rango.porDefecto ? (
-        <Link href={`/reportes/stock?dias=${dias}`} className="inline-block min-h-11 py-2 text-sm font-medium text-slate-600 underline">
-          Volver al mes actual
-        </Link>
-      ) : null}
-    </div>
+    <form method="get" action="/reportes/stock" className="flex flex-wrap items-end gap-3 border-t-(length:--border-width) border-line pt-3">
+      {rango.tipo === "mes" ? (
+        <input type="hidden" name="mes" value={rango.desdeISO.slice(0, 7)} />
+      ) : (
+        <>
+          <input type="hidden" name="desde" value={rango.desdeISO} />
+          <input type="hidden" name="hasta" value={rango.hastaISO} />
+        </>
+      )}
+      <label className="mb-0 min-w-0 flex-1 basis-40">
+        Días sin movimiento (1 a {DIAS_MAX})
+        <input type="number" name="dias" defaultValue={dias} min={1} max={DIAS_MAX} step={1} inputMode="numeric" required className="mt-1" />
+      </label>
+      <button type="submit" className={claseBoton({ variante: "secundario" })}>
+        Aplicar días
+      </button>
+    </form>
   );
 }
