@@ -57,7 +57,7 @@ export async function DocumentoComprobante({ c }: { c: ComprobanteCompleto }) {
   return (
     <article
       data-comprobante={c.id}
-      className="documento relative mx-auto w-full max-w-[210mm] border border-slate-400 bg-white text-sm text-slate-900"
+      className="documento tema-documento relative mx-auto w-full max-w-[210mm] border border-slate-400 bg-white text-sm text-slate-900"
     >
       <SelloSinValidez ambiente={c.ambiente} />
       <FranjaSinValidez ambiente={c.ambiente} />

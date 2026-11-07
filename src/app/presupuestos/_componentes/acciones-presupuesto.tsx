@@ -72,7 +72,7 @@ export function AccionesPresupuesto({
               router.refresh();
             })
           }
-          className="min-h-12 w-full rounded-lg bg-marca py-3 font-semibold text-tinta transition-transform active:scale-[0.98] disabled:opacity-60"
+          className="min-h-12 w-full rounded-lg bg-marca py-3 font-semibold text-on-color transition-transform active:scale-[0.98] disabled:opacity-60"
         >
           {conversion.pendiente ? "Convirtiendo…" : "Convertir en venta"}
         </button>

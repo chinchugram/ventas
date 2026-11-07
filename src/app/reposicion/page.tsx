@@ -88,7 +88,7 @@ export default async function ReposicionPage() {
                 </div>
                 <Link
                   href={urlNuevaCompra(lineas)}
-                  className="shrink-0 rounded-lg bg-marca px-4 py-3 text-center font-semibold text-tinta"
+                  className="shrink-0 rounded-lg bg-marca px-4 py-3 text-center font-semibold text-on-color"
                 >
                   Armar compra
                 </Link>

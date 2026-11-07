@@ -113,7 +113,7 @@ export default async function ImprimirPresupuestoPage({ params }: { params: Prom
         ) : null}
       </div>
 
-      <article className="rounded-xl border border-slate-200 bg-white p-5 text-slate-900 print:rounded-none print:border-0 print:p-0">
+      <article className="tema-documento rounded-xl border border-slate-200 bg-white p-5 text-slate-900 print:rounded-none print:border-0 print:p-0">
         <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
           <div>
             <p className="text-lg font-bold">{marca.nombre}</p>

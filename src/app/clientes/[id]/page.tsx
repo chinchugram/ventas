@@ -60,7 +60,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
             {!c.esDemo && puedeEditar ? (
               <Link
                 href={`/clientes/${c.id}/editar`}
-                className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta"
+                className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-on-color"
               >
                 Editar
               </Link>

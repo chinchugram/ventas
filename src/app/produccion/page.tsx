@@ -102,7 +102,7 @@ export default async function ProduccionPage({ searchParams }: { searchParams: P
                     Ver trabajo<span className="sr-only"> de {l.descripcion}, venta {l.numero}/{l.anio}</span>
                   </Link>
                 ) : (
-                  <Link href={`/produccion/cargar/${l.ventaItemId}`} className={`${BOTON} w-full bg-marca text-tinta`}>
+                  <Link href={`/produccion/cargar/${l.ventaItemId}`} className={`${BOTON} w-full bg-marca text-on-color`}>
                     Cargar trabajo<span className="sr-only"> de {l.descripcion}, venta {l.numero}/{l.anio}</span>
                   </Link>
                 )}

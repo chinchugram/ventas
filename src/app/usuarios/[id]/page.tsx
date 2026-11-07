@@ -57,7 +57,7 @@ export default async function UsuarioPage({ params }: { params: Promise<{ id: st
           </p>
           <Link
             href="/usuarios/mi-clave"
-            className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta"
+            className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-on-color"
           >
             Cambiar mi clave
           </Link>

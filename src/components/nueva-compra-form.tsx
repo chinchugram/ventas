@@ -209,7 +209,7 @@ export function NuevaCompraForm({
         <button
           type="submit"
           disabled={pendiente}
-          className="rounded-lg bg-marca px-5 py-3 font-semibold text-tinta disabled:opacity-60"
+          className="rounded-lg bg-marca px-5 py-3 font-semibold text-on-color disabled:opacity-60"
         >
           {pendiente ? "Guardando…" : "Guardar compra"}
         </button>

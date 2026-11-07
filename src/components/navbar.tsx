@@ -197,7 +197,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
                 aria-controls={ID_HOJA_MAS}
                 className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 lg:hidden ${
                   masActivo
-                    ? "bg-marca text-tinta"
+                    ? "bg-marca text-on-color"
                     : "text-slate-300 hover:bg-white/10 hover:text-white"
                 }`}
               >
@@ -211,7 +211,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
             {puedeNuevaVenta ? (
               <Link
                 href={NUEVA_VENTA}
-                className="flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 text-sm font-semibold text-tinta transition-transform hover:brightness-105 active:scale-95"
+                className="flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 text-sm font-semibold text-on-color transition-transform hover:brightness-105 active:scale-95"
               >
                 <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
                 Nueva venta
@@ -263,7 +263,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
                   >
                     <span
                       className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                        activa ? "bg-marca text-tinta" : "bg-slate-100 text-slate-600"
+                        activa ? "bg-marca text-on-color" : "bg-slate-100 text-slate-600"
                       }`}
                     >
                       <Icono nombre={s.icono} className="h-5 w-5" />
@@ -312,7 +312,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
                 href={NUEVA_VENTA}
                 aria-label="Nueva venta"
                 aria-current={pathname === NUEVA_VENTA ? "page" : undefined}
-                className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-tinta shadow-lg ring-4 ring-white transition-transform active:scale-90"
+                className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-on-color shadow-lg ring-4 ring-white transition-transform active:scale-90"
               >
                 <Icono nombre="nueva" className="h-7 w-7" grosor={2.5} />
               </Link>
@@ -350,7 +350,7 @@ function EnlaceBarra({ seccion, activa, className = "" }: { seccion: Seccion; ac
       href={seccion.href}
       aria-current={activa ? "page" : undefined}
       className={`${className} whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 ${
-        activa ? "bg-marca text-tinta" : "text-slate-300 hover:bg-white/10 hover:text-white"
+        activa ? "bg-marca text-on-color" : "text-slate-300 hover:bg-white/10 hover:text-white"
       }`}
     >
       {seccion.etiqueta}
@@ -414,7 +414,7 @@ function MenuDesplegable({
         aria-expanded={abierto}
         aria-controls={idPanel}
         className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 ${
-          activo ? "bg-marca text-tinta" : abierto ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"
+          activo ? "bg-marca text-on-color" : abierto ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"
         }`}
       >
         {grupo.etiqueta}
@@ -447,7 +447,7 @@ function MenuDesplegable({
                 >
                   <span
                     className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                      activa ? "bg-marca text-tinta" : "bg-slate-100 text-slate-600"
+                      activa ? "bg-marca text-on-color" : "bg-slate-100 text-slate-600"
                     }`}
                   >
                     <Icono nombre={s.icono} className="h-5 w-5" />

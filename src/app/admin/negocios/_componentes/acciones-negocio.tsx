@@ -69,7 +69,7 @@ function PrimerDueno({ id, nombre }: { id: string; nombre: string }) {
         <BloqueExito mensaje={hecho} />
         <button
           type="button"
-          className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta"
+          className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-on-color"
           onClick={() => setAbierto(true)}
         >
           Crear el primer dueño

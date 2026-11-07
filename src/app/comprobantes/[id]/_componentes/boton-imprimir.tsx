@@ -6,7 +6,7 @@ export function BotonImprimir() {
     <button
       type="button"
       onClick={() => window.print()}
-      className="inline-flex min-h-11 items-center justify-center rounded-lg bg-marca px-4 text-sm font-semibold text-tinta active:opacity-80"
+      className="inline-flex min-h-11 items-center justify-center rounded-lg bg-marca px-4 text-sm font-semibold text-on-color active:opacity-80"
     >
       Imprimir / Guardar como PDF
     </button>

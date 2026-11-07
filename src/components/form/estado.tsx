@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import type { Resultado } from "@/lib/acciones";
+import { claseBoton } from "@/components/ui";
 
 /** Error general del formulario (el que devuelve la server action). */
 export function BloqueError({ mensaje }: { mensaje: string | null | undefined }) {
   if (!mensaje) return null;
   return (
-    <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+    <p role="alert" className="borde animate-sacudir rounded-md border-critico-line bg-critico-soft p-3 text-body-sm font-semibold text-critico-text">
       {mensaje}
     </p>
   );
@@ -17,7 +18,7 @@ export function BloqueError({ mensaje }: { mensaje: string | null | undefined })
 export function BloqueExito({ mensaje }: { mensaje: string | null | undefined }) {
   if (!mensaje) return null;
   return (
-    <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
+    <p role="status" className="borde animate-entrada rounded-md border-ok-line bg-ok-soft p-3 text-body-sm font-semibold text-ok-text">
       {mensaje}
     </p>
   );
@@ -27,13 +28,17 @@ export function BloqueExito({ mensaje }: { mensaje: string | null | undefined })
 export function AvisoDemo({ visible, que = "los cambios" }: { visible: boolean; que?: string }) {
   if (!visible) return null;
   return (
-    <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-      Modo demostración: sin base de datos conectada, {que} no se guardan.
+    <p className="borde rounded-md border-aviso-line bg-aviso-soft p-3 text-body-sm text-ink">
+      <span className="font-bold text-aviso-text">Modo demostración.</span> Sin base de datos conectada, {que} no se guardan.
     </p>
   );
 }
 
-/** Boton de envio que se deshabilita y cambia el texto mientras guarda. */
+/**
+ * Botón de envío (botón sticker, ancho completo): se deshabilita, queda apretado y cambia el texto
+ * mientras guarda. Variantes: `principal` y `marca` son el primario de la marca (mandarina; el
+ * primario es uno solo en todos los productos), `peligro` es el de anular o borrar.
+ */
 export function BotonEnviar({
   pendiente,
   texto,
@@ -49,17 +54,12 @@ export function BotonEnviar({
   disabled?: boolean;
   className?: string;
 }) {
-  const colores = {
-    principal: "bg-tinta text-white",
-    marca: "bg-marca text-tinta",
-    peligro: "bg-red-600 text-white",
-  }[variante];
   return (
     <button
       type="submit"
       disabled={pendiente || disabled}
       aria-busy={pendiente || undefined}
-      className={`w-full rounded-lg py-3 font-semibold transition-transform active:scale-[0.98] disabled:opacity-60 ${colores} ${className ?? ""}`}
+      className={claseBoton({ variante: variante === "peligro" ? "peligro" : "primario", ancho: true }) + ` ${className ?? ""}`}
     >
       {pendiente ? textoPendiente : texto}
     </button>

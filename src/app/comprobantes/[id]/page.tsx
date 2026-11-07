@@ -47,7 +47,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className={`inline-block rounded-md px-2 py-1 text-sm font-semibold ${ESTILO_ESTADO[c.estado]}`}>{ETIQUETA_ESTADO[c.estado]}</span>
-        <Link href={`/comprobantes/${c.id}/imprimir`} className={`${BOTON} bg-marca text-tinta active:opacity-80`}>
+        <Link href={`/comprobantes/${c.id}/imprimir`} className={`${BOTON} bg-marca text-on-color active:opacity-80`}>
           Ver para imprimir
         </Link>
       </div>

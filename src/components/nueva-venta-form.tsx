@@ -721,7 +721,7 @@ function ComprobanteSimulado({
         </button>
         <Link
           href={sim.ventaId ? `/ventas/${sim.ventaId}` : "/ventas"}
-          className="rounded-lg bg-marca px-4 py-3 text-center text-sm font-semibold text-tinta hover:opacity-90"
+          className="rounded-lg bg-marca px-4 py-3 text-center text-sm font-semibold text-on-color hover:opacity-90"
         >
           {sim.ventaId ? "Ver la venta" : "Volver a ventas"}
         </Link>
@@ -781,7 +781,7 @@ function BarraInferior({
           type="button"
           onClick={onConfirmar}
           disabled={!habilitado}
-          className="shrink-0 rounded-lg bg-marca px-5 py-3 text-sm font-semibold text-tinta disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="shrink-0 rounded-lg bg-marca px-5 py-3 text-sm font-semibold text-on-color disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {guardando ? "Guardando…" : "Guardar venta"}
         </button>
@@ -809,7 +809,7 @@ function Boton({
       className={`rounded-lg border px-3 py-3 text-sm font-medium cursor-pointer touch-manipulation active:scale-95 transition-transform ${
         toggle
           ? activo
-            ? "border-marca bg-marca text-tinta"
+            ? "border-marca bg-marca text-on-color"
             : "border-slate-300 bg-white text-slate-700"
           : "border-slate-300 bg-white text-slate-700"
       }`}

@@ -53,7 +53,7 @@ export function GananciaDelMes({
           <span className="text-slate-300">
             Margen <span className="font-semibold text-white">{fmtPorcentaje(margenPct)}</span>
           </span>
-          <span className={sobreMeta ? "text-emerald-400" : "text-amber-300"}>
+          <span className={`sticker sobre-color ${sobreMeta ? "bg-ok" : "bg-aviso"}`}>
             {sobreMeta ? "Sobre" : "Bajo"} la meta de {fmtPorcentaje(metaPct)}
           </span>
         </p>

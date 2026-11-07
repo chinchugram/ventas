@@ -41,7 +41,7 @@ export default async function PresupuestosPage({ searchParams }: { searchParams:
           puede(usuario, "cargarPresupuesto") ? (
             <Link
               href="/presupuestos/nuevo"
-              className="inline-flex min-h-11 items-center rounded-lg bg-marca px-4 text-sm font-semibold text-tinta"
+              className="inline-flex min-h-11 items-center rounded-lg bg-marca px-4 text-sm font-semibold text-on-color"
             >
               Nuevo presupuesto
             </Link>

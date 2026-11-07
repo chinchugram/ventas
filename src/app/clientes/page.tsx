@@ -13,7 +13,7 @@ export default async function ClientesPage() {
 
   const deudores = clientes.filter((c) => c.saldo.cmp(0) > 0);
   const botonNuevo = (
-    <Link href="/clientes/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta">
+    <Link href="/clientes/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-on-color">
       Nuevo cliente
     </Link>
   );

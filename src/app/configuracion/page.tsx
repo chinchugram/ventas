@@ -73,7 +73,7 @@ export default async function ConfiguracionPage() {
         </div>
         <Link
           href="/configuracion/maquinas/nueva"
-          className="shrink-0 inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta"
+          className="shrink-0 inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-on-color"
         >
           Agregar máquina
         </Link>

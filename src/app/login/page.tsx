@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { usuarioActual } from "@/lib/auth";
 import { destinoSeguro, inicioDeRol, normalizarSlug, slugValido } from "@/lib/auth-pura";
+import { LogoKiwitt } from "@/components/logo-kiwitt";
 import { LogoMarca } from "@/components/logo-marca";
 import { getMarcaPorSlug, MARCA_NEUTRA } from "@/lib/marca";
 import { FormularioLogin } from "./formulario-login";
@@ -41,9 +42,14 @@ export default async function LoginPage({
   return (
     <div className="mx-auto w-full max-w-sm pt-6 sm:pt-12">
       <div className="mb-6 flex flex-col items-center gap-2">
-        <div className="rounded-2xl bg-tinta px-5 py-3 shadow-md">
-          <LogoMarca nombre={marca.nombre} logo={marca.logo} alto="h-12" />
-        </div>
+        {/* Sin negocio elegido, la marca de la app (Kiwitt); con negocio, su logo (docs/brand/README.md). */}
+        {marca === MARCA_NEUTRA ? (
+          <LogoKiwitt tamano="lg" />
+        ) : (
+          <div className="rounded-2xl bg-tinta px-5 py-3 shadow-md">
+            <LogoMarca nombre={marca.nombre} logo={marca.logo} alto="h-12" />
+          </div>
+        )}
         {marca === MARCA_NEUTRA ? null : <p className="text-center text-base font-semibold text-slate-900">{marca.nombre}</p>}
       </div>
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">

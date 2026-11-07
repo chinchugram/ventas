@@ -27,7 +27,7 @@ export function InsigniaRol({ rol }: { rol: Rol }) {
 /** Texto suelto en una pastilla (Vos, Dado de baja, En pausa). */
 export function Pastilla({ children, tono }: { children: React.ReactNode; tono: "marca" | "gris" | "aviso" }) {
   const clase = {
-    marca: "bg-marca text-tinta",
+    marca: "bg-marca text-on-color",
     gris: "bg-slate-200 text-slate-700",
     aviso: "bg-amber-50 text-amber-800",
   }[tono];

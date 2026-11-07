@@ -1,0 +1,72 @@
+/*
+ * CAPA DE COMPATIBILIDAD (transitoria). Se borra cuando todas las pantallas usen los tokens nuevos.
+ *
+ * La app se escribió con la paleta de Tailwind (slate, red, emerald, amber…) y el branding de
+ * HL Laser (`marca`, `marca-claro`, `marca-texto`, `tinta`). Para que TODA la app tome la marca
+ * Kiwitt de una vez —y funcione en oscuro— sin reescribir 60 pantallas, esos nombres se redefinen
+ * acá apuntando a los tokens semánticos de globals.css:
+ *
+ *  - slate (gris)  → ink / ink-muted / line-strong / line / surface-sunken
+ *  - white         → surface-raised (bg-white = tarjeta; text-white = texto sobre un fondo `ink`)
+ *  - red / emerald / amber / sky → estados critico / ok / aviso / info (suave, borde, texto)
+ *  - marca → brand · marca-claro → brand-soft · marca-texto → brand-text · tinta → ink
+ *
+ * Como "fondo oscuro" (tinta, slate-900) y "texto claro" (white, slate-200/300) se invierten juntos
+ * en oscuro, los paneles invertidos siguen leyéndose en los dos temas.
+ *
+ * NO usar estos nombres en código nuevo: usar bg-surface-raised, text-ink, border-line,
+ * bg-critico-soft, text-ok-text, etc. (catálogo en docs/brand/README.md).
+ */
+@theme inline {
+  --color-white: var(--surface-raised);
+
+  --color-slate-50: var(--surface-sunken);
+  --color-slate-100: var(--surface-sunken);
+  --color-slate-200: var(--line);
+  --color-slate-300: var(--line-strong);
+  --color-slate-400: var(--line-strong);
+  --color-slate-500: var(--ink-muted);
+  --color-slate-600: var(--ink-muted);
+  --color-slate-700: var(--ink);
+  --color-slate-800: var(--ink);
+  --color-slate-900: var(--ink);
+
+  --color-red-50: var(--critico-soft);
+  --color-red-100: var(--critico-soft);
+  --color-red-200: var(--critico-line);
+  --color-red-300: var(--critico-line);
+  --color-red-600: var(--critico-text);
+  --color-red-700: var(--critico-text);
+  --color-red-800: var(--critico-text);
+  --color-red-900: var(--critico-text);
+
+  --color-emerald-50: var(--ok-soft);
+  --color-emerald-100: var(--ok-soft);
+  --color-emerald-300: var(--ok-line);
+  --color-emerald-400: var(--ok);
+  --color-emerald-600: var(--ok-text);
+  --color-emerald-700: var(--ok-text);
+  --color-emerald-800: var(--ok-text);
+  --color-emerald-900: var(--ok-text);
+
+  --color-amber-50: var(--aviso-soft);
+  --color-amber-100: var(--aviso-soft);
+  --color-amber-200: var(--aviso-line);
+  --color-amber-300: var(--aviso);
+  --color-amber-400: var(--aviso-line);
+  --color-amber-600: var(--aviso-text);
+  --color-amber-700: var(--aviso-text);
+  --color-amber-800: var(--aviso-text);
+  --color-amber-900: var(--aviso-text);
+
+  --color-sky-50: var(--info-soft);
+  --color-sky-800: var(--info-text);
+
+  --color-orange-700: var(--brand-text);
+
+  /* Branding viejo (HL Laser) → Kiwitt. El del negocio ya no pinta la interfaz (ver docs/brand/README.md). */
+  --color-marca: var(--brand);
+  --color-marca-claro: var(--brand-soft);
+  --color-marca-texto: var(--brand-text);
+  --color-tinta: var(--ink);
+}
