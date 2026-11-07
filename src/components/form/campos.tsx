@@ -23,7 +23,7 @@ type Base = {
 export function MarcaObligatorio() {
   return (
     <>
-      <span aria-hidden="true" className="ml-0.5 text-red-700">
+      <span aria-hidden="true" className="ml-0.5 text-critico-text">
         *
       </span>
       <span className="sr-only"> (obligatorio)</span>
@@ -34,8 +34,8 @@ export function MarcaObligatorio() {
 /** Leyenda del asterisco: va una vez por formulario, antes del primer campo. */
 export function NotaObligatorio({ className }: { className?: string }) {
   return (
-    <p className={`text-xs text-slate-600 ${className ?? ""}`}>
-      Los campos con <span className="text-red-700">*</span> son obligatorios.
+    <p className={`text-body-sm text-ink-muted ${className ?? ""}`}>
+      Los campos con <span className="text-critico-text">*</span> son obligatorios.
     </p>
   );
 }
@@ -57,14 +57,15 @@ function Envoltura({
         {etiqueta}
         {obligatorio ? <MarcaObligatorio /> : null}
       </label>
-      {children}
+      {/* Momento "error del usuario" (momentos.md): el campo se sacude una vez cuando aparece el error. */}
+      <div className={error ? "animate-sacudir" : undefined}>{children}</div>
       {ayuda ? (
-        <p id={`${id}-ayuda`} className="mt-1 text-xs text-slate-500">
+        <p id={`${id}-ayuda`} className="mt-1 text-body-sm text-ink-muted">
           {ayuda}
         </p>
       ) : null}
       {error ? (
-        <p id={`${id}-error`} className="mt-1 text-xs text-red-700">
+        <p id={`${id}-error`} className="mt-1 text-body-sm font-semibold text-critico-text">
           {error}
         </p>
       ) : null}
@@ -178,7 +179,7 @@ export function CampoDecimal({
     <Envoltura id={id} etiqueta={etiqueta} ayuda={ayuda} error={error} className={className} obligatorio={required}>
       <div className="relative">
         {prefijo ? (
-          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500">{prefijo}</span>
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-muted">{prefijo}</span>
         ) : null}
         <input
           id={id}
@@ -194,7 +195,7 @@ export function CampoDecimal({
           {...resto}
         />
         {sufijo ? (
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-slate-500">
+          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-body-sm text-ink-muted">
             {sufijo}
           </span>
         ) : null}
@@ -270,18 +271,18 @@ export function CampoCheckbox({
 }) {
   return (
     <label
-      className={`mb-0 flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-normal text-slate-700 ${className ?? ""}`}
+      className={`borde mb-0 flex cursor-pointer items-start gap-3 rounded-md border-line bg-surface-raised p-4 text-body font-normal text-ink transition-colors duration-(--dur-rutina) has-checked:border-brand has-checked:bg-brand-soft has-disabled:cursor-not-allowed has-disabled:opacity-60 ${className ?? ""}`}
     >
       <input
         type="checkbox"
         checked={marcado}
         disabled={disabled}
         onChange={(e) => alCambiar(e.target.checked)}
-        className="mt-0.5 h-5 w-5 shrink-0"
+        className="mt-0.5 size-5 shrink-0"
       />
       <span>
         {etiqueta}
-        {ayuda ? <span className="block text-slate-500">{ayuda}</span> : null}
+        {ayuda ? <span className="block text-body-sm text-ink-muted">{ayuda}</span> : null}
       </span>
     </label>
   );

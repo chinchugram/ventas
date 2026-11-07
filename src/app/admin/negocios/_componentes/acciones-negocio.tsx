@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cambiarActivoNegocio, crearPrimerDueno } from "@/app/admin/negocios/actions";
 import { BloqueError, BloqueExito, BotonEnviar, CampoTexto, useAccion } from "@/components/form";
+import { ConfirmarAccion } from "@/components/confirmar-accion";
+import { Boton, TituloBloque } from "@/components/ui";
 
 const CLAVE_MIN = 9;
 
@@ -33,24 +35,35 @@ export function AccionesNegocio({
 function BajaOReactivacion({ id, nombre, activo }: { id: string; nombre: string; activo: boolean }) {
   const router = useRouter();
   const { pendiente, error, enviar } = useAccion(cambiarActivoNegocio);
+  const cambiar = (nuevo: boolean, alTerminar?: () => void) =>
+    enviar({ id, activo: nuevo }, () => {
+      alTerminar?.();
+      router.refresh();
+    });
+
+  if (!activo) {
+    return (
+      <div className="space-y-2">
+        <Boton variante="secundario" ancho disabled={pendiente} aria-busy={pendiente || undefined} onClick={() => cambiar(true)}>
+          {pendiente ? "Reactivando…" : "Reactivar negocio"}
+        </Boton>
+        <BloqueError mensaje={error} />
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <button
-        type="button"
-        disabled={pendiente}
-        className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 disabled:opacity-60"
-        onClick={() => {
-          const pregunta = activo
-            ? `¿Dar de baja «${nombre}»?\n\nNadie de ese negocio va a poder entrar hasta que lo reactives. Sus datos no se borran.`
-            : `¿Reactivar «${nombre}»?`;
-          if (!window.confirm(pregunta)) return;
-          enviar({ id, activo: !activo }, () => router.refresh());
-        }}
-      >
-        {activo ? "Dar de baja" : "Reactivar"}
-      </button>
-      <BloqueError mensaje={error} />
-    </div>
+    <ConfirmarAccion
+      texto="Dar de baja"
+      pregunta={`¿Dar de baja «${nombre}»?`}
+      textoConfirmar="Sí, dar de baja"
+      textoPendiente="Dando de baja…"
+      pendiente={pendiente}
+      error={error}
+      onConfirmar={(cerrar) => cambiar(false, cerrar)}
+    >
+      Nadie de ese negocio va a poder entrar hasta que lo reactives. Sus datos no se borran.
+    </ConfirmarAccion>
   );
 }
 
@@ -67,31 +80,27 @@ function PrimerDueno({ id, nombre }: { id: string; nombre: string }) {
     return (
       <>
         <BloqueExito mensaje={hecho} />
-        <button
-          type="button"
-          className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta"
-          onClick={() => setAbierto(true)}
-        >
+        <Boton ancho onClick={() => setAbierto(true)}>
           Crear el primer dueño
-        </button>
+        </Boton>
       </>
     );
   }
 
   return (
     <form
-      className="space-y-3 rounded-lg border border-slate-200 p-3"
+      className="tarjeta space-y-3 bg-surface-sunken p-4"
       onSubmit={(e) => {
         e.preventDefault();
         enviar({ negocioId: id, usuario, nombre: nombreDueno, clave }, () => {
-          setHecho(`Dueño «${usuario.trim()}» creado. Tiene que cambiar la clave al entrar.`);
+          setHecho(`Listo, «${usuario.trim()}» ya es dueño. Tiene que cambiar la clave al entrar.`);
           setClave("");
           setAbierto(false);
           router.refresh();
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">Primer dueño de {nombre}</h3>
+      <TituloBloque className="mb-0">Primer dueño de {nombre}</TituloBloque>
       <CampoTexto etiqueta="Nombre" name="nombre" valor={nombreDueno} alCambiar={setNombreDueno} maxLength={80} autoComplete="off" required />
       <CampoTexto
         etiqueta="Usuario"
@@ -117,15 +126,11 @@ function PrimerDueno({ id, nombre }: { id: string; nombre: string }) {
         required
       />
       <BloqueError mensaje={error} />
-      <div className="flex gap-2">
-        <BotonEnviar pendiente={pendiente} texto="Crear dueño" className="min-h-11" />
-        <button
-          type="button"
-          className="min-h-11 shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          onClick={() => setAbierto(false)}
-        >
+      <div className="grid grid-cols-2 gap-3">
+        <Boton variante="secundario" onClick={() => setAbierto(false)} disabled={pendiente}>
           Cancelar
-        </button>
+        </Boton>
+        <BotonEnviar pendiente={pendiente} texto="Crear dueño" />
       </div>
     </form>
   );

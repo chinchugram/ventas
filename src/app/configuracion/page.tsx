@@ -5,7 +5,7 @@ import { getArticulosConManoObra, getConfiguracion, getMaquinas } from "@/lib/qu
 import { getConfig } from "@/lib/queries/catalogo";
 import { entradaDesdeConfiguracion, faltantesParaEmitir } from "@/lib/datos-fiscales";
 import { formatearCuit } from "@/lib/cuit";
-import { Seccion, Vacio } from "@/components/ui";
+import { Aviso, Boton, Dato, Etiqueta, Seccion, TituloBloque, Vacio } from "@/components/ui";
 import { ConfiguracionForm } from "./_componentes/configuracion-form";
 import { DatosFiscalesForm, type ValoresDatosFiscales } from "./_componentes/datos-fiscales-form";
 import { requierePermisoPagina } from "@/lib/permisos";
@@ -37,7 +37,7 @@ export default async function ConfiguracionPage() {
 
   return (
     <>
-      <Seccion titulo="Configuración" descripcion="Datos del negocio, costos por hora y máquinas" />
+      <Seccion epigrafe="Tu negocio" titulo="Configuración" descripcion="Datos del negocio, costos por hora y máquinas." />
 
       <div className="mb-6">
         <ConfiguracionForm
@@ -68,52 +68,39 @@ export default async function ConfiguracionPage() {
 
       <div className="mb-3 flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-slate-900">Máquinas</h2>
-          <p className="text-sm text-slate-500">Su costo por hora entra en las recetas que las usan</p>
+          <TituloBloque className="mb-0">Máquinas</TituloBloque>
+          <p className="text-body-sm text-ink-muted">Su costo por hora entra en las recetas que las usan.</p>
         </div>
-        <Link
-          href="/configuracion/maquinas/nueva"
-          className="shrink-0 inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta"
-        >
+        <Boton href="/configuracion/maquinas/nueva" className="shrink-0">
           Agregar máquina
-        </Link>
+        </Boton>
       </div>
 
       {maquinas.length === 0 ? (
-        <Vacio mensaje="No hay máquinas cargadas" hint="Agregá el láser, el plotter y las demás para costear las recetas." />
+        <Vacio mensaje="Ninguna máquina cargada." hint="Agregá el láser, el plotter y las demás para costear las recetas." />
       ) : (
         <ul className="space-y-2">
           {maquinas.map((m) => (
-            <li key={m.id} className={`rounded-xl border border-slate-200 p-4 ${m.activo ? "bg-white" : "bg-slate-50"}`}>
+            <li key={m.id} className={`tarjeta p-4 ${m.activo ? "" : "bg-surface-sunken"}`}>
               <div className="flex items-start justify-between gap-3">
                 <Link
                   href={`/configuracion/maquinas/${m.id}`}
-                  className={`inline-flex min-h-11 min-w-0 items-center font-medium underline-offset-2 hover:underline ${m.activo ? "text-slate-900" : "text-slate-500"}`}
+                  className={`inline-flex min-h-11 min-w-0 items-center text-body font-semibold underline-offset-2 hover:underline ${m.activo ? "text-ink" : "text-ink-muted"}`}
                 >
                   {m.nombre}
                 </Link>
-                {m.activo ? null : (
-                  <span className="shrink-0 rounded-md bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                    De baja
-                  </span>
-                )}
+                {m.activo ? null : <Etiqueta className="shrink-0">De baja</Etiqueta>}
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
-                <div>
-                  <dt className="text-xs text-slate-500">Costo por hora</dt>
-                  <dd className="text-sm font-semibold tabular-nums text-slate-900">{fmtMoneda(m.costoHora)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-slate-500">Usada en</dt>
-                  <dd className="text-sm font-semibold tabular-nums text-slate-900">
-                    {m.recetas} {m.recetas === 1 ? "receta" : "recetas"}
-                  </dd>
-                </div>
+                <Dato etiqueta="Costo por hora">{fmtMoneda(m.costoHora)}</Dato>
+                <Dato etiqueta="Usada en">
+                  {m.recetas} {m.recetas === 1 ? "receta" : "recetas"}
+                </Dato>
               </dl>
               {!m.activo && m.recetas > 0 ? (
-                <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+                <Aviso tono="aviso" className="mt-3">
                   Está de baja pero sigue en recetas: esos artículos la siguen costeando.
-                </p>
+                </Aviso>
               ) : null}
             </li>
           ))}

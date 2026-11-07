@@ -316,7 +316,7 @@ function main() {
     String(panel.includes('"verComprobantes"') && panel.indexOf('"verComprobantes"') < panel.indexOf("await estadoFacturacionDeVenta(")),
     "true",
   );
-  comprobar("el boton de facturar solo se pinta con emitirComprobante", String(/puedeEmitir = puede\(usuario, "emitirComprobante"\)/.test(panel) && /puedeEmitir \? \(\s*<div className="mt-3">\s*<FacturarBoton/.test(panel)), "true");
+  comprobar("el boton de facturar solo se pinta con emitirComprobante", String(/puedeEmitir = puede\(usuario, "emitirComprobante"\)/.test(panel) && /puedeEmitir \? (\(\s*<div[^>]*>\s*)?<FacturarBoton/.test(panel)), "true");
   comprobar("el enlace a Configuracion solo se pinta con configuracion", String(/puedeConfigurar = puede\(usuario, "configuracion"\)/.test(panel) && /a\.codigo === "DATOS_FISCALES" && puedeConfigurar/.test(panel)), "true");
   const consultasComprobantes = leerSrc("lib", "queries", "comprobantes.ts");
   comprobar("las consultas de comprobantes no leen costos ni margenes", String(/costo|margen/i.test(consultasComprobantes.replace(/^.*\/\/.*$/gm, ""))), "false");

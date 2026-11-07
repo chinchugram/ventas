@@ -36,7 +36,7 @@ export function UsuarioForm({ esModoDemo = false }: { esModoDemo?: boolean }) {
         e.preventDefault();
         enviar({ usuario, nombre, rol, clave }, (r) => router.push(`/usuarios/${r.id}`));
       }}
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
       <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="los usuarios" />

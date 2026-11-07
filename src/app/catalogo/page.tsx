@@ -3,7 +3,7 @@ import { fmtMoneda, fmtNumero } from "@/lib/money";
 import { configNumero, getArticulosConMargen, getConfig } from "@/lib/queries/catalogo";
 import { getArticulosDeBaja } from "@/lib/queries/recetas";
 import { precioParaMargen } from "@/lib/costing";
-import { Seccion, SemaforoMargen, Vacio } from "@/components/ui";
+import { Aviso, Boton, Dato, Etiqueta, Plegable, Seccion, SemaforoMargen, Vacio } from "@/components/ui";
 import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
@@ -24,9 +24,9 @@ export default async function CatalogoPage() {
   if (articulos.length === 0) {
     return (
       <>
-        <Seccion titulo="Artículos" accion={<BotonNuevo />} />
+        <Seccion epigrafe="Lo que vendés" titulo="Artículos" accion={<BotonNuevo />} />
         <Vacio
-          mensaje="No hay artículos cargados"
+          mensaje="Ni un artículo a la vista. Buen momento para el primero."
           hint="Empezá por los materiales: un sticker o un cartel se costean a partir de ellos."
         />
         <ListaDeBaja articulos={deBaja} />
@@ -37,6 +37,7 @@ export default async function CatalogoPage() {
   return (
     <>
       <Seccion
+        epigrafe="Lo que vendés"
         titulo="Artículos"
         descripcion="Costo por receta, precio de venta y margen real"
         accion={<BotonNuevo />}
@@ -48,83 +49,78 @@ export default async function CatalogoPage() {
           const bajoMeta = a.margen.margenPct.cmp(metaMargenPct) < 0;
 
           return (
-            <li key={a.id} className="rounded-xl border border-slate-200 bg-white p-4">
+            <li key={a.id} className="tarjeta p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <Link href={`/catalogo/${a.id}`} className="inline-flex min-h-11 items-center font-medium text-slate-900 hover:underline">
+                  <Link
+                    href={`/catalogo/${a.id}`}
+                    className="inline-flex min-h-11 items-center text-body font-semibold text-ink hover:underline"
+                  >
                     {a.nombre}
                   </Link>
-                  {a.esServicio ? <span className="ml-2 text-xs text-slate-500">servicio</span> : null}
-                  {a.descripcion ? (
-                    <p className="text-sm text-slate-500">{a.descripcion}</p>
+                  {a.esServicio ? (
+                    <Etiqueta className="ml-2 align-middle">servicio</Etiqueta>
                   ) : null}
+                  {a.descripcion ? <p className="text-body-sm text-ink-muted">{a.descripcion}</p> : null}
                 </div>
                 {a.receta.confiable ? (
                   <SemaforoMargen margenPct={a.margen.margenPct} metaPct={metaMargenPct} />
                 ) : (
-                  <span className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                  <Etiqueta tono="aviso" className="shrink-0">
                     sin receta
-                  </span>
+                  </Etiqueta>
                 )}
               </div>
 
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-                <Dato etiqueta="Costo" valor={fmtMoneda(a.receta.costoTotal)} />
-                <Dato etiqueta="Vende" valor={fmtMoneda(a.margen.precioBruto)} />
-                <Dato
-                  etiqueta="Ganancia"
-                  valor={fmtMoneda(a.margen.ganancia)}
-                  destacado={a.margen.ganancia.cmp(0) >= 0}
-                />
+                <Dato etiqueta="Costo">{fmtMoneda(a.receta.costoTotal)}</Dato>
+                <Dato etiqueta="Vende">{fmtMoneda(a.margen.precioBruto)}</Dato>
+                <Dato etiqueta="Ganancia" tono={a.margen.ganancia.cmp(0) >= 0 ? "ok" : "neutro"}>
+                  {fmtMoneda(a.margen.ganancia)}
+                </Dato>
                 <Dato
                   etiqueta="Para meta"
-                  valor={a.receta.confiable ? fmtMoneda(sugerido) : "-"}
-                  sugerencia={a.receta.confiable && bajoMeta}
-                />
+                  tono={a.receta.confiable && bajoMeta ? "aviso" : "neutro"}
+                >
+                  {a.receta.confiable ? fmtMoneda(sugerido) : "-"}
+                </Dato>
               </dl>
 
               {a.receta.confiable ? (
-                <details className="mt-3 group">
-                  <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-marca-texto">
+                <details className="mt-2">
+                  <summary className="enlace inline-flex min-h-11 cursor-pointer items-center">
                     Ver receta ({a.receta.componentes.length}{" "}
                     {a.receta.componentes.length === 1 ? "componente" : "componentes"})
                   </summary>
-                  <ul className="mt-2 space-y-1 border-l-2 border-slate-200 pl-3">
+                  <ul className="mt-1 space-y-1 border-l-(length:--border-width) border-line pl-3">
                     {a.receta.componentes.map((c) => (
-                      <li key={c.id} className="text-sm text-slate-600">
-                        <span className="text-slate-900">{c.etiqueta}</span>:{" "}
-                        {fmtNumero(c.cantidad)} × {fmtMoneda(c.costoUnitario)}
+                      <li key={c.id} className="text-body-sm text-ink-muted tabular-nums">
+                        <span className="text-ink">{c.etiqueta}</span>: {fmtNumero(c.cantidad)} × {fmtMoneda(c.costoUnitario)}
                         {c.costoUnitarioOverride ? " (fijado)" : ""} ={" "}
-                        <span className="font-medium text-slate-900">
-                          {fmtMoneda(c.costoTotal)}
-                        </span>
+                        <span className="font-semibold text-ink">{fmtMoneda(c.costoTotal)}</span>
                       </li>
                     ))}
                   </ul>
                 </details>
               ) : (
-                <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                  Sin receta: el costo real es desconocido y el margen que se muestra es
-                  optimista. <span className="font-medium">No tomes decisiones con este número.</span>
-                </p>
+                <Aviso tono="aviso" titulo="Sin receta: no tomes decisiones con este número." className="mt-3">
+                  El costo real es desconocido y el margen que se muestra es optimista.
+                </Aviso>
               )}
 
               {a.receta.advertencias.length > 0 && (
                 <ul className="mt-2 space-y-1">
                   {a.receta.advertencias.map((adv) => (
-                    <li key={adv} className="text-sm text-amber-700">
+                    <li key={adv} className="text-body-sm text-aviso-text">
                       {adv}
                     </li>
                   ))}
                 </ul>
               )}
 
-              <Link
-                href={`/catalogo/${a.id}`}
-                className="mt-3 block rounded-lg border border-slate-300 py-3 text-center text-sm font-medium text-slate-700"
-              >
+              <Boton href={`/catalogo/${a.id}`} variante="secundario" ancho className="mt-3">
                 {a.receta.confiable ? "Editar artículo y receta" : "Cargar receta"}
-              </Link>
+              </Boton>
             </li>
           );
         })}
@@ -136,55 +132,23 @@ export default async function CatalogoPage() {
 }
 
 function BotonNuevo() {
-  return (
-    <Link href="/catalogo/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-tinta px-3 text-sm font-semibold text-white">
-      + Nuevo artículo
-    </Link>
-  );
+  return <Boton href="/catalogo/nuevo">Nuevo artículo</Boton>;
 }
 
 /** Los dados de baja quedan al final, plegados: se abren solo para reactivarlos. */
 function ListaDeBaja({ articulos }: { articulos: { id: string; nombre: string }[] }) {
   if (articulos.length === 0) return null;
   return (
-    <details className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
-      <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-slate-700">
-        Dados de baja ({articulos.length})
-      </summary>
-      <ul className="mt-2 divide-y divide-slate-100">
+    <Plegable titulo={`Dados de baja (${articulos.length})`} className="mt-6">
+      <ul className="divide-y-(length:--border-width) divide-line">
         {articulos.map((a) => (
           <li key={a.id}>
-            <Link href={`/catalogo/${a.id}`} className="block py-3 text-sm text-slate-600 hover:underline">
+            <Link href={`/catalogo/${a.id}`} className="flex min-h-11 items-center px-4 text-body text-ink-muted hover:underline">
               {a.nombre}
             </Link>
           </li>
         ))}
       </ul>
-    </details>
-  );
-}
-
-function Dato({
-  etiqueta,
-  valor,
-  destacado,
-  sugerencia,
-}: {
-  etiqueta: string;
-  valor: string;
-  destacado?: boolean;
-  sugerencia?: boolean;
-}) {
-  return (
-    <div>
-      <dt className="text-xs text-slate-500">{etiqueta}</dt>
-      <dd
-        className={`text-sm font-semibold tabular-nums ${
-          destacado ? "text-emerald-700" : sugerencia ? "text-amber-700" : "text-slate-900"
-        }`}
-      >
-        {valor}
-      </dd>
-    </div>
+    </Plegable>
   );
 }

@@ -11,9 +11,11 @@ import {
 } from "@/lib/queries/dashboard";
 import { getArticulosConMargen, type ArticuloConMargen } from "@/lib/queries/catalogo";
 import { getMateriales } from "@/lib/queries/materiales";
-import { Seccion, SemaforoMargen, Tarjeta, Vacio } from "@/components/ui";
+import { ETIQUETA_ESTADO_PAGO } from "@/lib/queries/ventas";
+import { Aviso, Boton, Etiqueta, ListaPanel, Seccion, SemaforoMargen, Tarjeta, TituloBloque, TONO_ESTADO_PAGO, Vacio } from "@/components/ui";
 import { GananciaDelMes, VentasPorDia, type DiaVentas } from "@/components/tablero";
 import { requierePermisoPagina } from "@/lib/permisos";
+import { puedeTodo } from "@/lib/permisos-pura";
 
 // El dashboard lee datos que cambian con cada venta: nunca se cachea ni se
 // prerenderiza. Sin esto, `next build` intenta generar la pagina en build time
@@ -24,13 +26,6 @@ const NOMBRES_MES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ];
-
-const ETIQUETA_ESTADO_PAGO = {
-  AL_DIA: "Al día",
-  PARCIAL: "Parcial",
-  PENDIENTE: "Sin cobrar",
-  PAGADA: "Pagada",
-} as const;
 
 export default async function Dashboard() {
   const usuario = await requierePermisoPagina("verCostos", "verMargenes");
@@ -52,15 +47,18 @@ export default async function Dashboard() {
   const metaMargenPct = resumen.metaMargenPct;
   const alertas = detectarAlertas(articulos, stockBajo, resumen.cantidadVentas, metaMargenPct);
   const dias = ventasPorDia(facturadoPorDia, DIAS_GRAFICO);
+  // Solo decide si se muestra el atajo; /ventas/nueva vuelve a exigir el permiso.
+  const puedeNuevaVenta = puedeTodo(usuario, ["cargarVenta"]);
 
   return (
     <>
       <Seccion
+        epigrafe="Cómo va el mes"
         titulo={`${NOMBRES_MES[resumen.mes - 1]} ${resumen.anio}`}
         descripcion={
           resumen.cantidadVentas === 0
-            ? "Todavía no hay ventas registradas este mes"
-            : `${resumen.cantidadVentas} ${resumen.cantidadVentas === 1 ? "venta" : "ventas"}`
+            ? "Todavía no hay ventas este mes."
+            : `${resumen.cantidadVentas} ${resumen.cantidadVentas === 1 ? "venta" : "ventas"} en el mes.`
         }
       />
 
@@ -70,7 +68,7 @@ export default async function Dashboard() {
         metaPct={metaMargenPct}
       />
 
-      <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tarjeta
           titulo="Facturado"
           valor={fmtMoneda(resumen.facturadoBruto)}
@@ -94,121 +92,99 @@ export default async function Dashboard() {
           detalle={
             deudas.length > 0
               ? `${fmtNumero(deudas.length)} ${deudas.length === 1 ? "cliente" : "clientes"} con deuda`
-              : "nadie debe nada"
+              : "nadie te debe nada"
           }
         />
       </div>
 
-      <div className="mt-3">
+      <div className="mt-4">
         <VentasPorDia dias={dias} />
       </div>
 
       {alertas.length > 0 && (
-        <section className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
-            Para mirar
-          </h2>
+        <section className="mt-8" aria-labelledby="para-mirar">
+          <TituloBloque id="para-mirar">Para mirar</TituloBloque>
           <ul className="space-y-2">
             {alertas.map((a) => (
-              <li
-                key={a.mensaje + a.detalle}
-                className={`rounded-xl border p-3 text-sm ${
-                  a.severidad === "critica"
-                    ? "border-red-200 bg-red-50 text-red-800"
-                    : "border-amber-200 bg-amber-50 text-amber-800"
-                }`}
-              >
-                <span className="font-semibold">{a.mensaje}</span>{" "}
-                <span className="opacity-80">{a.detalle}</span>
+              <li key={a.mensaje + a.detalle}>
+                <Aviso tono={a.severidad === "critica" ? "critico" : "aviso"} titulo={a.mensaje}>
+                  {a.detalle}
+                </Aviso>
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
-          Últimas ventas
-        </h2>
+      <section className="mt-8" aria-labelledby="ultimas-ventas">
+        <TituloBloque id="ultimas-ventas">Últimas ventas</TituloBloque>
         {ultimas.length === 0 ? (
           <Vacio
-            mensaje="Todavía no hay ventas"
-            hint="Registra la primera para empezar a ver el margen real."
+            mensaje="Ni una venta todavía. Buen momento para la primera."
+            hint="Cargala y acá vas a ver cuánto te dejó de verdad."
+            accion={puedeNuevaVenta ? <Boton href="/ventas/nueva">Cargar una venta</Boton> : undefined}
           />
         ) : (
-          <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <ListaPanel>
             {ultimas.map((v) => (
-              <li key={v.id} className="flex items-center gap-3 p-3">
+              <li key={v.id} className="flex items-center gap-3 p-3 sm:px-4">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">
-                    #{v.numero} · {v.cliente.nombre}
+                  <p className="truncate text-body font-semibold text-ink">
+                    <span className="font-mono text-mono text-ink-muted">#{v.numero}</span> {v.cliente.nombre}
                   </p>
-                  <p className="text-xs text-slate-500">
-                    {fmtFecha(v.fecha)} · {ETIQUETA_ESTADO_PAGO[v.estadoPago]}
+                  <p className="mt-0.5 flex flex-wrap items-center gap-2 text-body-sm text-ink-muted">
+                    {fmtFecha(v.fecha)}
+                    <Etiqueta tono={TONO_ESTADO_PAGO[v.estadoPago]}>{ETIQUETA_ESTADO_PAGO[v.estadoPago]}</Etiqueta>
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-semibold tabular-nums text-slate-900">
-                    {fmtMoneda(v.totalBruto)}
-                  </p>
-                  <p className="text-xs tabular-nums text-slate-500">
-                    margen {fmtMoneda(v.ganancia)}
-                  </p>
+                  <p className="font-display text-body-lg font-bold tabular-nums text-ink">{fmtMoneda(v.totalBruto)}</p>
+                  <p className="text-body-sm tabular-nums text-ink-muted">margen {fmtMoneda(v.ganancia)}</p>
                 </div>
               </li>
             ))}
-          </ul>
+          </ListaPanel>
         )}
       </section>
 
       {deudas.length > 0 && (
-        <section className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
-            Quién debe
-          </h2>
-          <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <section className="mt-8" aria-labelledby="quien-debe">
+          <TituloBloque id="quien-debe">Quién debe</TituloBloque>
+          <ListaPanel>
             {deudas.slice(0, 5).map((d) => (
-              <li key={d.clienteId} className="flex items-center gap-3 p-3">
+              <li key={d.clienteId} className="flex items-center gap-3 p-3 sm:px-4">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">{d.nombre}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="truncate text-body font-semibold text-ink">{d.nombre}</p>
+                  <p className="text-body-sm text-ink-muted">
                     {d.ventasPendientes} {d.ventasPendientes === 1 ? "venta" : "ventas"} · desde{" "}
                     {fmtFecha(d.masAntigua)}
                   </p>
                 </div>
-                <p className="text-sm font-semibold tabular-nums text-amber-700">
-                  {fmtMoneda(d.saldo)}
-                </p>
+                <p className="font-display text-body-lg font-bold tabular-nums text-aviso-text">{fmtMoneda(d.saldo)}</p>
               </li>
             ))}
-          </ul>
+          </ListaPanel>
         </section>
       )}
 
       {articulos.length > 0 && (
-        <section className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">
-            Margen del catálogo
-          </h2>
-          <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <section className="mt-8" aria-labelledby="margen-catalogo">
+          <TituloBloque id="margen-catalogo">Margen del catálogo</TituloBloque>
+          <ListaPanel>
             {articulos.slice(0, 6).map((a) => (
-              <li key={a.id} className="flex items-center gap-3 p-3">
+              <li key={a.id} className="flex items-center gap-3 p-3 sm:px-4">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">{a.nombre}</p>
-                  <p className="text-xs text-slate-500">
-                    costo {fmtMoneda(a.receta.costoTotal)} · vende{" "}
-                    {fmtMoneda(a.margen.precioBruto)}
+                  <p className="truncate text-body font-semibold text-ink">{a.nombre}</p>
+                  <p className="text-body-sm tabular-nums text-ink-muted">
+                    costo {fmtMoneda(a.receta.costoTotal)} · vende {fmtMoneda(a.margen.precioBruto)}
                   </p>
                 </div>
                 <SemaforoMargen margenPct={a.margen.margenPct} metaPct={metaMargenPct} />
               </li>
             ))}
-          </ul>
-          <Link
-            href="/catalogo"
-            className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-marca-texto hover:underline"
-          >
-            Ver catálogo completo →
+          </ListaPanel>
+          <Link href="/catalogo" className="enlace mt-2 inline-flex min-h-11 items-center text-label">
+            Ver el catálogo completo
           </Link>
         </section>
       )}

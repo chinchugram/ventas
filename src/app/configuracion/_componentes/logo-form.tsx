@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { quitarLogo, subirLogo } from "@/app/configuracion/actions";
 import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, NotaObligatorio, useAccion } from "@/components/form";
+import { Boton, TituloBloque } from "@/components/ui";
 import { LogoMarca } from "@/components/logo-marca";
 import { MAX_LOGO_BYTES } from "@/lib/marca-pura";
 
@@ -79,21 +80,21 @@ export function LogoForm({
           router.refresh();
         });
       }}
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
       <NotaObligatorio />
       <div>
-        <h2 className="text-base font-semibold text-slate-900">Logo</h2>
-        <p className="text-sm text-slate-500">
+        <TituloBloque className="mb-0">Logo</TituloBloque>
+        <p className="text-body-sm text-ink-muted">
           Se ve en la barra, en la pantalla de entrada de tu negocio y en los comprobantes impresos. No cambia el emisor fiscal.
         </p>
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="shrink-0 rounded-xl bg-tinta px-4 py-2" aria-live="polite">
+        <div className="borde shrink-0 rounded-md border-line bg-surface px-4 py-2" aria-live="polite">
           <LogoMarca nombre={nombre} logo={vista ?? logo} alto="h-12" />
         </div>
-        <p className="min-w-0 text-sm text-slate-600">
+        <p className="min-w-0 text-body-sm text-ink-muted">
           {vista
             ? "Así se va a ver. Falta guardar."
             : logoPropio
@@ -105,9 +106,7 @@ export function LogoForm({
       </div>
 
       <div>
-        <label htmlFor={idArchivo} className="mb-1 block text-sm font-medium text-slate-700">
-          Archivo de imagen
-        </label>
+        <label htmlFor={idArchivo}>Archivo de imagen</label>
         <input
           ref={entrada}
           id={idArchivo}
@@ -115,10 +114,10 @@ export function LogoForm({
           accept={TIPOS_ACEPTADOS}
           onChange={(e) => elegir(e.target.files?.[0] ?? null)}
           aria-describedby={`${idArchivo}-ayuda`}
-          className="block min-h-11 w-full rounded-lg border border-slate-300 bg-white text-sm text-slate-700 file:mr-3 file:min-h-11 file:border-0 file:bg-slate-100 file:px-4 file:font-medium file:text-slate-800"
+          className="borde block min-h-11 w-full rounded-md border-line-strong bg-surface-sunken text-body-sm text-ink-muted file:mr-3 file:min-h-11 file:border-0 file:bg-surface-raised file:px-4 file:font-bold file:text-ink"
         />
-        <p id={`${idArchivo}-ayuda`} className="mt-1 text-xs text-slate-500">
-          PNG, JPG o SVG simple, hasta 1 MB. Se muestra sobre fondo oscuro: usá un logo claro o con su propio fondo.
+        <p id={`${idArchivo}-ayuda`} className="mt-1 text-body-sm text-ink-muted">
+          PNG, JPG o SVG simple, hasta 1 MB. Se ve sobre fondo claro y oscuro, según el tema: conviene un logo con su propio fondo o que se lea en los dos.
         </p>
       </div>
 
@@ -127,9 +126,11 @@ export function LogoForm({
       <BloqueExito mensaje={exito} />
       <BotonEnviar pendiente={subida.pendiente} texto="Guardar logo" disabled={!archivo || baja.pendiente} />
       {logoPropio ? (
-        <button
-          type="button"
+        <Boton
+          variante="secundario"
+          ancho
           disabled={subida.pendiente || baja.pendiente}
+          aria-busy={baja.pendiente || undefined}
           onClick={() => {
             setExito(null);
             setErrorLocal(null);
@@ -138,10 +139,9 @@ export function LogoForm({
               router.refresh();
             });
           }}
-          className="min-h-11 w-full rounded-lg border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700 disabled:opacity-60"
         >
           {baja.pendiente ? "Quitando…" : "Quitar logo"}
-        </button>
+        </Boton>
       ) : null}
     </form>
   );

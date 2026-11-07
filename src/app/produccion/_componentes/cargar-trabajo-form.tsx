@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cargarTrabajo } from "@/app/produccion/actions";
 import { BloqueError, BotonEnviar, CampoCheckbox, CampoDecimal, CampoNotas, CampoSelect, CampoTexto, useAccion } from "@/components/form";
+import { Aviso, Boton, Panel } from "@/components/ui";
 import { decimalOCero } from "@/lib/acciones";
 import { fmtNumero } from "@/lib/money";
 import { calcularAjusteDeStock, fmtMinutos } from "@/lib/produccion";
@@ -34,7 +35,10 @@ const aEditable = (v: string) => v.replace(".", ",");
 
 export function CargarTrabajoForm(p: Props) {
   const router = useRouter();
-  const { pendiente, error, enviar } = useAccion(cargarTrabajo);
+  // Momento "guardado" (rutina, sin sonido): el aviso con el tilde acompaña la llegada al trabajo.
+  const { pendiente, error, enviar } = useAccion(cargarTrabajo, {
+    anuncio: (_r, datos) => (datos.ajustarStock ? "Trabajo cargado y stock ajustado." : "Trabajo cargado."),
+  });
 
   const [fecha, setFecha] = useState(p.hoyISO);
   const [maquinas, setMaquinas] = useState<FilaMaquina[]>(() =>
@@ -77,7 +81,6 @@ export function CargarTrabajoForm(p: Props) {
       aria-label="Cargar trabajo"
       onSubmit={(e) => {
         e.preventDefault();
-        if (ajustar && !window.confirm("¿Guardar el trabajo y ajustar el stock por la diferencia contra la receta? Queda registrado como un ajuste en el libro de movimientos.")) return;
         enviar(
           {
             ventaItemId: p.ventaItemId,
@@ -93,18 +96,20 @@ export function CargarTrabajoForm(p: Props) {
       }}
       className="space-y-4"
     >
-      <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
-        Cargá lo que realmente se usó. Los valores vienen precargados con la receta: corregilos con lo medido.{" "}
-        <button type="button" onClick={volverALaReceta} className="min-h-11 font-medium underline underline-offset-2">
+      <Panel compacto className="space-y-3 bg-surface-sunken">
+        <p className="text-body-sm text-ink">
+          Cargá lo que realmente se usó. Los valores vienen precargados con la receta: corregilos con lo medido.
+        </p>
+        <Boton variante="secundario" onClick={volverALaReceta}>
           Volver a los valores de la receta
-        </button>
-      </p>
+        </Boton>
+      </Panel>
 
       <CampoTexto etiqueta="Fecha del trabajo" tipo="date" valor={fecha} alCambiar={setFecha} max={p.hoyISO} required />
 
-      <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-        <legend className="px-1 text-sm font-semibold text-slate-900">Máquinas (minutos)</legend>
-        {maquinas.length === 0 ? <p className="text-sm text-slate-500">Sin máquinas. Agregá las que se usaron.</p> : null}
+      <fieldset className="tarjeta min-w-0 space-y-3 p-4">
+        <legend className="px-1 font-display text-body-lg font-bold text-ink">Máquinas (minutos)</legend>
+        {maquinas.length === 0 ? <p className="text-body-sm text-ink-muted">Sin máquinas todavía. Agregá las que se usaron.</p> : null}
         {maquinas.map((f, i) => {
           const sug = sugMaquina.get(f.maquinaId);
           return (
@@ -117,14 +122,14 @@ export function CargarTrabajoForm(p: Props) {
                 alCambiar={(v) => setMaquinas(maquinas.map((x, j) => (j === i ? { ...x, minutos: v } : x)))}
                 ayuda={sug !== undefined ? `Receta: ${fmtMinutos(sug)}` : "No está en la receta"}
               />
-              <button
-                type="button"
+              <Boton
+                variante="fantasma-peligro"
                 onClick={() => setMaquinas(maquinas.filter((_, j) => j !== i))}
                 aria-label={`Quitar ${maquinaPorId.get(f.maquinaId)?.nombre ?? "máquina"}`}
-                className="mb-5 min-h-11 shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
+                className="mb-5 shrink-0 px-3"
               >
                 Quitar
-              </button>
+              </Boton>
             </div>
           );
         })}
@@ -139,8 +144,8 @@ export function CargarTrabajoForm(p: Props) {
         ) : null}
       </fieldset>
 
-      <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-        <legend className="px-1 text-sm font-semibold text-slate-900">Mano de obra</legend>
+      <fieldset className="tarjeta min-w-0 space-y-3 p-4">
+        <legend className="px-1 font-display text-body-lg font-bold text-ink">Mano de obra</legend>
         <CampoDecimal
           etiqueta="Minutos de mano de obra"
           sufijo="min"
@@ -152,9 +157,9 @@ export function CargarTrabajoForm(p: Props) {
         />
       </fieldset>
 
-      <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-        <legend className="px-1 text-sm font-semibold text-slate-900">Materiales usados</legend>
-        {materiales.length === 0 ? <p className="text-sm text-slate-500">Sin materiales. Agregá los que se usaron.</p> : null}
+      <fieldset className="tarjeta min-w-0 space-y-3 p-4">
+        <legend className="px-1 font-display text-body-lg font-bold text-ink">Materiales usados</legend>
+        {materiales.length === 0 ? <p className="text-body-sm text-ink-muted">Sin materiales todavía. Agregá los que se usaron.</p> : null}
         {materiales.map((f, i) => {
           const m = materialPorId.get(f.materialId);
           const sug = recetaMaterial.get(f.materialId);
@@ -168,14 +173,14 @@ export function CargarTrabajoForm(p: Props) {
                 alCambiar={(v) => setMateriales(materiales.map((x, j) => (j === i ? { ...x, cantidad: v } : x)))}
                 ayuda={sug !== undefined ? `Receta: ${fmtNumero(sug)} ${m?.unidad ?? ""}` : "No está en la receta"}
               />
-              <button
-                type="button"
+              <Boton
+                variante="fantasma-peligro"
                 onClick={() => setMateriales(materiales.filter((_, j) => j !== i))}
                 aria-label={`Quitar ${m?.nombre ?? "material"}`}
-                className="mb-5 min-h-11 shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
+                className="mb-5 shrink-0 px-3"
               >
                 Quitar
-              </button>
+              </Boton>
             </div>
           );
         })}
@@ -202,25 +207,27 @@ export function CargarTrabajoForm(p: Props) {
           />
           {ajustar ? (
             ajuste.length === 0 ? (
-              <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">Con estos valores no hay diferencia que ajustar.</p>
+              <Aviso tono="info">Con estos valores no hay diferencia que ajustar.</Aviso>
             ) : (
-              <ul aria-label="Ajuste de stock previsto" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-                {ajuste.map((f) => {
-                  const m = materialPorId.get(f.materialId);
-                  return (
-                    <li key={f.materialId}>
-                      {m?.nombre ?? "Material"}: el stock {f.movimiento.lt(0) ? "baja" : "sube"} {fmtNumero(f.movimiento.abs())} {m?.unidad}
-                    </li>
-                  );
-                })}
-              </ul>
+              <Aviso tono="aviso" titulo="Ajuste de stock previsto">
+                <ul aria-label="Ajuste de stock previsto">
+                  {ajuste.map((f) => {
+                    const m = materialPorId.get(f.materialId);
+                    return (
+                      <li key={f.materialId}>
+                        {m?.nombre ?? "Material"}: el stock {f.movimiento.lt(0) ? "baja" : "sube"} {fmtNumero(f.movimiento.abs())} {m?.unidad}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Aviso>
             )
           ) : null}
         </div>
       ) : null}
 
       <BloqueError mensaje={error} />
-      <BotonEnviar pendiente={pendiente} texto={ajustar ? "Guardar y ajustar stock" : "Guardar trabajo"} variante="marca" />
+      <BotonEnviar pendiente={pendiente} texto={ajustar ? "Guardar y ajustar stock" : "Guardar trabajo"} />
     </form>
   );
 }

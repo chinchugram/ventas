@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { resolverComprobantePendiente } from "@/app/comprobantes/actions";
 import { BloqueError, useAccion } from "@/components/form";
+import { Aviso, Boton } from "@/components/ui";
 
 /**
  * Un comprobante PENDIENTE (el emisor no respondio) se resuelve consultando al
@@ -16,9 +17,11 @@ export function ResolverPendienteBoton({ comprobanteId }: { comprobanteId: strin
 
   return (
     <div>
-      <button
-        type="button"
+      <Boton
+        variante="secundario"
+        className="w-full sm:w-auto"
         disabled={pendiente}
+        aria-busy={pendiente || undefined}
         onClick={() => {
           setMensaje(null);
           enviar({ comprobanteId }, (r) => {
@@ -26,16 +29,15 @@ export function ResolverPendienteBoton({ comprobanteId }: { comprobanteId: strin
             router.refresh();
           });
         }}
-        className="min-h-11 w-full rounded-lg border border-amber-400 bg-white px-4 text-sm font-semibold text-amber-900 transition-transform active:scale-[0.98] disabled:opacity-60 sm:w-auto"
       >
         {pendiente ? "Consultando…" : "Consultar y resolver"}
-      </button>
+      </Boton>
       <div className="mt-2 space-y-2">
         <BloqueError mensaje={error} />
         {mensaje ? (
-          <p role="status" className="rounded-lg bg-slate-100 p-3 text-sm text-slate-800">
+          <Aviso tono="info" role="status">
             {mensaje}
-          </p>
+          </Aviso>
         ) : null}
       </div>
     </div>

@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { estadoDemo } from "@/lib/respaldo";
 import { getMaquina } from "@/lib/queries/configuracion";
-import { Seccion } from "@/components/ui";
+import { Aviso, Boton, Seccion } from "@/components/ui";
 import { MaquinaForm } from "../../_componentes/maquina-form";
 import { EstadoMaquinaBoton } from "../../_componentes/estado-maquina-boton";
 import { requierePermisoPagina } from "@/lib/permisos";
@@ -18,25 +17,22 @@ export default async function MaquinaPage({ params }: { params: Promise<{ id: st
   return (
     <>
       <Seccion
+        epigrafe="Máquina"
         titulo={maquina.nombre}
         descripcion={maquina.activo ? "Editar máquina" : "Máquina dada de baja"}
         accion={
-          <Link
-            href="/configuracion"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/configuracion" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
 
       {maquina.activo ? null : (
-        <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          Esta máquina está dada de baja.
+        <Aviso tono="aviso" titulo="Esta máquina está dada de baja." className="mb-4">
           {maquina.recetas > 0
-            ? ` Sigue en ${maquina.recetas} ${maquina.recetas === 1 ? "receta" : "recetas"}, que la siguen costeando con su costo/hora: revisalas o reactivala.`
-            : " No la usa ninguna receta."}
-        </p>
+            ? `Sigue en ${maquina.recetas} ${maquina.recetas === 1 ? "receta" : "recetas"}, que la siguen costeando con su costo/hora: revisalas o reactivala.`
+            : "No la usa ninguna receta."}
+        </Aviso>
       )}
 
       <div className="mb-4">

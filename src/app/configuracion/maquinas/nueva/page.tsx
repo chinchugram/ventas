@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { dbDisponible } from "@/lib/prisma";
-import { Seccion } from "@/components/ui";
+import { Aviso, Boton, Seccion } from "@/components/ui";
 import { MaquinaForm } from "../../_componentes/maquina-form";
 import { requierePermisoPagina } from "@/lib/permisos";
 
@@ -13,15 +12,13 @@ export default async function NuevaMaquinaPage() {
   return (
     <>
       <Seccion
+        epigrafe="Configuración"
         titulo="Nueva máquina"
         descripcion="Un recurso de producción con su costo por hora"
         accion={
-          <Link
-            href="/configuracion"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/configuracion" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
       <MaquinaForm esModoDemo={esModoDemo} />

@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { getConfig } from "@/lib/queries/catalogo";
 import { getIvaPorDefecto } from "@/lib/queries/configuracion";
 import { getCatalogoCostos } from "@/lib/queries/recetas";
 import { estadoDemo } from "@/lib/respaldo";
-import { Seccion } from "@/components/ui";
+import { Boton, Seccion } from "@/components/ui";
 import { ArticuloForm } from "../_componentes/articulo-form";
 import { requierePermisoPagina } from "@/lib/permisos";
 
@@ -17,15 +16,13 @@ export default async function NuevoArticuloPage() {
   return (
     <>
       <Seccion
+        epigrafe="Lo que vendés"
         titulo="Nuevo artículo"
         descripcion="Precio, IVA y receta: el costo y el margen se calculan solos"
         accion={
-          <Link
-            href="/catalogo"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/catalogo" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
       <ArticuloForm

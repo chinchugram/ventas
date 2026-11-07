@@ -1,4 +1,4 @@
-import { Seccion, Vacio } from "@/components/ui";
+import { Seccion, Tarjeta, TituloBloque, Vacio } from "@/components/ui";
 import { hoyArgentinaISO } from "@/lib/acciones";
 import { fmtMoneda, sumar } from "@/lib/money";
 import { requierePermisoPagina } from "@/lib/permisos";
@@ -16,23 +16,28 @@ export default async function RecordatoriosPage() {
 
   return (
     <>
-      <Seccion titulo="Recordatorios" descripcion="A quién llamar hoy, de más antiguo a más reciente" />
+      <Seccion epigrafe="Llamadas del día" titulo="Recordatorios" descripcion="A quién llamar hoy, de más antiguo a más reciente" />
 
       {lista.length === 0 ? (
-        <Vacio mensaje="No hay nadie para llamar hoy" hint="Todos los saldos están al día o ya tuvieron contacto hoy." />
+        <Vacio mensaje="Hoy no hay a quién llamar." hint="Todos los saldos están al día o ya tuvieron contacto hoy. Buen momento para un mate." />
       ) : (
         <>
-          <p className="mb-4 rounded-xl bg-white p-3 text-sm font-medium text-slate-800 ring-1 ring-slate-200">
-            {lista.length} {lista.length === 1 ? "cliente" : "clientes"} para llamar hoy · total {fmtMoneda(total)}
-          </p>
+          <div className="mb-6">
+            <Tarjeta
+              titulo="Para llamar hoy"
+              valor={fmtMoneda(total)}
+              tono="aviso"
+              detalle={`${lista.length} ${lista.length === 1 ? "cliente" : "clientes"}`}
+            />
+          </div>
 
           <div className="space-y-6">
             {agruparPorTramo(lista).map((grupo) => (
               <section key={grupo.clave} aria-labelledby={`tramo-${grupo.clave}`}>
-                <h2 id={`tramo-${grupo.clave}`} className="mb-2 text-sm font-semibold text-slate-900">
+                <TituloBloque id={`tramo-${grupo.clave}`} className="mb-2">
                   {grupo.etiqueta}
-                  <span className="ml-1 font-normal text-slate-500">({grupo.items.length})</span>
-                </h2>
+                  <span className="ml-1 font-sans text-body font-normal text-ink-muted">({grupo.items.length})</span>
+                </TituloBloque>
                 <ul className="space-y-3">
                   {grupo.items.map((r) => (
                     <li key={r.id}>

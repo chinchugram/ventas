@@ -51,7 +51,7 @@ export async function entrar(_previo: EstadoLogin, formData: FormData): Promise<
     destino = destinoSeguro(datos.data.siguiente) ?? inicioDeRol(resultado.usuario.rol);
   } catch (error) {
     console.error("[entrar]", error);
-    return { error: "No se pudo iniciar sesión. Probá de nuevo en un momento.", ...previo };
+    return { error: "No pudimos iniciar la sesión por un problema nuestro. Probá de nuevo en un momento.", ...previo };
   }
   redirect(destino);
 }

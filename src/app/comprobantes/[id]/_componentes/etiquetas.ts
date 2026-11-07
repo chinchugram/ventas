@@ -23,10 +23,11 @@ export const ETIQUETA_ESTADO = {
   RECHAZADO: "Rechazado",
 } as const;
 
-export const ESTILO_ESTADO = {
-  PENDIENTE: "bg-amber-50 text-amber-800",
-  EMITIDO: "bg-emerald-50 text-emerald-700",
-  RECHAZADO: "bg-red-50 text-red-700",
+/** Tono de la `Etiqueta` de cada estado (ver `Tono` en components/ui.tsx). */
+export const TONO_ESTADO = {
+  PENDIENTE: "aviso",
+  EMITIDO: "ok",
+  RECHAZADO: "critico",
 } as const;
 
 /** "Factura" / "Nota de crédito" (la letra va aparte, en el recuadro). */

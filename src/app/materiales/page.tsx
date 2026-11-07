@@ -9,23 +9,21 @@ import {
   type MaterialDeBaja,
 } from "@/lib/queries/materiales";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
-import { Seccion, Tarjeta, Vacio } from "@/components/ui";
+import { Boton, Dato, Etiqueta, Seccion, Tarjeta, Vacio, type Tono } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-const ESTILO_ESTADO = {
-  SIN_STOCK: "bg-red-50 text-red-700",
-  BAJO: "bg-amber-50 text-amber-700",
-  OK: "bg-slate-100 text-slate-600",
-} as const;
+const TONO_ESTADO: Record<"SIN_STOCK" | "BAJO" | "OK", Tono> = {
+  SIN_STOCK: "critico",
+  BAJO: "aviso",
+  OK: "neutro",
+};
 
 const TEXTO_ESTADO = {
   SIN_STOCK: "Sin stock",
   BAJO: "Bajo mínimo",
-  OK: "OK",
+  OK: "En orden",
 } as const;
-
-const BOTON_SECUNDARIO = "inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700";
 
 export default async function MaterialesPage({ searchParams }: { searchParams: Promise<{ bajas?: string }> }) {
   const usuario = await requierePermisoPagina("verStock");
@@ -43,19 +41,17 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
   const acciones = (
     <div className="flex flex-wrap gap-2">
       {puede(usuario, "verReposicion") ? (
-        <Link href="/reposicion" className={BOTON_SECUNDARIO}>
+        <Boton href="/reposicion" variante="secundario">
           Reposición
-        </Link>
+        </Boton>
       ) : null}
       {puedeComprar ? (
-        <Link href="/compras/nueva" className={BOTON_SECUNDARIO}>
+        <Boton href="/compras/nueva" variante="secundario">
           Registrar compra
-        </Link>
+        </Boton>
       ) : null}
       {puedeEditar ? (
-        <Link href="/materiales/nuevo" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta">
-          Nuevo material
-        </Link>
+        <Boton href="/materiales/nuevo">Nuevo material</Boton>
       ) : null}
     </div>
   );
@@ -64,12 +60,13 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
     return (
       <>
         <Seccion
+          epigrafe="Fuera de circulación"
           titulo="Materiales dados de baja"
           descripcion="No se ofrecen en compras nuevas; conservan su historial"
           accion={
-            <Link href="/materiales" className={BOTON_SECUNDARIO}>
+            <Boton href="/materiales" variante="secundario">
               Volver
-            </Link>
+            </Boton>
           }
         />
         <ListaDeBajas materiales={deBaja} />
@@ -80,9 +77,9 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
   if (materiales.length === 0) {
     return (
       <>
-        <Seccion titulo="Materiales" accion={acciones} />
+        <Seccion epigrafe="Lo que hay en el taller" titulo="Materiales" accion={acciones} />
         <Vacio
-          mensaje="No hay materiales cargados"
+          mensaje="Ni un material cargado todavía."
           hint="Los materiales son la base del costeo: sin ellos, las recetas no tienen costo."
         />
         <LinkBajas cantidad={deBaja.length} />
@@ -96,6 +93,7 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
   return (
     <>
       <Seccion
+        epigrafe="Lo que hay en el taller"
         titulo="Materiales"
         descripcion="Lo que se consume para producir, y lo que se vende suelto"
         accion={acciones}
@@ -109,7 +107,7 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
           tono={alertas.length > 0 ? "aviso" : "ok"}
           detalle={
             alertas.length > 0 && puede(usuario, "verReposicion") ? (
-              <Link href="/reposicion" className="inline-flex min-h-11 items-center underline underline-offset-2">
+              <Link href="/reposicion" className="enlace inline-flex min-h-11 items-center">
                 Ver qué comprar
               </Link>
             ) : undefined
@@ -119,21 +117,15 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
 
       <ul className="space-y-2">
         {materiales.map((m) => (
-          <li key={m.id} className="rounded-xl border border-slate-200 bg-white p-4">
+          <li key={m.id} className="tarjeta p-4">
             <div className="flex items-start justify-between gap-3">
-              <Link href={`/materiales/${m.id}`} className="inline-flex min-h-11 items-center font-medium text-slate-900 underline-offset-2 hover:underline">
+              <Link href={`/materiales/${m.id}`} className="inline-flex min-h-11 items-center text-body font-semibold text-ink hover:underline">
                 {m.nombre}
               </Link>
               <div className="flex shrink-0 items-center gap-2">
-                <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${ESTILO_ESTADO[m.estado]}`}>
-                  {TEXTO_ESTADO[m.estado]}
-                </span>
+                <Etiqueta tono={TONO_ESTADO[m.estado]}>{TEXTO_ESTADO[m.estado]}</Etiqueta>
                 {puedeEditar ? (
-                  <Link
-                    href={`/materiales/${m.id}/editar`}
-                    aria-label={`Editar ${m.nombre}`}
-                    className="-my-3 rounded-md px-2 py-3 text-sm font-medium text-marca-texto underline-offset-2 hover:underline"
-                  >
+                  <Link href={`/materiales/${m.id}/editar`} aria-label={`Editar ${m.nombre}`} className="enlace inline-flex min-h-11 items-center px-1">
                     Editar
                   </Link>
                 ) : null}
@@ -141,39 +133,24 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
             </div>
 
             <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-              <div>
-                <dt className="text-xs text-slate-500">Stock</dt>
-                <dd className="text-sm font-semibold tabular-nums text-slate-900">
-                  {fmtNumero(m.stockActual)}{" "}
-                  <span className="font-normal text-slate-500">{m.unidad}</span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-slate-500">Mínimo</dt>
-                <dd className="text-sm font-semibold tabular-nums text-slate-500">
-                  {m.stockMinimo.cmp(0) > 0 ? `${fmtNumero(m.stockMinimo)} ${m.unidad}` : "-"}
-                </dd>
-              </div>
+              <Dato etiqueta="Stock">
+                {fmtNumero(m.stockActual)} <span className="font-sans text-body-sm font-normal text-ink-muted">{m.unidad}</span>
+              </Dato>
+              <Dato etiqueta="Mínimo" tono="apagado">
+                {m.stockMinimo.cmp(0) > 0 ? `${fmtNumero(m.stockMinimo)} ${m.unidad}` : "-"}
+              </Dato>
               {tieneCostos(m) ? (
                 <>
-                  <div>
-                    <dt className="text-xs text-slate-500">Costo unitario</dt>
-                    <dd className="text-sm font-semibold tabular-nums text-slate-900">
-                      {fmtMoneda(m.costoUnitario)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-500">Precio de venta</dt>
-                    <dd className="text-sm font-semibold tabular-nums text-slate-900">
-                      {m.precioVenta ? fmtMoneda(m.precioVenta) : "solo insumo"}
-                    </dd>
-                  </div>
+                  <Dato etiqueta="Costo unitario">{fmtMoneda(m.costoUnitario)}</Dato>
+                  <Dato etiqueta="Precio de venta" tipo={m.precioVenta ? "monto" : "texto"} tono={m.precioVenta ? "neutro" : "apagado"}>
+                    {m.precioVenta ? fmtMoneda(m.precioVenta) : "solo insumo"}
+                  </Dato>
                 </>
               ) : null}
             </dl>
 
             {m.estado !== "OK" ? (
-              <p className="mt-3 text-sm text-amber-700">
+              <p className="mt-3 text-body-sm text-aviso-text">
                 Faltan {fmtNumero(faltanteParaMinimo(m.stockActual, m.stockMinimo))} {m.unidad} para llegar al mínimo.
               </p>
             ) : null}
@@ -189,8 +166,8 @@ export default async function MaterialesPage({ searchParams }: { searchParams: P
 function LinkBajas({ cantidad }: { cantidad: number }) {
   if (cantidad === 0) return null;
   return (
-    <p className="mt-4 text-center text-sm">
-      <Link href="/materiales?bajas=1" className="inline-flex min-h-11 items-center text-slate-600 underline underline-offset-2">
+    <p className="mt-4 text-center">
+      <Link href="/materiales?bajas=1" className="enlace inline-flex min-h-11 items-center">
         Ver {cantidad === 1 ? "1 material dado de baja" : `${cantidad} materiales dados de baja`}
       </Link>
     </p>
@@ -199,26 +176,23 @@ function LinkBajas({ cantidad }: { cantidad: number }) {
 
 function ListaDeBajas({ materiales }: { materiales: MaterialDeBaja[] }) {
   if (materiales.length === 0) {
-    return <Vacio mensaje="No hay materiales dados de baja" />;
+    return <Vacio mensaje="Ningún material dado de baja." hint="Los que des de baja aparecen acá, con su historial." />;
   }
   return (
     <ul className="space-y-2">
       {materiales.map((m) => (
-        <li key={m.id} className="rounded-xl border border-slate-200 bg-white p-4">
+        <li key={m.id} className="tarjeta p-4">
           <div className="flex items-start justify-between gap-3">
-            <p className="min-w-0 font-medium text-slate-700">{m.nombre}</p>
-            <Link
-              href={`/materiales/${m.id}/editar`}
-              className="-my-3 shrink-0 rounded-md px-2 py-3 text-sm font-medium text-marca-texto underline-offset-2 hover:underline"
-            >
+            <p className="min-w-0 text-body font-semibold break-words text-ink-muted">{m.nombre}</p>
+            <Link href={`/materiales/${m.id}/editar`} className="enlace inline-flex min-h-11 shrink-0 items-center px-1">
               Ver / reactivar
             </Link>
           </div>
-          <p className="mt-1 text-sm text-slate-500 tabular-nums">
+          <p className="text-body-sm text-ink-muted tabular-nums">
             Stock {fmtNumero(m.stockActual)} {m.unidad} · costo {fmtMoneda(m.costoUnitario)}
           </p>
           {m.articulosQueLoUsan > 0 ? (
-            <p className="mt-2 text-sm text-amber-700">
+            <p className="mt-2 text-body-sm text-aviso-text">
               {m.articulosQueLoUsan === 1
                 ? "1 artículo activo todavía lo usa en la receta."
                 : `${m.articulosQueLoUsan} artículos activos todavía lo usan en la receta.`}

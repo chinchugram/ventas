@@ -13,6 +13,7 @@ import {
   NotaObligatorio,
   useAccion,
 } from "@/components/form";
+import { Panel } from "@/components/ui";
 import { ETIQUETA_UNIDAD } from "@/lib/unidades";
 import { UNIDADES, type ArticuloSerial } from "@/lib/materiales";
 import { crearMaterial, editarMaterial } from "../actions";
@@ -86,7 +87,7 @@ export function MaterialForm({
       <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} />
 
-      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+      <Panel className="space-y-3">
         <CampoTexto
           etiqueta="Nombre"
           valor={v.nombre}
@@ -112,8 +113,8 @@ export function MaterialForm({
         <div className="grid grid-cols-2 gap-3">
           {edicion ? (
             <div>
-              <p className="mb-1 text-sm font-medium text-slate-700">Stock actual</p>
-              <p className="py-2.5 font-semibold tabular-nums text-slate-900">{edicion.stockActual}</p>
+              <p className="mb-1 text-label text-ink">Stock actual</p>
+              <p className="monto-fila py-2.5 text-ink">{edicion.stockActual}</p>
             </div>
           ) : (
             <CampoDecimal
@@ -132,14 +133,14 @@ export function MaterialForm({
             placeholder="0"
           />
         </div>
-        <p className="-mt-1 text-xs text-slate-500">
+        <p className="-mt-1 text-body-sm text-ink-muted">
           {edicion
             ? "El stock cambia con compras, ventas y ajustes por conteo (en la página del material)."
             : "Si cargás stock inicial queda registrado como un ajuste en el libro de movimientos. Mínimo 0 = sin alerta."}
         </p>
-      </div>
+      </Panel>
 
-      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+      <Panel className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <CampoDecimal
             etiqueta="Costo unitario"
@@ -157,12 +158,12 @@ export function MaterialForm({
             placeholder="—"
           />
         </div>
-        <p className="-mt-1 text-xs text-slate-500">
+        <p className="-mt-1 text-body-sm text-ink-muted">
           Por {sufijoUnidad || "unidad"}. Precio de venta vacío = no se vende suelto.
           {edicion ? " Las ventas ya hechas conservan su costo." : ""}
         </p>
         <CampoNotas etiqueta="Notas" valor={v.notas} alCambiar={campo("notas")} maxLength={500} filas={2} />
-      </div>
+      </Panel>
 
       {edicion ? (
         <ImpactoMargen
@@ -176,7 +177,7 @@ export function MaterialForm({
       ) : null}
 
       <BloqueError mensaje={error} />
-      <BotonEnviar pendiente={pendiente} texto={edicion ? "Guardar cambios" : "Crear material"} variante="marca" />
+      <BotonEnviar pendiente={pendiente} texto={edicion ? "Guardar cambios" : "Crear material"} />
     </form>
   );
 }

@@ -5,21 +5,19 @@ import { formatearCuit } from "@/lib/cuit";
 import { fmtFecha, fmtMoneda, fmtNumero, fmtPorcentaje } from "@/lib/money";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { getComprobante, type ComprobanteRef } from "@/lib/queries/comprobante";
-import { Seccion } from "@/components/ui";
+import { Aviso, Boton, Etiqueta, Seccion } from "@/components/ui";
 import {
   codigoDe,
-  ESTILO_ESTADO,
   ETIQUETA_AMBIENTE,
   ETIQUETA_CONDICION_IVA,
   ETIQUETA_ESTADO,
+  TONO_ESTADO,
   fmtUnitario,
   textoDocumento,
 } from "./_componentes/etiquetas";
 import { FranjaSinValidez } from "./_componentes/marca-sin-validez";
 
 export const dynamic = "force-dynamic";
-
-const BOTON = "inline-flex min-h-11 items-center justify-center rounded-lg px-4 text-sm font-semibold";
 
 export default async function ComprobantePage({ params }: { params: Promise<{ id: string }> }) {
   const usuario = await requierePermisoPagina("verComprobantes");
@@ -34,28 +32,33 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   return (
     <>
       <Seccion
+        epigrafe="Comprobante"
         titulo={`${NOMBRE_TIPO[c.tipo]} ${nroCompleto}`}
         descripcion={`${c.receptor.nombre} · ${fmtFecha(c.fecha)}`}
         accion={
-          <Link href="/comprobantes" className={`${BOTON} border border-slate-300 bg-white font-medium text-slate-700`}>
+          <Boton href="/comprobantes" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
 
-      <FranjaSinValidez ambiente={c.ambiente} className="mb-4 rounded-lg" />
+      <FranjaSinValidez ambiente={c.ambiente} variante="app" className="mb-4 rounded-md" />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <span className={`inline-block rounded-md px-2 py-1 text-sm font-semibold ${ESTILO_ESTADO[c.estado]}`}>{ETIQUETA_ESTADO[c.estado]}</span>
-        <Link href={`/comprobantes/${c.id}/imprimir`} className={`${BOTON} bg-marca text-tinta active:opacity-80`}>
-          Ver para imprimir
-        </Link>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Etiqueta tono={TONO_ESTADO[c.estado]}>{ETIQUETA_ESTADO[c.estado]}</Etiqueta>
+        <Boton href={`/comprobantes/${c.id}/imprimir`}>Ver para imprimir</Boton>
       </div>
 
       {c.estado === "RECHAZADO" ? (
-        <Aviso tono="critico" titulo="El emisor rechazó este comprobante" texto={c.observaciones} />
+        <Aviso tono="critico" titulo="El emisor rechazó este comprobante." className="mb-4">
+          {c.observaciones ? <p className="break-words whitespace-pre-line">{c.observaciones}</p> : null}
+          <p className={c.observaciones ? "mt-1" : ""}>No tiene validez fiscal: revisá el motivo y volvé a intentarlo desde la venta.</p>
+        </Aviso>
       ) : c.estado === "PENDIENTE" ? (
-        <Aviso tono="aviso" titulo="Pendiente de autorización: todavía no tiene CAE" texto={c.observaciones} />
+        <Aviso tono="aviso" titulo="Pendiente de autorización: todavía no tiene CAE." className="mb-4">
+          {c.observaciones ? <p className="break-words whitespace-pre-line">{c.observaciones}</p> : null}
+          <p className={c.observaciones ? "mt-1" : ""}>Hasta que lo autorice el emisor no vale como comprobante.</p>
+        </Aviso>
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -71,7 +74,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
             etiqueta="Venta de origen"
             valor={
               puedeVerVenta ? (
-                <Link href={`/ventas/${c.venta.id}`} className="font-medium text-marca-texto underline">
+                <Link href={`/ventas/${c.venta.id}`} className="enlace">
                   Venta #{c.venta.numero}/{c.venta.anio}
                 </Link>
               ) : (
@@ -105,35 +108,35 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
               ))
             : null}
           {discrimina ? <Dato etiqueta="IVA total" valor={fmtMoneda(c.importeIva)} /> : null}
-          <Dato etiqueta="Total" valor={<strong>{fmtMoneda(c.importeTotal)}</strong>} />
+          <Dato etiqueta="Total" valor={<span className="monto">{fmtMoneda(c.importeTotal)}</span>} />
         </Bloque>
       </div>
 
-      <Bloque titulo="Detalle" className="mt-4">
-        <ul className="divide-y divide-slate-100">
+      <Bloque titulo="Detalle" className="mt-4" datos={false}>
+        <ul className="divide-y-(length:--border-width) divide-line">
           {c.items.map((i) => (
             <li key={i.orden} className="flex items-baseline justify-between gap-3 py-2">
               <div className="min-w-0">
-                <p className="font-medium break-words">{i.descripcion}</p>
-                <p className="text-xs text-slate-500 tabular-nums">
+                <p className="font-semibold break-words text-ink">{i.descripcion}</p>
+                <p className="text-body-sm text-ink-muted tabular-nums">
                   {fmtNumero(i.cantidad)} × {fmtUnitario(i.precioUnitario)}
                   {discrimina ? ` · IVA ${fmtPorcentaje(i.ivaPct)}` : ""}
                 </p>
               </div>
-              <span className="shrink-0 font-semibold tabular-nums">{fmtMoneda(i.subtotalBruto)}</span>
+              <span className="monto-fila shrink-0">{fmtMoneda(i.subtotalBruto)}</span>
             </li>
           ))}
         </ul>
       </Bloque>
 
       {esNotaCredito(c.tipo) && c.comprobanteAsociado ? (
-        <Bloque titulo="Factura que anula" className="mt-4">
+        <Bloque titulo="Factura que anula" className="mt-4" datos={false}>
           <Enlace r={c.comprobanteAsociado} />
         </Bloque>
       ) : null}
 
       {c.notasDeCredito.length > 0 ? (
-        <Bloque titulo="Notas de crédito relacionadas" className="mt-4">
+        <Bloque titulo="Notas de crédito relacionadas" className="mt-4" datos={false}>
           <ul className="space-y-2">
             {c.notasDeCredito.map((nc) => (
               <li key={nc.id}>
@@ -144,7 +147,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         </Bloque>
       ) : null}
 
-      <p className="mt-4 text-xs text-slate-500">
+      <p className="mt-4 text-body-sm text-ink-muted">
         Letra {letraDe(c.tipo)}. Todo lo que se muestra sale de los datos guardados al emitir: no cambia aunque después se edite el cliente, el artículo o la configuración.
       </p>
     </>
@@ -153,23 +156,27 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
 
 function Enlace({ r }: { r: ComprobanteRef }) {
   return (
-    <Link href={`/comprobantes/${r.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 active:bg-slate-50">
-      <span className="font-medium text-marca-texto underline">
+    <Link
+      href={`/comprobantes/${r.id}`}
+      className="borde flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-md border-line px-3 py-2 hover:bg-surface-sunken"
+    >
+      <span className="enlace">
         {NOMBRE_TIPO[r.tipo]} {numeroFormateado(r.puntoVenta, r.numero)}
       </span>
-      <span className="flex items-center gap-2 text-sm tabular-nums">
+      <span className="flex items-center gap-2 text-body-sm tabular-nums text-ink-muted">
         {fmtFecha(r.fecha)} · {fmtMoneda(r.importeTotal)}
-        <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${ESTILO_ESTADO[r.estado]}`}>{ETIQUETA_ESTADO[r.estado]}</span>
+        <Etiqueta tono={TONO_ESTADO[r.estado]}>{ETIQUETA_ESTADO[r.estado]}</Etiqueta>
       </span>
     </Link>
   );
 }
 
-function Bloque({ titulo, children, className = "" }: { titulo: string; children: React.ReactNode; className?: string }) {
+/** Bloque con título. Por defecto sus hijos son pares `Dato` (una lista de definición); `datos={false}` para otro contenido. */
+function Bloque({ titulo, children, className = "", datos = true }: { titulo: string; children: React.ReactNode; className?: string; datos?: boolean }) {
   return (
-    <section className={`min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 ${className}`}>
-      <h2 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">{titulo}</h2>
-      <dl className="space-y-1.5 text-sm">{children}</dl>
+    <section className={`tarjeta min-w-0 p-4 sm:p-6 ${className}`}>
+      <h2 className="eyebrow mb-3">{titulo}</h2>
+      {datos ? <dl className="space-y-2 text-body">{children}</dl> : children}
     </section>
   );
 }
@@ -177,18 +184,8 @@ function Bloque({ titulo, children, className = "" }: { titulo: string; children
 function Dato({ etiqueta, valor }: { etiqueta: string; valor: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-      <dt className="text-slate-600">{etiqueta}</dt>
-      <dd className="min-w-0 text-right break-words tabular-nums">{valor}</dd>
-    </div>
-  );
-}
-
-function Aviso({ tono, titulo, texto }: { tono: "critico" | "aviso"; titulo: string; texto: string | null }) {
-  const clase = tono === "critico" ? "border-red-300 bg-red-50 text-red-900" : "border-amber-300 bg-amber-50 text-amber-900";
-  return (
-    <div role="note" className={`mb-4 rounded-lg border p-3 text-sm ${clase}`}>
-      <p className="font-semibold">{titulo}</p>
-      {texto ? <p className="mt-1 break-words whitespace-pre-line">{texto}</p> : null}
+      <dt className="text-body-sm text-ink-muted">{etiqueta}</dt>
+      <dd className="min-w-0 text-right break-words tabular-nums text-ink">{valor}</dd>
     </div>
   );
 }

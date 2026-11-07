@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getConfig } from "@/lib/queries/catalogo";
 import { getIvaPorDefecto } from "@/lib/queries/configuracion";
 import { getEditorArticulo } from "@/lib/queries/recetas";
 import { estadoDemo } from "@/lib/respaldo";
-import { Seccion } from "@/components/ui";
+import { Aviso, Boton, Seccion } from "@/components/ui";
 import { ArticuloForm } from "../_componentes/articulo-form";
 import { BotonActivoArticulo } from "../_componentes/boton-activo";
 import { requierePermisoPagina } from "@/lib/permisos";
@@ -24,26 +23,23 @@ export default async function EditarArticuloPage({ params }: { params: Promise<{
   return (
     <>
       <Seccion
+        epigrafe="Artículo"
         titulo={articulo.nombre}
         descripcion="Datos, receta, costo y margen"
         accion={
-          <Link
-            href="/catalogo"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/catalogo" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
 
       {!articulo.activo ? (
-        <div className="mb-4 space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">
-            Este artículo está <span className="font-semibold">dado de baja</span>: no aparece en el catálogo ni en
-            las ventas nuevas.
-          </p>
-          <BotonActivoArticulo id={articulo.id} activo={false} />
-        </div>
+        <Aviso tono="aviso" titulo="Este artículo está dado de baja." className="mb-4">
+          No aparece en el catálogo ni en las ventas nuevas.
+          <div className="mt-3">
+            <BotonActivoArticulo id={articulo.id} activo={false} />
+          </div>
+        </Aviso>
       ) : null}
 
       <ArticuloForm

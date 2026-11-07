@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { d, fmtMoneda, fmtNumero, type Dinero } from "@/lib/money";
 import { decimalOCero } from "@/lib/acciones";
 import { totalizarPresupuesto, subtotalLinea, VALIDEZ_POR_DEFECTO } from "@/lib/presupuestos";
+import { Boton, Chip, Etiqueta, TituloBloque, Vacio } from "@/components/ui";
 import { BloqueError, BotonEnviar, CampoDecimal, CampoNotas, CampoSelect, NotaObligatorio, useAccion } from "@/components/form";
 import { preciosParaPresupuesto, type PreciosCliente } from "@/app/ventas/nueva/actions";
 import { crearPresupuesto, editarPresupuesto } from "../actions";
@@ -77,7 +77,7 @@ export function PresupuestoForm({
     let vigente = true;
     preciosParaPresupuesto({ clienteId, articuloIds: articulos.map((a) => a.id) })
       .then((r) => vigente && setCargados({ ...r, clienteId }))
-      .catch(() => vigente && setCargados({ ok: false, error: "No se pudo conectar con el servidor.", clienteId }));
+      .catch(() => vigente && setCargados({ ok: false, error: "Se cortó la comunicación con el servidor.", clienteId }));
     return () => {
       vigente = false;
     };
@@ -161,23 +161,23 @@ export function PresupuestoForm({
           opciones={clientes.map((c) => ({ valor: c.id, etiqueta: c.cuit ? `${c.nombre} · ${c.cuit}` : c.nombre }))}
         />
         {id && inicial && clienteId !== inicial.clienteId ? (
-          <p className="text-xs text-amber-800">Al cambiar de cliente se recalculan todos los precios con su lista.</p>
+          <p className="text-body-sm font-semibold text-aviso-text">Al cambiar de cliente se recalculan todos los precios con su lista.</p>
         ) : null}
         {cargando ? (
-          <p role="status" className="text-xs text-slate-500">
+          <p role="status" className="text-body-sm text-ink-muted">
             Actualizando precios…
           </p>
         ) : null}
         {errorPrecios ? (
-          <p role="alert" className="text-sm text-red-700">
-            {errorPrecios}{" "}
-            <button type="button" onClick={() => setReintento((n) => n + 1)} className="font-semibold underline">
+          <p role="alert" className="text-body-sm font-semibold text-critico-text">
+            {errorPrecios} No pudimos traer los precios de este cliente.{" "}
+            <button type="button" onClick={() => setReintento((n) => n + 1)} className="enlace inline-flex min-h-11 items-center">
               Reintentar
             </button>
           </p>
         ) : null}
         {lista ? (
-          <p className="text-xs text-marca-texto">
+          <p className="text-body-sm font-semibold text-brand-text">
             Lista de precios: {lista.nombre}
             {d(lista.descuentoPct).gt(0) ? ` (−${fmtNumero(lista.descuentoPct)}%)` : ""}
           </p>
@@ -185,14 +185,14 @@ export function PresupuestoForm({
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">Agregar artículo</h2>
+        <TituloBloque className="mb-2">Agregar artículo</TituloBloque>
         <input
           type="search"
           aria-label="Buscar artículo en el catálogo"
           placeholder="Buscar en el catálogo"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          className="mb-2"
+          className="mb-3"
         />
         <ul className="flex flex-wrap gap-2">
           {filtrados.map((a) => {
@@ -200,48 +200,40 @@ export function PresupuestoForm({
             const mostrado = (actuales?.ok ? actuales.precios[a.id]?.precio : undefined) ?? a.precioVenta;
             return (
               <li key={a.id}>
-                <button
-                  type="button"
-                  onClick={() => agregar(a.id)}
-                  className={`flex cursor-pointer touch-manipulation items-center gap-2 rounded-lg border px-3 py-3 text-left text-sm font-medium transition-transform active:scale-95 ${
-                    cargado ? "border-marca bg-marca-claro text-marca-texto" : "border-slate-300 bg-white text-slate-800"
-                  }`}
-                >
+                <Chip activo={cargado} onClick={() => agregar(a.id)} className="touch-manipulation">
                   <span>{a.nombre}</span>
-                  <span className="text-slate-500">{fmtMoneda(mostrado)}</span>
-                </button>
+                  <span className="font-mono text-mono font-medium tabular-nums">{fmtMoneda(mostrado)}</span>
+                </Chip>
               </li>
             );
           })}
         </ul>
-        {filtrados.length === 0 ? <p className="mt-2 text-sm text-slate-600">Ningún artículo coincide con la búsqueda.</p> : null}
+        {filtrados.length === 0 ? <p className="mt-2 text-body-sm text-ink-muted">Ningún artículo coincide con la búsqueda.</p> : null}
       </section>
 
       <section>
         <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold tracking-wide text-slate-600 uppercase">Detalle</h2>
-          <span className="text-sm text-slate-600">
+          <TituloBloque className="">Detalle</TituloBloque>
+          <span className="text-body-sm text-ink-muted">
             {lineas.length} {lineas.length === 1 ? "línea" : "líneas"}
           </span>
         </div>
         {lineas.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-600">
-            Todavía no agregaste nada.
-          </p>
+          <Vacio mensaje="Todavía no agregaste nada." hint="Tocá un artículo del catálogo y se suma acá." />
         ) : (
           <ul className="space-y-2">
             {calculadas.map(({ linea, articulo, p, subtotal }) => (
-              <li key={linea.clave} className="rounded-xl border border-slate-200 bg-white p-4">
+              <li key={linea.clave} className="tarjeta p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <p className="font-medium text-slate-900">{guardadas.get(linea.articuloId)?.descripcion ?? articulo?.nombre}</p>
-                  <button
-                    type="button"
+                  <p className="text-body font-semibold text-ink">{guardadas.get(linea.articuloId)?.descripcion ?? articulo?.nombre}</p>
+                  <Boton
+                    variante="fantasma-peligro"
                     onClick={() => setLineas(lineas.filter((l) => l !== linea))}
                     aria-label={`Quitar ${articulo?.nombre ?? "artículo"}`}
-                    className="inline-flex min-h-11 shrink-0 items-center rounded-md px-3 text-xs font-semibold text-red-600"
+                    className="-mt-1 -mr-2 shrink-0 px-4"
                   >
                     Quitar
-                  </button>
+                  </Boton>
                 </div>
                 <div className="mt-2 grid grid-cols-2 items-end gap-3">
                   <CampoDecimal
@@ -250,10 +242,11 @@ export function PresupuestoForm({
                     alCambiar={(v) => setLineas(lineas.map((l) => (l === linea ? { ...l, cantidad: v } : l)))}
                   />
                   <div className="text-right">
-                    <p className="text-xs text-slate-500">
-                      {p ? `${fmtMoneda(p.precio)} c/u${p.congelado ? " · precio acordado" : ""}` : "Cargando precio…"}
+                    <p className="text-body-sm text-ink-muted tabular-nums">
+                      {p ? `${fmtMoneda(p.precio)} c/u` : "Cargando precio…"}
                     </p>
-                    <p className="font-semibold tabular-nums text-slate-900">{subtotal ? fmtMoneda(subtotal) : "—"}</p>
+                    {p?.congelado ? <Etiqueta tono="info">precio acordado</Etiqueta> : null}
+                    <p className="monto-fila text-ink">{subtotal ? fmtMoneda(subtotal) : "—"}</p>
                   </div>
                 </div>
               </li>
@@ -280,31 +273,28 @@ export function PresupuestoForm({
         />
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <dl className="space-y-1 text-sm">
-          <div className="flex justify-between text-slate-600">
+      <section className="tarjeta p-4">
+        <dl className="space-y-1">
+          <div className="flex justify-between text-body text-ink-muted">
             <dt>Neto</dt>
             <dd className="tabular-nums">{fmtMoneda(totales.totalNeto)}</dd>
           </div>
-          <div className="flex justify-between text-slate-600">
+          <div className="flex justify-between text-body text-ink-muted">
             <dt>IVA</dt>
             <dd className="tabular-nums">{fmtMoneda(totales.totalIVA)}</dd>
           </div>
-          <div className="flex justify-between text-base font-semibold text-slate-900">
-            <dt>Total</dt>
-            <dd className="tabular-nums">{fmtMoneda(totales.totalBruto)}</dd>
+          <div className="flex items-baseline justify-between text-ink">
+            <dt className="text-body font-semibold">Total</dt>
+            <dd className="monto">{fmtMoneda(totales.totalBruto)}</dd>
           </div>
         </dl>
       </section>
 
       <BloqueError mensaje={error} />
-      <div className="grid grid-cols-3 gap-2">
-        <Link
-          href={id ? `/presupuestos/${id}` : "/presupuestos"}
-          className="inline-flex min-h-12 items-center justify-center rounded-lg border border-slate-300 bg-white text-sm font-medium text-slate-700"
-        >
+      <div className="grid grid-cols-3 gap-3">
+        <Boton href={id ? `/presupuestos/${id}` : "/presupuestos"} variante="secundario">
           Cancelar
-        </Link>
+        </Boton>
         <BotonEnviar
           className="col-span-2"
           variante="marca"

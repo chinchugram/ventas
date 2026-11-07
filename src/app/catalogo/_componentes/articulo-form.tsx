@@ -7,6 +7,7 @@ import {
   AvisoDemo,
   BloqueError,
   BotonEnviar,
+  CampoCheckbox,
   CampoDecimal,
   CampoNotas,
   CampoSelect,
@@ -15,7 +16,7 @@ import {
   useAccion,
   type Opcion,
 } from "@/components/form";
-import { SemaforoMargen } from "@/components/ui";
+import { Aviso, Boton, BarraInferior, Dato, Etiqueta, SemaforoMargen, TituloBloque, Vacio } from "@/components/ui";
 import { d, fmtMoneda, fmtNumero, fmtPorcentaje } from "@/lib/money";
 import { precioParaMargen, type ComponenteCosteado, type TipoComponente } from "@/lib/costing";
 import {
@@ -132,12 +133,12 @@ export function ArticuloForm({
           () => router.push("/catalogo"),
         );
       }}
-      className="space-y-4"
+      className="space-y-4 pb-28"
     >
       <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="el artículo y su receta" />
 
-      <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+      <fieldset className="tarjeta min-w-0 space-y-3 p-4 sm:p-6">
         <legend className="sr-only">Datos del artículo</legend>
         <CampoTexto etiqueta="Nombre" valor={nombre} alCambiar={setNombre} maxLength={120} required />
         <CampoNotas
@@ -157,41 +158,29 @@ export function ArticuloForm({
           />
           <CampoSelect etiqueta="IVA" valor={ivaPct} alCambiar={setIvaPct} opciones={OPCIONES_IVA} />
         </div>
-        {/* Casilla propia en vez de `CampoCheckbox`: los estilos globales de
-            `input` y `label` (fuera de @layer) le pisan el flex y el tamaño. */}
-        <label
-          style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}
-          className="rounded-xl border border-slate-200 p-4 font-normal"
-        >
-          <input
-            type="checkbox"
-            checked={esServicio}
-            onChange={(e) => setEsServicio(e.target.checked)}
-            style={{ width: "1.25rem", height: "1.25rem", flexShrink: 0, marginTop: "0.125rem", padding: 0 }}
-          />
-          <span>
-            Es un servicio
-            <span className="block text-slate-500">
-              No descuenta stock al venderse. Puede tener horas de máquina y mano de obra.
-            </span>
-          </span>
-        </label>
+        <CampoCheckbox
+          etiqueta="Es un servicio"
+          ayuda="No descuenta stock al venderse. Puede tener horas de máquina y mano de obra."
+          marcado={esServicio}
+          alCambiar={setEsServicio}
+        />
       </fieldset>
 
       <section aria-labelledby="titulo-receta" className="space-y-2">
         <div>
-          <h2 id="titulo-receta" className="text-base font-semibold text-slate-900">
+          <TituloBloque id="titulo-receta" className="mb-0">
             Receta
-          </h2>
-          <p className="text-sm text-slate-500">
+          </TituloBloque>
+          <p className="text-body-sm text-ink-muted">
             Lo que consume una unidad: materiales, horas de máquina y horas de mano de obra.
           </p>
         </div>
 
         {lineas.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600">
-            Sin receta: el costo queda en $0 y el margen no se puede calcular. Agregá al menos una línea.
-          </p>
+          <Vacio
+            mensaje="La receta todavía está vacía."
+            hint="Sin receta el costo queda en $0 y el margen no se puede calcular. Agregá al menos una línea."
+          />
         ) : (
           <ul className="space-y-2">
             {lineas.map((l, i) => (
@@ -211,40 +200,32 @@ export function ArticuloForm({
 
         <div className="grid grid-cols-3 gap-2">
           {(["MATERIAL", "MAQUINA", "MANO_OBRA"] as const).map((tipo) => (
-            <button
-              key={tipo}
-              type="button"
-              onClick={() => agregar(tipo)}
-              className="rounded-lg border border-dashed border-slate-300 bg-white px-2 py-3 text-sm font-medium text-slate-700"
-            >
+            <Boton key={tipo} variante="secundario" onClick={() => agregar(tipo)} className="px-2">
               + {NOMBRE_TIPO[tipo]}
-            </button>
+            </Boton>
           ))}
         </div>
 
         {esServicio && hayMateriales ? (
-          <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+          <Aviso tono="info">
             Es un servicio: los materiales suman al costo pero no se descuentan del stock al vender.
-          </p>
+          </Aviso>
         ) : null}
       </section>
 
-      <section aria-label="Costo y margen" className="rounded-xl border border-slate-200 bg-white p-4">
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-          <Fila etiqueta="Materiales" valor={fmtMoneda(receta.costoMateriales)} />
-          <Fila etiqueta="Máquinas" valor={fmtMoneda(receta.costoMaquinas)} />
-          <Fila etiqueta="Mano de obra" valor={fmtMoneda(receta.costoManoObra)} />
-          <Fila etiqueta="Precio sin IVA" valor={fmtMoneda(margen.precioNeto)} />
-          <Fila etiqueta="Ganancia" valor={fmtMoneda(margen.ganancia)} />
-          <Fila
-            etiqueta={`Precio para ${fmtPorcentaje(meta)}`}
-            valor={receta.confiable ? fmtMoneda(sugerido) : "-"}
-          />
+      <section aria-label="Costo y margen" className="tarjeta p-4 sm:p-6">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+          <Dato etiqueta="Materiales">{fmtMoneda(receta.costoMateriales)}</Dato>
+          <Dato etiqueta="Máquinas">{fmtMoneda(receta.costoMaquinas)}</Dato>
+          <Dato etiqueta="Mano de obra">{fmtMoneda(receta.costoManoObra)}</Dato>
+          <Dato etiqueta="Precio sin IVA">{fmtMoneda(margen.precioNeto)}</Dato>
+          <Dato etiqueta="Ganancia">{fmtMoneda(margen.ganancia)}</Dato>
+          <Dato etiqueta={`Precio para ${fmtPorcentaje(meta)}`}>{receta.confiable ? fmtMoneda(sugerido) : "-"}</Dato>
         </dl>
         {receta.advertencias.length > 0 ? (
           <ul className="mt-3 space-y-1">
             {receta.advertencias.map((a) => (
-              <li key={a} className="text-sm text-amber-700">
+              <li key={a} className="text-body-sm text-aviso-text">
                 {a}
               </li>
             ))}
@@ -254,43 +235,31 @@ export function ArticuloForm({
 
       <BloqueError mensaje={error} />
 
-      <div className="sticky bottom-20 z-10 space-y-3 rounded-xl bg-tinta p-4 text-white md:bottom-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs text-slate-300 uppercase">Costo</p>
-            <p className="text-xl font-semibold tabular-nums" data-prueba="costo-total">
-              {fmtMoneda(receta.costoTotal)}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-slate-300 uppercase">Margen</p>
-            <div className="mt-1" data-prueba="margen">
-              {receta.confiable ? (
-                <SemaforoMargen margenPct={margen.margenPct} metaPct={meta} />
-              ) : (
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                  sin receta
-                </span>
-              )}
-            </div>
+      <BarraInferior>
+        <div className="min-w-0">
+          <p className="eyebrow">Costo</p>
+          <p className="monto-fila text-ink" data-prueba="costo-total">
+            {fmtMoneda(receta.costoTotal)}
+          </p>
+        </div>
+        <div>
+          <p className="eyebrow">Margen</p>
+          <div data-prueba="margen">
+            {receta.confiable ? (
+              <SemaforoMargen margenPct={margen.margenPct} metaPct={meta} />
+            ) : (
+              <Etiqueta tono="aviso">sin receta</Etiqueta>
+            )}
           </div>
         </div>
         <BotonEnviar
           pendiente={pendiente}
-          variante="marca"
+          ancho={false}
           texto={inicial ? "Guardar cambios" : "Crear artículo"}
+          className="ml-auto shrink-0"
         />
-      </div>
+      </BarraInferior>
     </form>
-  );
-}
-
-function Fila({ etiqueta, valor }: { etiqueta: string; valor: string }) {
-  return (
-    <div>
-      <dt className="text-xs text-slate-500">{etiqueta}</dt>
-      <dd className="font-semibold tabular-nums text-slate-900">{valor}</dd>
-    </div>
   );
 }
 
@@ -331,19 +300,14 @@ function LineaReceta({
   const porUnidad = unidad ? `/${unidad}` : "";
 
   return (
-    <li className="space-y-3 rounded-xl border border-slate-200 bg-white p-4" data-prueba={`linea-${numero}`}>
+    <li className="tarjeta space-y-3 p-4" data-prueba={`linea-${numero}`}>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-slate-900">
+        <p className="text-body font-semibold text-ink">
           {numero}. {NOMBRE_TIPO[l.tipo]}
         </p>
-        <button
-          type="button"
-          onClick={alQuitar}
-          className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm text-slate-600"
-          aria-label={`Quitar línea ${numero}`}
-        >
+        <Boton variante="fantasma-peligro" onClick={alQuitar} aria-label={`Quitar línea ${numero}`} className="-mr-2 px-4">
           Quitar
-        </button>
+        </Boton>
       </div>
 
       {l.tipo === "MATERIAL" ? (
@@ -394,18 +358,16 @@ function LineaReceta({
         placeholder={l.tipo === "MATERIAL" ? "Ej.: incluye 10% de merma" : undefined}
       />
 
-      <p className="text-sm text-slate-600 tabular-nums" data-prueba={`costo-linea-${numero}`}>
+      <p className="text-body-sm text-ink-muted tabular-nums" data-prueba={`costo-linea-${numero}`}>
         {costeo ? (
           <>
             {fmtNumero(costeo.cantidad)}
             {unidad ? ` ${unidad}` : ""} × {fmtMoneda(costeo.costoUnitario)}
             {costeo.costoUnitarioOverride ? " (fijado)" : ""} ={" "}
-            <span className="font-semibold text-slate-900">{fmtMoneda(costeo.costoTotal)}</span>
+            <span className="font-semibold text-ink">{fmtMoneda(costeo.costoTotal)}</span>
           </>
         ) : (
-          <span className="text-slate-500">
-            Elegí {l.tipo === "MATERIAL" ? "un material" : "una máquina"} para ver el costo.
-          </span>
+          <span>Elegí {l.tipo === "MATERIAL" ? "un material" : "una máquina"} para ver el costo.</span>
         )}
       </p>
     </li>

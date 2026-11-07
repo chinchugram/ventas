@@ -181,6 +181,7 @@ los botones no responden).
 | [`docs/fiscal-5.1-decisiones.md`](docs/fiscal-5.1-decisiones.md) | Decisiones fiscales de la facturación (numeración, redondeo, receptor, notas de crédito) y dudas para el contador |
 | [`docs/06-facturacion-arca.md`](docs/06-facturacion-arca.md) | Facturación con ARCA: qué falta para pasar del simulador a la integración real (5.2) y qué necesita el dueño |
 | [`docs/07-multitenant-despliegue.md`](docs/07-multitenant-despliegue.md) | Despliegue multi-tenant sobre Neon: procedimiento con copia previa, reconciliación, roles y vuelta atrás; ensayo local y pruebas pendientes |
+| [`docs/brand/`](docs/brand/README.md) | Marca Kiwitt (copia del manual: colores, tipografía, forma, voz, momentos, logo) y cómo se aplica en ventas: tokens en `src/app/globals.css`, botón sticker, estados, sonido y documentos del negocio |
 
 ---
 

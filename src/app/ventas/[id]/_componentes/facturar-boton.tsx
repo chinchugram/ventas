@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { emitirFactura, type ResultadoEmision } from "@/app/comprobantes/actions";
 import { BloqueError, useAccion } from "@/components/form";
+import { ConfirmarAccion } from "@/components/confirmar-accion";
+import { Aviso } from "@/components/ui";
 
 type Emitida = Extract<ResultadoEmision, { ok: true }>;
 
@@ -36,40 +38,43 @@ export function FacturarBoton({
   return (
     <div>
       {visible ? (
-        <button
-          type="button"
-          disabled={pendiente}
-          onClick={() => {
-            const que = tipoPrevisto ? `una ${tipoPrevisto}` : "la factura";
-            if (!window.confirm(`¿Emitir ${que} de esta venta? Una vez emitida no se puede borrar: solo se anula con una nota de crédito.`)) return;
+        <ConfirmarAccion
+          texto={texto}
+          pregunta={`¿Emitir ${tipoPrevisto ? `una ${tipoPrevisto}` : "la factura"} de esta venta?`}
+          textoConfirmar="Sí, emitir"
+          textoPendiente="Emitiendo…"
+          variante="primario"
+          pendiente={pendiente}
+          error={error}
+          onConfirmar={(cerrar) => {
             setResultado(null);
             enviar({ ventaId }, (r) => {
               setResultado(r);
+              cerrar();
               router.refresh();
             });
           }}
-          className="w-full rounded-lg bg-tinta py-3 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
         >
-          {pendiente ? "Emitiendo…" : texto}
-        </button>
+          Una vez emitida no se puede borrar: solo se anula con una nota de crédito.
+        </ConfirmarAccion>
       ) : null}
 
       <div className="mt-2 space-y-2">
-        <BloqueError mensaje={error} />
+        {/* Con el botón oculto (ya facturada), el error de la última emisión se sigue viendo acá. */}
+        {visible ? null : <BloqueError mensaje={error} />}
         {resultado ? (
-          <p
-            role="status"
-            className={`rounded-lg p-3 text-sm ${exito ? "bg-emerald-50 text-emerald-800" : resultado.estado === "RECHAZADO" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}
-          >
+          <Aviso tono={exito ? "ok" : resultado.estado === "RECHAZADO" ? "critico" : "aviso"} role="status">
             {resultado.mensaje}
-          </p>
+          </Aviso>
         ) : null}
         {resultado && resultado.advertencias.length > 0 ? (
-          <ul role="status" className="space-y-1 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-            {resultado.advertencias.map((a) => (
-              <li key={a}>{a}</li>
-            ))}
-          </ul>
+          <Aviso tono="aviso" role="status">
+            <ul className="space-y-1">
+              {resultado.advertencias.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          </Aviso>
         ) : null}
       </div>
     </div>

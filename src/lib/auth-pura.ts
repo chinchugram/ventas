@@ -340,4 +340,4 @@ export function destinoSeguro(siguiente: string | null | undefined): string | nu
  * cual fue.
  */
 export const ERROR_LOGIN =
-  "Negocio, usuario o clave incorrectos. Si fallaste varias veces seguidas, esperá unos minutos antes de volver a intentar.";
+  "No pudimos entrar con esos datos. Revisá el negocio, el usuario y la clave. Si probaste varias veces seguidas, esperá unos minutos y volvé a intentar.";

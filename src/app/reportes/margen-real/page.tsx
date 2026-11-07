@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { fmtFecha, fmtMoneda, fmtMonedaCorta, fmtNumero, fmtPorcentaje, type Dinero } from "@/lib/money";
 import { getMargenReal } from "@/lib/queries/margen-real";
 import { hayDesvio, mayoresDesvios, textoPct, type Comparacion } from "@/lib/margen-real";
-import { conRango, parseRangoFechas, rangoDeMes, type ParamsFecha, type RangoFechas } from "@/lib/rango-fechas";
-import { Seccion, Tarjeta, Vacio } from "@/components/ui";
+import { conRango, parseRangoFechas, type ParamsFecha } from "@/lib/rango-fechas";
+import { Boton, Seccion, Tarjeta, Vacio } from "@/components/ui";
 import { requierePermisoPagina } from "@/lib/permisos";
+import { AvisosFiltro, FiltroFechas, Reporte } from "../_componentes/comunes";
 import { TablaMargen, type EstadoDesvio, type FilaMargen } from "./_componentes/tabla-margen";
 
 export const dynamic = "force-dynamic";
@@ -26,11 +26,6 @@ const MAX_TRABAJOS = 20;
 const RUTA = "/reportes/margen-real";
 const RUTA_CSV = "/reportes/margen-real/export";
 
-const CLASE_INPUT = "min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900";
-const CLASE_BOTON = "min-h-11 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700";
-const CLASE_BOTON_SECUNDARIO =
-  "inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50";
-
 const COLUMNAS_COMPARACION = ["Precio neto", "Costo receta", "Costo real", "Desvío $", "Desvío %", "Margen estimado", "Margen real"];
 
 export default async function MargenRealPage({ searchParams }: { searchParams: Promise<ParamsFecha> }) {
@@ -43,35 +38,28 @@ export default async function MargenRealPage({ searchParams }: { searchParams: P
   return (
     <>
       <Seccion
+        epigrafe="Lo que costó de verdad"
         titulo="Margen real"
         descripcion={`Período: ${rango.etiqueta} · por fecha del trabajo`}
         accion={
-          <Link href="/reportes" className={CLASE_BOTON_SECUNDARIO}>
+          <Boton href="/reportes" variante="secundario">
             Reportes
-          </Link>
+          </Boton>
         }
       />
 
-      <FiltroFechas rango={rango} />
+      <FiltroFechas rango={rango} ruta={RUTA} />
 
-      {rango.avisos.length > 0 ? (
-        <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          <ul className="space-y-1">
-            {rango.avisos.map((a) => (
-              <li key={a}>{a}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <AvisosFiltro avisos={rango.avisos} />
 
       {!hayTrabajos ? (
         <Vacio
-          mensaje="Sin trabajos de producción cargados en el período"
+          mensaje="Ningún trabajo de producción cargado en el período."
           hint="El margen real se calcula con lo que realmente se usó en cada trabajo (materiales y minutos). Cuando haya trabajos cargados en estas fechas, acá se compara su costo real contra la receta. Probá con otro período."
         />
       ) : (
         <>
-          <Reporte titulo="Resumen" descripcion="Todos los trabajos del período. El margen es sobre el precio de venta sin IVA de cada línea.">
+          <Reporte badge="Por período" titulo="Resumen" descripcion="Todos los trabajos del período. El margen es sobre el precio de venta sin IVA de cada línea.">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
               <Tarjeta
                 titulo="Venta neta"
@@ -101,6 +89,7 @@ export default async function MargenRealPage({ searchParams }: { searchParams: P
           </Reporte>
 
           <Reporte
+            badge="Por período"
             titulo="Por artículo"
             descripcion="Primero los que más se pasaron de la receta."
             exportar={conRango(`${RUTA_CSV}?detalle=articulos`, rango)}
@@ -113,6 +102,7 @@ export default async function MargenRealPage({ searchParams }: { searchParams: P
           </Reporte>
 
           <Reporte
+            badge="Por período"
             titulo="Por período"
             descripcion="Un mes por fila, según la fecha del trabajo."
             exportar={conRango(`${RUTA_CSV}?detalle=periodos`, rango)}
@@ -125,6 +115,7 @@ export default async function MargenRealPage({ searchParams }: { searchParams: P
           </Reporte>
 
           <Reporte
+            badge="Por período"
             titulo="Trabajos con mayor desvío"
             descripcion={
               reporte.lineas.length > MAX_TRABAJOS
@@ -185,98 +176,4 @@ function tonoDesvio(c: Comparacion): "ok" | "aviso" {
 
 function tonoMargen(c: Comparacion): "neutro" | "critico" {
   return c.margenRealPct !== null && c.margenRealPct.cmp(0) < 0 ? "critico" : "neutro";
-}
-
-function Reporte({
-  titulo,
-  descripcion,
-  exportar,
-  etiquetaExportar,
-  children,
-}: {
-  titulo: string;
-  descripcion?: string;
-  /** Ruta del CSV de este reporte, ya con el filtro activo. */
-  exportar?: string;
-  etiquetaExportar?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mb-8">
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-semibold text-slate-900">{titulo}</h2>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">Por período</span>
-        {exportar ? (
-          <a href={exportar} aria-label={etiquetaExportar ?? `Exportar CSV: ${titulo}`} className={`ml-auto px-4 ${CLASE_BOTON_SECUNDARIO}`}>
-            Exportar CSV
-          </a>
-        ) : null}
-      </div>
-      {descripcion ? <p className="mb-3 text-sm text-slate-600">{descripcion}</p> : null}
-      {children}
-    </section>
-  );
-}
-
-/** Mes anterior y siguiente del filtro, si el periodo es un mes. */
-function mesesVecinos(rango: RangoFechas) {
-  if (rango.anio === undefined || rango.mes === undefined) return null;
-  const { anio, mes } = rango;
-  return {
-    anterior: mes === 1 ? rangoDeMes(anio - 1, 12) : rangoDeMes(anio, mes - 1),
-    siguiente: mes === 12 ? rangoDeMes(anio + 1, 1) : rangoDeMes(anio, mes + 1),
-  };
-}
-
-/**
- * Filtros: dos formularios GET independientes (mes; desde/hasta). El parser da
- * prioridad al rango, por eso van separados. Sin JavaScript: el navegador arma la URL.
- */
-function FiltroFechas({ rango }: { rango: RangoFechas }) {
-  const mes = rango.desdeISO.slice(0, 7);
-  const vecinos = mesesVecinos(rango);
-
-  return (
-    <div className="mb-5 space-y-3 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-      <form method="get" action={RUTA} className="flex flex-wrap items-end gap-2">
-        <label className="min-w-0 flex-1 basis-40 text-xs font-medium text-slate-600">
-          Mes
-          <input type="month" name="mes" defaultValue={mes} min="2000-01" max="2100-12" required className={`mt-1 ${CLASE_INPUT}`} />
-        </label>
-        <button type="submit" className={CLASE_BOTON}>
-          Ver mes
-        </button>
-        {vecinos ? (
-          <span className="flex items-center gap-1">
-            <a href={`${RUTA}?${vecinos.anterior.query}`} aria-label={`Mes anterior: ${vecinos.anterior.etiqueta}`} className={CLASE_BOTON_SECUNDARIO}>
-              &larr;
-            </a>
-            <a href={`${RUTA}?${vecinos.siguiente.query}`} aria-label={`Mes siguiente: ${vecinos.siguiente.etiqueta}`} className={CLASE_BOTON_SECUNDARIO}>
-              &rarr;
-            </a>
-          </span>
-        ) : null}
-      </form>
-
-      <form method="get" action={RUTA} className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
-        <label className="min-w-0 flex-1 basis-36 text-xs font-medium text-slate-600">
-          Desde
-          <input type="date" name="desde" defaultValue={rango.desdeISO} min="2000-01-01" max="2100-12-31" required className={`mt-1 ${CLASE_INPUT}`} />
-        </label>
-        <label className="min-w-0 flex-1 basis-36 text-xs font-medium text-slate-600">
-          Hasta (incluido)
-          <input type="date" name="hasta" defaultValue={rango.hastaISO} min="2000-01-01" max="2100-12-31" required className={`mt-1 ${CLASE_INPUT}`} />
-        </label>
-        <button type="submit" className={CLASE_BOTON}>
-          Ver rango
-        </button>
-      </form>
-
-      {rango.tipo === "rango" || !rango.porDefecto ? (
-        <Link href={RUTA} className="inline-block min-h-11 py-2 text-sm font-medium text-slate-600 underline">
-          Volver al mes actual
-        </Link>
-      ) : null}
-    </div>
-  );
 }

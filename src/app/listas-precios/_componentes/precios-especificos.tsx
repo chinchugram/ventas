@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarPrecioLista, quitarPrecioLista } from "@/app/listas-precios/actions";
-import { BloqueError, CampoDecimal, CampoSelect, useAccion } from "@/components/form";
+import { BloqueError, BotonEnviar, CampoDecimal, CampoSelect, useAccion } from "@/components/form";
+import { Boton, ListaPanel, TituloBloque, Vacio } from "@/components/ui";
 import { fmtMoneda } from "@/lib/money";
 
 export type PrecioFila = { articuloId: string; nombre: string; precioCatalogo: string; precio: string };
@@ -30,24 +31,25 @@ export function PreciosEspecificos({
   return (
     <section aria-labelledby="titulo-precios" className="space-y-3">
       <div>
-        <h2 id="titulo-precios" className="text-sm font-semibold text-slate-900">
+        <TituloBloque id="titulo-precios" className="mb-0.5">
           Precios específicos
-        </h2>
-        <p className="text-sm text-slate-500">
+        </TituloBloque>
+        <p className="text-body-sm text-ink-muted">
           Un precio específico gana sobre el descuento general. Precio final, con IVA, igual que en el catálogo.
         </p>
       </div>
 
       {precios.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-center text-sm text-slate-600">
-          Todavía no hay precios específicos: se aplica solo el descuento general.
-        </p>
+        <Vacio
+          mensaje="Todavía no hay precios específicos."
+          hint="Mientras tanto se aplica solo el descuento general."
+        />
       ) : (
-        <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+        <ListaPanel>
           {precios.map((p) => (
             <FilaPrecio key={`${p.articuloId}:${p.precio}`} listaId={listaId} fila={p} />
           ))}
-        </ul>
+        </ListaPanel>
       )}
 
       <AltaPrecio listaId={listaId} disponibles={disponibles} esModoDemo={esModoDemo} />
@@ -67,8 +69,8 @@ function FilaPrecio({ listaId, fila }: { listaId: string; fila: PrecioFila }) {
   return (
     <li className="space-y-2 p-4">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="min-w-0 font-medium text-slate-900">{fila.nombre}</p>
-        <p className="shrink-0 text-xs text-slate-500">catálogo {fmtMoneda(fila.precioCatalogo)}</p>
+        <p className="min-w-0 text-body font-semibold break-words text-ink">{fila.nombre}</p>
+        <p className="shrink-0 text-body-sm text-ink-muted tabular-nums">catálogo {fmtMoneda(fila.precioCatalogo)}</p>
       </div>
       <form
         className="flex items-end gap-2"
@@ -84,22 +86,18 @@ function FilaPrecio({ listaId, fila }: { listaId: string; fila: PrecioFila }) {
           alCambiar={setPrecio}
           prefijo="$"
         />
-        <button
-          type="submit"
-          disabled={ocupado || !cambio}
-          className="min-h-11 shrink-0 rounded-lg bg-tinta px-4 text-sm font-semibold text-white disabled:opacity-40"
-        >
+        <Boton type="submit" variante="secundario" disabled={ocupado || !cambio} aria-busy={guardar.pendiente || undefined} className="shrink-0 px-4">
           {guardar.pendiente ? "Guardando…" : "Guardar"}
-        </button>
-        <button
-          type="button"
+        </Boton>
+        <Boton
+          variante="fantasma-peligro"
           disabled={ocupado}
           onClick={() => quitar.enviar({ listaId, articuloId: fila.articuloId }, () => router.refresh())}
           aria-label={`Quitar el precio específico de ${fila.nombre}`}
-          className="min-h-11 shrink-0 rounded-lg border border-red-300 bg-white px-3 text-sm font-semibold text-red-700 disabled:opacity-40"
+          className="shrink-0 px-3"
         >
           Quitar
-        </button>
+        </Boton>
       </form>
       <BloqueError mensaje={error} />
     </li>
@@ -121,14 +119,14 @@ function AltaPrecio({
   const { pendiente, error, enviar } = useAccion(guardarPrecioLista);
 
   if (disponibles.length === 0) {
-    return <p className="text-sm text-slate-500">Todos los artículos activos ya tienen precio específico.</p>;
+    return <p className="text-body-sm text-ink-muted">Todos los artículos activos ya tienen precio específico.</p>;
   }
 
   const elegido = disponibles.find((a) => a.id === articuloId);
 
   return (
     <form
-      className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-3 p-4 sm:p-6"
       onSubmit={(e) => {
         e.preventDefault();
         enviar({ listaId, articuloId, precio }, () => {
@@ -138,7 +136,7 @@ function AltaPrecio({
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">Agregar precio específico</h3>
+      <h3 className="font-display text-body-lg font-bold text-ink">Agregar precio específico</h3>
       <CampoSelect
         etiqueta="Artículo"
         valor={articuloId}
@@ -156,13 +154,7 @@ function AltaPrecio({
         required
       />
       <BloqueError mensaje={error} />
-      <button
-        type="submit"
-        disabled={pendiente || esModoDemo || !articuloId || !precio.trim()}
-        className="w-full rounded-lg bg-tinta py-3 font-semibold text-white disabled:opacity-40"
-      >
-        {pendiente ? "Guardando…" : "Agregar"}
-      </button>
+      <BotonEnviar pendiente={pendiente} texto="Agregar" disabled={esModoDemo || !articuloId || !precio.trim()} />
     </form>
   );
 }

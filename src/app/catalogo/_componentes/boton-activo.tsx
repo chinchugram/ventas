@@ -1,79 +1,43 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cambiarActivoArticulo } from "@/app/catalogo/actions";
-import { BloqueError, useAccion } from "@/components/form";
+import { useAccion } from "@/components/form";
+import { BajaReactivar } from "@/components/baja-reactivar";
+import { Panel, TituloBloque } from "@/components/ui";
 
 /**
- * Baja logica o reactivacion. La baja pide confirmacion en el lugar (sin
- * `confirm()` del navegador, que en el celular es feo y se descarta solo).
+ * Baja logica o reactivacion de un articulo. La baja pide confirmacion en el lugar.
  */
 export function BotonActivoArticulo({ id, activo }: { id: string; activo: boolean }) {
   const router = useRouter();
   const { pendiente, error, enviar } = useAccion(cambiarActivoArticulo);
-  const [confirmando, setConfirmando] = useState(false);
 
-  const cambiar = (nuevo: boolean) =>
-    enviar({ id, activo: nuevo }, () => {
-      setConfirmando(false);
-      router.refresh();
-    });
+  const cambiar = (nuevo: boolean) => enviar({ id, activo: nuevo }, () => router.refresh());
 
-  if (!activo) {
-    return (
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={() => cambiar(true)}
-          disabled={pendiente}
-          className="w-full rounded-lg bg-tinta py-3 font-semibold text-white disabled:opacity-60"
-        >
-          {pendiente ? "Reactivando…" : "Reactivar artículo"}
-        </button>
-        <BloqueError mensaje={error} />
-      </div>
-    );
-  }
+  const boton = (
+    <BajaReactivar
+      activo={activo}
+      pendiente={pendiente}
+      error={error}
+      textoReactivar="Reactivar artículo"
+      onBaja={() => cambiar(false)}
+      onReactivar={() => cambiar(true)}
+    />
+  );
+
+  if (!activo) return boton;
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+    <Panel className="space-y-3">
       <div>
-        <h2 className="text-sm font-semibold text-slate-900">Dar de baja</h2>
-        <p className="text-sm text-slate-500">
+        <TituloBloque className="mb-1">Dar de baja</TituloBloque>
+        <p className="text-body-sm text-ink-muted">
           Deja de aparecer en el catálogo y en las ventas nuevas. Las ventas ya hechas no cambian y se puede
           reactivar cuando quieras.
         </p>
       </div>
-      {confirmando ? (
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setConfirmando(false)}
-            disabled={pendiente}
-            className="rounded-lg border border-slate-300 bg-white py-3 text-sm font-medium text-slate-700"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={() => cambiar(false)}
-            disabled={pendiente}
-            className="rounded-lg bg-red-600 py-3 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {pendiente ? "Dando de baja…" : "Sí, dar de baja"}
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setConfirmando(true)}
-          className="w-full rounded-lg border border-red-300 bg-white py-3 text-sm font-semibold text-red-700"
-        >
-          Dar de baja
-        </button>
-      )}
-      <BloqueError mensaje={error} />
-    </div>
+      {boton}
+    </Panel>
   );
 }

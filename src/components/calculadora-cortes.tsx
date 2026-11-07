@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { cortesPorPlancha, precioCorte } from "@/lib/cortes";
 import { d, fmtMoneda, fmtNumero } from "@/lib/money";
+import { Aviso, Boton, Panel, TituloBloque } from "@/components/ui";
 
 type Fila = { id: number; ancho: string; alto: string };
 
@@ -12,9 +13,6 @@ const MEDIDAS_INICIALES: Fila[] = [
   { id: 2, ancho: "40", alto: "40" },
   { id: 3, ancho: "30", alto: "50" },
 ];
-
-const input =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base tabular-nums focus:border-marca focus:outline-none focus:ring-2 focus:ring-marca/30";
 
 function num(valor: string) {
   const n = Number(valor.replace(",", "."));
@@ -62,112 +60,110 @@ export function CalculadoraCortes() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Plancha entera</h2>
+      <Panel como="section" aria-label="Plancha entera">
+        <TituloBloque>Plancha entera</TituloBloque>
         <div className="grid grid-cols-2 gap-3">
-          <label className="col-span-2 text-xs text-slate-500">
+          <label className="col-span-2 mb-0">
             Precio de la plancha ($)
             <input
               inputMode="decimal"
-              className={input}
+              className="mt-1 tabular-nums"
               value={precio}
               onChange={(e) => setPrecio(e.target.value)}
               placeholder="Ej: 85000"
             />
           </label>
-          <label className="text-xs text-slate-500">
+          <label className="mb-0">
             Ancho (cm)
             <input
               inputMode="decimal"
-              className={input}
+              className="mt-1 tabular-nums"
               value={anchoPlancha}
               onChange={(e) => setAnchoPlancha(e.target.value)}
             />
           </label>
-          <label className="text-xs text-slate-500">
+          <label className="mb-0">
             Alto (cm)
             <input
               inputMode="decimal"
-              className={input}
+              className="mt-1 tabular-nums"
               value={altoPlancha}
               onChange={(e) => setAltoPlancha(e.target.value)}
             />
           </label>
-          <label className="col-span-2 text-xs text-slate-500">
+          <label className="col-span-2 mb-0">
             Recargo por corte / desperdicio (%)
             <input
               inputMode="decimal"
-              className={input}
+              className="mt-1 tabular-nums"
               value={recargo}
               onChange={(e) => setRecargo(e.target.value)}
             />
           </label>
         </div>
-      </section>
+      </Panel>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Cortes</h2>
+      <Panel como="section" aria-label="Cortes">
+        <TituloBloque>Cortes</TituloBloque>
         <ul className="space-y-3">
-          {filas.map((f) => {
+          {filas.map((f, i) => {
             const corte = { anchoCm: num(f.ancho), altoCm: num(f.alto) };
             const p = precioCorte(plancha, corte, recargoPct);
             const entran = cortesPorPlancha(plancha, corte);
             return (
-              <li key={f.id} className="rounded-lg bg-slate-50 p-3">
+              <li key={f.id} className="borde rounded-md border-line bg-surface-sunken p-3">
                 <div className="flex items-end gap-2">
-                  <label className="flex-1 text-xs text-slate-500">
+                  <label className="mb-0 min-w-0 flex-1">
                     Ancho (cm)
                     <input
                       inputMode="decimal"
-                      className={input}
+                      className="mt-1 tabular-nums"
                       value={f.ancho}
                       onChange={(e) => cambiar(f.id, "ancho", e.target.value)}
                     />
                   </label>
-                  <span className="pb-3 text-slate-400">×</span>
-                  <label className="flex-1 text-xs text-slate-500">
+                  <span aria-hidden="true" className="pb-3 text-ink-muted">
+                    ×
+                  </span>
+                  <label className="mb-0 min-w-0 flex-1">
                     Alto (cm)
                     <input
                       inputMode="decimal"
-                      className={input}
+                      className="mt-1 tabular-nums"
                       value={f.alto}
                       onChange={(e) => cambiar(f.id, "alto", e.target.value)}
                     />
                   </label>
-                  <button
-                    type="button"
-                    aria-label="Quitar corte"
-                    onClick={() => setFilas((fs) => fs.filter((x) => x.id !== f.id))}
-                    className="pb-2.5 text-xl text-slate-400 hover:text-red-600"
-                  >
-                    ×
-                  </button>
                 </div>
-                <div className="mt-2 flex items-baseline justify-between">
-                  <span className="text-xs text-slate-500">
-                    {entran > 0 ? `entran ${fmtNumero(entran)} por plancha` : "no entra en la plancha"}
-                  </span>
-                  <span className="text-xl font-bold tabular-nums text-tinta">
-                    {p ? fmtMoneda(p) : "-"}
-                  </span>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <Boton variante="fantasma-peligro" aria-label={`Quitar corte ${i + 1}`} onClick={() => setFilas((fs) => fs.filter((x) => x.id !== f.id))}>
+                    Quitar
+                  </Boton>
+                  <div className="min-w-0 text-right">
+                    <p className="text-body-sm text-ink-muted">
+                      {entran > 0 ? `entran ${fmtNumero(entran)} por plancha` : "no entra en la plancha"}
+                    </p>
+                    <p className="monto text-ink">{p ? fmtMoneda(p) : "-"}</p>
+                  </div>
                 </div>
               </li>
             );
           })}
         </ul>
-        <button
-          type="button"
-          onClick={() =>
-            setFilas((fs) => [...fs, { id: Date.now(), ancho: "", alto: "" }])
-          }
-          className="mt-3 w-full rounded-lg border border-dashed border-slate-300 py-2.5 text-sm font-medium text-slate-600 hover:border-marca hover:text-tinta"
+        <Boton
+          variante="secundario"
+          ancho
+          className="mt-3"
+          onClick={() => setFilas((fs) => [...fs, { id: Date.now(), ancho: "", alto: "" }])}
         >
-          + Agregar medida
-        </button>
+          Agregar medida
+        </Boton>
         {!plancha.precio.gt(0) && (
-          <p className="mt-3 text-xs text-amber-700">Cargá el precio de la plancha para ver los precios.</p>
+          <Aviso tono="aviso" className="mt-3">
+            Cargá el precio de la plancha para ver los precios.
+          </Aviso>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }

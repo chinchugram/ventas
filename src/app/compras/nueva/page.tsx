@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { getMateriales } from "@/lib/queries/materiales";
 import { NuevaCompraForm } from "@/components/nueva-compra-form";
-import { Seccion } from "@/components/ui";
+import { Boton, Seccion } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
 import { leerPrecarga } from "@/lib/reposicion";
 import { requierePermisoPagina } from "@/lib/permisos";
@@ -27,6 +26,7 @@ export default async function NuevaCompraPage({ searchParams }: { searchParams: 
   return (
     <>
       <Seccion
+        epigrafe="Lo que entra al taller"
         titulo="Nueva compra"
         descripcion={
           lineasIniciales.length > 0
@@ -34,12 +34,9 @@ export default async function NuevaCompraPage({ searchParams }: { searchParams: 
             : "Suma stock y actualiza el costo de cada material"
         }
         accion={
-          <Link
-            href="/compras"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/compras" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
       <NuevaCompraForm materiales={opciones} lineasIniciales={lineasIniciales} esModoDemo={estadoDemo().activo} />

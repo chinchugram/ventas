@@ -9,8 +9,9 @@ export default async function CortesPage() {
   return (
     <>
       <Seccion
+        epigrafe="Herramienta de costeo"
         titulo="Cortes"
-        descripcion="Precio de una medida a partir del precio de la plancha entera"
+        descripcion="Precio de una medida a partir del precio de la plancha entera."
       />
       <CalculadoraCortes />
     </>
