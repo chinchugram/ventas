@@ -296,10 +296,10 @@ export const PREGUNTAS: Pregunta[] = [
 /** La guia entera en texto plano (para un asistente de ayuda o para copiar). */
 export function guiaComoTexto(): string {
   const lineas: string[] = ["# Guía de uso", "", INTRO, "", "## Por dónde empezar"];
-  ARRANQUE.forEach((p, i) => lineas.push(`${i + 1}. ${p.titulo}${p.opcional ? " (opcional)" : ""}: ${p.texto} [${p.ruta}]`));
+  ARRANQUE.forEach((p, i) => lineas.push(`${i + 1}. ${p.titulo}${p.opcional ? " (opcional)" : ""}: ${p.texto} (ruta: ${p.ruta})`));
   lineas.push("", "## Qué hace cada pantalla");
   for (const s of SECCIONES) {
-    lineas.push("", `### ${s.titulo}${s.ruta ? ` [${s.ruta}]` : ""}${s.soloDueno ? " (solo dueño)" : ""}`, s.resumen);
+    lineas.push("", `### ${s.titulo}${s.ruta ? ` (ruta: ${s.ruta})` : ""}${s.soloDueno ? " (solo dueño)" : ""}`, s.resumen);
     s.puntos.forEach((p) => lineas.push(`- ${p}`));
   }
   lineas.push("", "## Preguntas frecuentes");

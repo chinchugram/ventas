@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { claseBoton } from "@/components/ui";
 import { Icono } from "@/components/iconos";
 import { reproducir } from "@/lib/sonido";
+import { ARRANQUE, SECCIONES } from "@/lib/ayuda/guia";
 
 type Mensaje = { rol: "usuario" | "asistente"; texto: string };
 
@@ -29,8 +30,14 @@ export function ChatAyuda() {
   }, [mensajes, enviando, abierto]);
 
   useEffect(() => {
-    if (abierto) inputRef.current?.focus();
+    if (!abierto) return;
+    inputRef.current?.focus();
+    const conEscape = (e: KeyboardEvent) => e.key === "Escape" && setAbierto(false);
+    window.addEventListener("keydown", conEscape);
+    return () => window.removeEventListener("keydown", conEscape);
   }, [abierto]);
+
+  const cerrar = () => setAbierto(false);
 
   async function enviar(e?: React.FormEvent) {
     e?.preventDefault();
@@ -68,29 +75,37 @@ export function ChatAyuda() {
         <button
           type="button"
           onClick={() => setAbierto(true)}
-          aria-label="Abrir ayuda"
-          className={`${claseBoton({ variante: "secundario" })} fixed right-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-[55] h-12 w-12 p-0 md:bottom-6`}
+          className={`${claseBoton({ chico: true })} fixed right-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-[55] min-h-11 md:bottom-6`}
         >
-          <Icono nombre="ayuda" className="h-6 w-6" />
+          <Icono nombre="ayuda" className="h-5 w-5" />
+          Ayuda
         </button>
+      )}
+
+      {abierto && (
+        // Oscurece la pantalla de atrás: el chat queda en primer plano y no se mezcla con la página.
+        <div aria-hidden className="fixed inset-0 z-[62] bg-black/55" onClick={() => setAbierto(false)} />
       )}
 
       {abierto && (
         <section
           aria-label="Asistente de ayuda"
-          className="tarjeta fixed inset-x-2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[65] flex max-h-[70dvh] flex-col overflow-hidden md:inset-x-auto md:right-6 md:bottom-6 md:w-96"
+          className="fixed inset-x-2 rounded-lg border-2 border-brand bg-surface-raised shadow-2xl bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[65] flex max-h-[70dvh] flex-col overflow-hidden md:inset-x-auto md:right-6 md:bottom-6 md:w-96"
         >
-          <header className="flex items-center justify-between gap-2 border-b-(length:--border-width) border-line px-4 py-2">
-            <p className="font-display text-body font-bold text-ink">Ayuda</p>
-            <button type="button" onClick={() => setAbierto(false)} className="enlace min-h-11 text-label">
+          <header className="flex items-center justify-between gap-2 bg-brand px-4 py-2 text-on-color">
+            <p className="flex items-center gap-2 font-display text-body font-bold">
+              <Icono nombre="ayuda" className="h-5 w-5" />
+              Asistente de ayuda
+            </p>
+            <button type="button" onClick={() => setAbierto(false)} className="min-h-11 text-label font-bold underline underline-offset-2">
               Cerrar
             </button>
           </header>
 
           <div className="flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite">
-            <Burbuja rol="asistente" texto={SALUDO} />
+            <Burbuja rol="asistente" texto={SALUDO} alElegir={cerrar} />
             {mensajes.map((m, i) => (
-              <Burbuja key={i} rol={m.rol} texto={m.texto} />
+              <Burbuja key={i} rol={m.rol} texto={m.texto} alElegir={cerrar} />
             ))}
             {enviando && <p className="text-body-sm text-ink-muted">Pensando…</p>}
             <div ref={finRef} />
@@ -135,7 +150,24 @@ export function ChatAyuda() {
   );
 }
 
-function Burbuja({ rol, texto }: Mensaje) {
+// Rutas que nombra la guía: en una respuesta se vuelven enlaces (cualquier otra queda como texto).
+const RUTAS = new Set([...SECCIONES.flatMap((x) => (x.ruta ? [x.ruta] : [])), ...ARRANQUE.map((p) => p.ruta), "/ayuda"]);
+const PATRON_RUTA = /(\/[a-z][a-z0-9\-/]*)/g;
+
+function conEnlaces(texto: string, alElegir: () => void): ReactNode[] {
+  return texto.split(PATRON_RUTA).map((parte, i) => {
+    const ruta = parte.replace(/\/$/, "");
+    return i % 2 === 1 && RUTAS.has(ruta) ? (
+      <Link key={i} href={ruta} onClick={alElegir} className="font-semibold underline underline-offset-2">
+        {parte}
+      </Link>
+    ) : (
+      parte
+    );
+  });
+}
+
+function Burbuja({ rol, texto, alElegir }: Mensaje & { alElegir: () => void }) {
   const propio = rol === "usuario";
   return (
     <p
@@ -143,7 +175,7 @@ function Burbuja({ rol, texto }: Mensaje) {
         propio ? "ml-auto bg-brand text-on-color" : "bg-surface-sunken text-ink"
       }`}
     >
-      {texto}
+      {propio ? texto : conEnlaces(texto, alElegir)}
     </p>
   );
 }
