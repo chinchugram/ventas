@@ -142,8 +142,14 @@ export function ChatAyuda() {
               placeholder="Escribí tu duda"
               className="min-h-11 flex-1 resize-none rounded-md border-(length:--border-width) border-line-strong bg-surface px-3 py-2 text-body text-ink"
             />
-            <button type="submit" disabled={enviando || !texto.trim()} className={`${claseBoton({ chico: true })} min-h-11`}>
-              Enviar
+            <button
+              type="submit"
+              aria-label="Enviar"
+              title="Enviar"
+              disabled={enviando || !texto.trim()}
+              className={`${claseBoton()} h-11 w-11 shrink-0 rounded-full p-0`}
+            >
+              <Icono nombre="enviar" className="h-5 w-5" grosor={2} />
             </button>
           </form>
           <p className="px-3 pb-2 text-body-sm text-ink-muted">
