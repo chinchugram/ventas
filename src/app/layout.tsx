@@ -5,6 +5,8 @@ import { MomentosProvider } from "@/components/momentos";
 import { SonidoProvider } from "@/components/sonido";
 import { getMarca } from "@/lib/marca";
 import { usuarioActual } from "@/lib/auth";
+import { ChatAyuda } from "@/components/chat-ayuda";
+import { asistenteDisponible } from "@/lib/ayuda/asistente";
 import "./globals.css";
 
 // Tipografías de Kiwitt (docs/brand/tipografia.md), autoalojadas por next/font. Cada una deja su
@@ -67,6 +69,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <main id="contenido" className={`mx-auto max-w-page px-4 pt-6 ${usuario ? "pb-32 md:pb-10" : "pb-10"}`}>
               {children}
             </main>
+            {/* Chat de ayuda: solo con sesion y con la clave de la API configurada. */}
+            {usuario && asistenteDisponible() ? <ChatAyuda /> : null}
           </MomentosProvider>
         </SonidoProvider>
       </body>
