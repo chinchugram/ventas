@@ -25,6 +25,10 @@ export type SeccionGuia = {
 
 export type Pregunta = { pregunta: string; respuesta: string };
 
+export const MODOS =
+  "La app tiene dos modos, arriba a la derecha: Simple (lo indispensable: ventas, clientes, cobranzas, artículos y la calculadora de cortes) " +
+  "y Avanzado (todo: recetas y margen real, stock, compras, producción, presupuestos, facturas y reportes). Cambiar de modo no borra nada.";
+
 export const INTRO =
   "Esta app responde tres preguntas: qué vendiste, cuánta plata entró y cuánto ganaste de verdad. " +
   "La ganancia sale de las recetas: cada artículo dice qué materiales, horas de máquina y horas de mano de obra lleva, " +
@@ -85,6 +89,34 @@ export const ARRANQUE: PasoArranque[] = [
     texto:
       "Razón social, CUIT, condición frente al IVA, domicilio, inicio de actividades y punto de venta. " +
       "Hacen falta para emitir facturas desde una venta.",
+    ruta: "/configuracion",
+    opcional: true,
+  },
+];
+
+/**
+ * Arranque del modo simple: lo indispensable para vender. Sin máquinas, materiales ni recetas
+ * (eso es del modo avanzado, para conocer el margen real).
+ */
+export const ARRANQUE_SIMPLE: PasoArranque[] = [
+  {
+    titulo: "Cargá lo que vendés",
+    texto: "En Artículos: nombre, precio final (con IVA) y alícuota. La receta es opcional; la sumás cuando quieras saber tu margen.",
+    ruta: "/catalogo/nuevo",
+  },
+  {
+    titulo: "Cargá tus clientes",
+    texto: "Solo el nombre es obligatorio. Si vas a facturar, agregá CUIT o DNI y la condición frente al IVA.",
+    ruta: "/clientes/nuevo",
+  },
+  {
+    titulo: "Registrá tu primera venta",
+    texto: "Tocá el botón + , elegí cliente y artículos, y marcá si ya te pagaron. Lo que falte cobrar lo ves en Cobranzas.",
+    ruta: "/ventas/nueva",
+  },
+  {
+    titulo: "Poné el nombre y el logo de tu negocio",
+    texto: "En Configuración. Salen en el encabezado y en los presupuestos y comprobantes.",
     ruta: "/configuracion",
     opcional: true,
   },
@@ -295,7 +327,9 @@ export const PREGUNTAS: Pregunta[] = [
 
 /** La guia entera en texto plano (para un asistente de ayuda o para copiar). */
 export function guiaComoTexto(): string {
-  const lineas: string[] = ["# Guía de uso", "", INTRO, "", "## Por dónde empezar"];
+  const lineas: string[] = ["# Guía de uso", "", INTRO, "", MODOS, "", "## Por dónde empezar (modo simple)"];
+  ARRANQUE_SIMPLE.forEach((p, i) => lineas.push(`${i + 1}. ${p.titulo}${p.opcional ? " (opcional)" : ""}: ${p.texto} (ruta: ${p.ruta})`));
+  lineas.push("", "## Por dónde empezar (modo avanzado)");
   ARRANQUE.forEach((p, i) => lineas.push(`${i + 1}. ${p.titulo}${p.opcional ? " (opcional)" : ""}: ${p.texto} (ruta: ${p.ruta})`));
   lineas.push("", "## Qué hace cada pantalla");
   for (const s of SECCIONES) {

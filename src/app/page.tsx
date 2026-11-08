@@ -16,6 +16,7 @@ import { Aviso, Boton, Etiqueta, ListaPanel, Seccion, SemaforoMargen, Tarjeta, T
 import { GananciaDelMes, VentasPorDia, type DiaVentas } from "@/components/tablero";
 import { requierePermisoPagina } from "@/lib/permisos";
 import { getPrimerosPasos } from "@/lib/queries/primeros-pasos";
+import { modoActual } from "@/lib/modo-servidor";
 import { PrimerosPasos } from "@/components/primeros-pasos";
 import { puedeTodo } from "@/lib/permisos-pura";
 
@@ -33,6 +34,9 @@ export default async function Dashboard() {
   const usuario = await requierePermisoPagina("verCostos", "verMargenes");
   // El negocio sale de la sesion; todas las lecturas del dashboard corren dentro de ese negocio.
   const negocioId = await negocioDeLaSesion(usuario);
+  // Modo simple: solo plata del mes, últimas ventas y quién debe. Sin margen, costos ni stock
+  // (sin recetas el margen sería desconocido y confundiría).
+  const simple = (await modoActual()) === "simple";
   const DIAS_GRAFICO = 14;
   const [resumen, ultimas, deudas, facturadoPorDia, articulos, materiales, primerosPasos] = await Promise.all([
     getResumenMes(negocioId),
@@ -41,7 +45,7 @@ export default async function Dashboard() {
     getFacturadoPorDia(negocioId, primerDiaDelGrafico(DIAS_GRAFICO)),
     getArticulosConMargen(),
     getMateriales(),
-    getPrimerosPasos(negocioId),
+    getPrimerosPasos(negocioId, simple ? "simple" : "avanzado"),
   ]);
 
   const stockBajo = materiales.filter((m) => m.stockMinimo.cmp(0) > 0);
@@ -67,13 +71,11 @@ export default async function Dashboard() {
 
       {primerosPasos ? <PrimerosPasos pasos={primerosPasos} /> : null}
 
-      <GananciaDelMes
-        ganancia={resumen.ganancia}
-        margenPct={resumen.margenPct}
-        metaPct={metaMargenPct}
-      />
+      {simple ? null : (
+        <GananciaDelMes ganancia={resumen.ganancia} margenPct={resumen.margenPct} metaPct={metaMargenPct} />
+      )}
 
-      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className={`grid grid-cols-2 gap-3 ${simple ? "lg:grid-cols-3" : "mt-4 lg:grid-cols-4"}`}>
         <Tarjeta
           titulo="Facturado"
           valor={fmtMoneda(resumen.facturadoBruto)}
@@ -85,28 +87,30 @@ export default async function Dashboard() {
           tono={resumen.cobrado.gte(resumen.facturadoBruto) ? "ok" : "neutro"}
           detalle={`IVA ${fmtMoneda(resumen.iva)}`}
         />
-        <Tarjeta
-          titulo="Costo"
-          valor={fmtMoneda(resumen.costoTotal)}
-          detalle="materiales + horas"
-        />
-        <Tarjeta
-          titulo="Por cobrar"
-          valor={fmtMoneda(resumen.pendienteCobro)}
-          tono={resumen.pendienteCobro.cmp(0) > 0 ? "aviso" : "ok"}
-          detalle={
-            deudas.length > 0
-              ? `${fmtNumero(deudas.length)} ${deudas.length === 1 ? "cliente" : "clientes"} con deuda`
-              : "nadie te debe nada"
-          }
-        />
+        {simple ? null : (
+          <Tarjeta titulo="Costo" valor={fmtMoneda(resumen.costoTotal)} detalle="materiales + horas" />
+        )}
+        <div className={simple ? "col-span-2 lg:col-span-1" : ""}>
+          <Tarjeta
+            titulo="Por cobrar"
+            valor={fmtMoneda(resumen.pendienteCobro)}
+            tono={resumen.pendienteCobro.cmp(0) > 0 ? "aviso" : "ok"}
+            detalle={
+              deudas.length > 0
+                ? `${fmtNumero(deudas.length)} ${deudas.length === 1 ? "cliente" : "clientes"} con deuda`
+                : "nadie te debe nada"
+            }
+          />
+        </div>
       </div>
 
-      <div className="mt-4">
-        <VentasPorDia dias={dias} />
-      </div>
+      {simple ? null : (
+        <div className="mt-4">
+          <VentasPorDia dias={dias} />
+        </div>
+      )}
 
-      {alertas.length > 0 && (
+      {!simple && alertas.length > 0 && (
         <section className="mt-8" aria-labelledby="para-mirar">
           <TituloBloque id="para-mirar">Para mirar</TituloBloque>
           <ul className="space-y-2">
@@ -144,7 +148,9 @@ export default async function Dashboard() {
                 </div>
                 <div className="text-right">
                   <p className="font-display text-body-lg font-bold tabular-nums text-ink">{fmtMoneda(v.totalBruto)}</p>
-                  <p className="text-body-sm tabular-nums text-ink-muted">margen {fmtMoneda(v.ganancia)}</p>
+                  {simple ? null : (
+                    <p className="text-body-sm tabular-nums text-ink-muted">margen {fmtMoneda(v.ganancia)}</p>
+                  )}
                 </div>
               </li>
             ))}
@@ -172,7 +178,7 @@ export default async function Dashboard() {
         </section>
       )}
 
-      {articulos.length > 0 && (
+      {!simple && articulos.length > 0 && (
         <section className="mt-8" aria-labelledby="margen-catalogo">
           <TituloBloque id="margen-catalogo">Margen del catálogo</TituloBloque>
           <ListaPanel>

@@ -122,8 +122,7 @@ export function SwitchSonido({ id = "switch-sonido" }: { id?: string }) {
         </p>
         <p id={`${id}-ayuda`} className="mt-1 text-body-sm text-ink-muted">
           Suena cuando entra plata, cuando pasás la meta del mes o cargás tu primer cliente. Guardar y
-          editar no suenan nunca. Vale para este navegador; también lo apagás en un toque con el botón
-          de sonido de arriba.
+          editar no suenan nunca. Vale para este navegador.
         </p>
       </div>
       <button

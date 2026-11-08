@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 import { Icono, type NombreIcono } from "@/components/iconos";
 import { LogoMarca } from "@/components/logo-marca";
 import { LogoKiwitt } from "@/components/logo-kiwitt";
-import { InterruptorSonido } from "@/components/sonido";
+import { InterruptorModo } from "@/components/interruptor-modo";
+import { RUTAS_MODO_SIMPLE, type Modo } from "@/lib/modo";
 import { claseBoton } from "@/components/ui";
 import { salir } from "@/app/login/actions";
 import type { Rol } from "@/lib/auth-pura";
@@ -67,7 +68,7 @@ const LISTAS_PRECIOS: Seccion = {
 const AYUDA: Seccion = { href: "/ayuda", etiqueta: "Ayuda", icono: "ayuda", acciones: ["cambiarClavePropia"], ayuda: "Cómo usar la app" };
 const ADMINISTRACION: Seccion[] = [LISTAS_PRECIOS, USUARIOS, CONFIGURACION, AYUDA];
 
-// Escritorio ancho (lg): pocas secciones sueltas y el resto agrupado en menus con nombre, cada
+// Escritorio ancho (xl): pocas secciones sueltas y el resto agrupado en menus con nombre, cada
 // entrada con una frase que dice para que sirve. Ningun icono suelto sin texto.
 type Grupo = { etiqueta: string; icono: NombreIcono; entradas: Seccion[] };
 const DIRECTAS_ESCRITORIO: Seccion[] = [INICIO, VENTAS, CLIENTES, PRESUPUESTOS, COBRANZAS];
@@ -81,9 +82,9 @@ const ID_HOJA_MAS = "hoja-mas";
 const ID_MENU_USUARIO = "menu-usuario";
 const NUEVA_VENTA = "/ventas/nueva";
 
-/** Las entradas que el rol puede usar. */
-function entradasVisibles(rol: Rol, secciones: Seccion[]): Seccion[] {
-  return secciones.filter((s) => puedeTodo({ rol }, s.acciones));
+/** Las entradas que el rol puede usar y que el modo muestra (en simple, solo lo indispensable). */
+function entradasVisibles(rol: Rol, secciones: Seccion[], modo: Modo): Seccion[] {
+  return secciones.filter((s) => puedeTodo({ rol }, s.acciones) && (modo === "avanzado" || RUTAS_MODO_SIMPLE.has(s.href)));
 }
 
 // Clases literales (Tailwind no ve las armadas con plantillas): la barra inferior tiene una columna
@@ -109,18 +110,28 @@ function inicial(nombre: string): string {
   return ([...nombre.trim()][0] ?? "?").toLocaleUpperCase("es-AR");
 }
 
-export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string | null; usuario: UsuarioNavbar }) {
+export function Navbar({
+  nombre,
+  logo,
+  usuario,
+  modo,
+}: {
+  nombre: string;
+  logo: string | null;
+  usuario: UsuarioNavbar;
+  modo: Modo;
+}) {
   const pathname = usePathname() ?? "/";
-  const principales = entradasVisibles(usuario.rol, PRINCIPALES);
-  const secundarias = entradasVisibles(usuario.rol, SECUNDARIAS);
-  const administracion = entradasVisibles(usuario.rol, ADMINISTRACION);
-  const directas = entradasVisibles(usuario.rol, DIRECTAS_ESCRITORIO);
+  const principales = entradasVisibles(usuario.rol, PRINCIPALES, modo);
+  const secundarias = entradasVisibles(usuario.rol, SECUNDARIAS, modo);
+  const administracion = entradasVisibles(usuario.rol, ADMINISTRACION, modo);
+  const directas = entradasVisibles(usuario.rol, DIRECTAS_ESCRITORIO, modo);
   // Un menu sin ninguna entrada permitida para el rol no se muestra.
-  const grupos = GRUPOS_ESCRITORIO.map((g) => ({ ...g, entradas: entradasVisibles(usuario.rol, g.entradas) })).filter(
+  const grupos = GRUPOS_ESCRITORIO.map((g) => ({ ...g, entradas: entradasVisibles(usuario.rol, g.entradas, modo) })).filter(
     (g) => g.entradas.length > 0,
   );
   const puedeNuevaVenta = puedeTodo(usuario, ACCIONES_NUEVA_VENTA);
-  // Escritorio ancho (lg): secciones sueltas y menus desplegables. Entre md y lg no entran: se muestran
+  // Escritorio ancho (xl): secciones sueltas y menus desplegables. Entre md y xl no entran: se muestran
   // las principales y el resto va en la hoja "Mas", la misma del celular.
   const enHojaMas = [...secundarias, ...administracion];
   const columnasBarra = COLUMNAS_BARRA[principales.length + 1 + (puedeNuevaVenta ? 1 : 0)] ?? "grid-cols-5";
@@ -186,8 +197,8 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
               </span>
             </Link>
 
-            {/* Desde md: las principales y "Más" (hoja); desde lg, las secciones sueltas y los menús
-                desplegables con nombre. */}
+            {/* Desde md: las principales y "Más" (hoja); desde xl (con el selector de modo
+                al lado no entran antes), las secciones sueltas y los menús desplegables con nombre. */}
             <nav className="hidden min-w-0 items-center gap-1 md:flex" aria-label="Principal">
               {principales.map((s) => (
                 <EnlaceBarra key={s.href} seccion={s} activa={estaActiva(pathname, s.href)} />
@@ -195,10 +206,10 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
               {directas
                 .filter((s) => !PRINCIPALES.includes(s))
                 .map((s) => (
-                  <EnlaceBarra key={s.href} seccion={s} activa={estaActiva(pathname, s.href)} className="hidden lg:inline-flex" />
+                  <EnlaceBarra key={s.href} seccion={s} activa={estaActiva(pathname, s.href)} className="hidden xl:inline-flex" />
                 ))}
               {grupos.map((g) => (
-                <MenuDesplegable key={g.etiqueta} grupo={g} pathname={pathname} className="hidden lg:block" alDerecha={g.etiqueta === "Más"} />
+                <MenuDesplegable key={g.etiqueta} grupo={g} pathname={pathname} className="hidden xl:block" alDerecha={g.etiqueta === "Más"} />
               ))}
               <button
                 type="button"
@@ -206,7 +217,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
                 aria-haspopup="dialog"
                 aria-expanded={masAbierto}
                 aria-controls={ID_HOJA_MAS}
-                className={`${CLASE_ITEM_BARRA} gap-1 lg:hidden ${masActivo ? CLASE_ITEM_ACTIVO : CLASE_ITEM_INACTIVO}`}
+                className={`${CLASE_ITEM_BARRA} gap-1 xl:hidden ${masActivo ? CLASE_ITEM_ACTIVO : CLASE_ITEM_INACTIVO}`}
               >
                 Más
                 <Icono nombre="mas" className="h-4 w-4" grosor={2} />
@@ -215,17 +226,17 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {/* Sonido: prendido por defecto, se recuerda en el navegador (momentos.md). Se apaga en un toque; también en Configuración. */}
-            <InterruptorSonido conTexto={false} className="min-h-11 px-3" />
+            {/* Modo simple / avanzado: cuánto del menú se muestra. El sonido se prende y apaga en Configuración. */}
+            <InterruptorModo modo={modo} />
             {puedeNuevaVenta ? (
-              // Entre md y xl no entra el texto junto a la navegación: queda el "+" con su nombre accesible.
+              // Hasta 2xl no entra el texto junto a la navegación y el selector de modo: queda el "+" con su nombre accesible.
               <Link
                 href={NUEVA_VENTA}
                 aria-label="Nueva venta"
-                className={`${claseBoton({ chico: true })} hidden min-h-11 min-w-11 whitespace-nowrap px-3 md:inline-flex xl:px-4`}
+                className={`${claseBoton({ chico: true })} hidden min-h-11 min-w-11 whitespace-nowrap px-3 md:inline-flex 2xl:px-4`}
               >
                 <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
-                <span className="hidden xl:inline">Nueva venta</span>
+                <span className="hidden 2xl:inline">Nueva venta</span>
               </Link>
             ) : null}
             <div className="hidden md:block">

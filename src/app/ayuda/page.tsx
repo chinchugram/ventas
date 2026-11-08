@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requierePermisoPagina } from "@/lib/permisos";
 import { puede } from "@/lib/permisos-pura";
-import { ARRANQUE, INTRO, PREGUNTAS, SECCIONES } from "@/lib/ayuda/guia";
+import { ARRANQUE, ARRANQUE_SIMPLE, INTRO, MODOS, PREGUNTAS, SECCIONES } from "@/lib/ayuda/guia";
+import { modoActual } from "@/lib/modo-servidor";
 import { Etiqueta, Plegable, Seccion, TituloBloque } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Ayuda" };
@@ -17,16 +18,20 @@ export default async function AyudaPage() {
   const usuario = await requierePermisoPagina("cambiarClavePropia");
   const esDueno = puede(usuario, "configuracion");
   const secciones = SECCIONES.filter((s) => esDueno || !s.soloDueno);
+  const modo = await modoActual();
+  const arranque = modo === "simple" ? ARRANQUE_SIMPLE : ARRANQUE;
 
   return (
     <>
       <Seccion epigrafe="Ayuda" titulo="Cómo usar la app" descripcion={INTRO} />
 
+      <p className="mb-6 rounded-md bg-surface-sunken p-3 text-body-sm text-ink">{MODOS}</p>
+
       {esDueno && (
         <section className="mb-8" aria-labelledby="arranque">
-          <TituloBloque id="arranque">Por dónde empezar</TituloBloque>
+          <TituloBloque id="arranque">Por dónde empezar (modo {modo})</TituloBloque>
           <ol className="space-y-2">
-            {ARRANQUE.map((p, i) => (
+            {arranque.map((p, i) => (
               <li key={p.titulo} className="tarjeta flex gap-3 p-4">
                 <span className="font-display text-body-lg font-bold tabular-nums text-ink-muted" aria-hidden>
                   {i + 1}

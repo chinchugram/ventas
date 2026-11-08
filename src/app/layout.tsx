@@ -5,6 +5,7 @@ import { MomentosProvider } from "@/components/momentos";
 import { SonidoProvider } from "@/components/sonido";
 import { getMarca } from "@/lib/marca";
 import { usuarioActual } from "@/lib/auth";
+import { modoActual } from "@/lib/modo-servidor";
 import { ChatAyuda } from "@/components/chat-ayuda";
 import { asistenteDisponible } from "@/lib/ayuda/asistente";
 import "./globals.css";
@@ -48,7 +49,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Solo para pintar la navegacion: no protege nada (el layout no se vuelve a
   // ejecutar en las navegaciones del cliente). Protegen el proxy y cada pagina.
-  const [marca, usuario] = await Promise.all([getMarca(), usuarioActual()]);
+  const [marca, usuario, modo] = await Promise.all([getMarca(), usuarioActual(), modoActual()]);
 
   return (
     <html lang="es-AR" className={`${bricolage.variable} ${figtree.variable} ${plexMono.variable}`}>
@@ -63,7 +64,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </a>
             {/* Sin sesion (la pantalla de /login) no hay navegacion. Al cliente solo viajan nombre y rol. */}
             {usuario ? (
-              <Navbar nombre={marca.nombre} logo={marca.logo} usuario={{ nombre: usuario.nombre, rol: usuario.rol }} />
+              <Navbar nombre={marca.nombre} logo={marca.logo} usuario={{ nombre: usuario.nombre, rol: usuario.rol }} modo={modo} />
             ) : null}
 
             <main id="contenido" className={`mx-auto max-w-page px-4 pt-6 ${usuario ? "pb-32 md:pb-10" : "pb-10"}`}>
