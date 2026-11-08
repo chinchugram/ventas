@@ -36,7 +36,7 @@ export function MaquinaForm({
       onSubmit={(e) => {
         e.preventDefault();
         enviar(valores, () => {
-          router.push("/configuracion");
+          router.push("/configuracion/maquinas");
           router.refresh();
         });
       }}

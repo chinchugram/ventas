@@ -5,7 +5,7 @@ import { MomentosProvider } from "@/components/momentos";
 import { SonidoProvider } from "@/components/sonido";
 import { getMarca } from "@/lib/marca";
 import { usuarioActual } from "@/lib/auth";
-import { modoActual } from "@/lib/modo-servidor";
+import { modoActual, temaActual } from "@/lib/modo-servidor";
 import { ChatAyuda } from "@/components/chat-ayuda";
 import { asistenteDisponible } from "@/lib/ayuda/asistente";
 import "./globals.css";
@@ -49,10 +49,10 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Solo para pintar la navegacion: no protege nada (el layout no se vuelve a
   // ejecutar en las navegaciones del cliente). Protegen el proxy y cada pagina.
-  const [marca, usuario, modo] = await Promise.all([getMarca(), usuarioActual(), modoActual()]);
+  const [marca, usuario, modo, tema] = await Promise.all([getMarca(), usuarioActual(), modoActual(), temaActual()]);
 
   return (
-    <html lang="es-AR" className={`${bricolage.variable} ${figtree.variable} ${plexMono.variable}`}>
+    <html lang="es-AR" data-tema={tema === "sistema" ? undefined : tema} className={`${bricolage.variable} ${figtree.variable} ${plexMono.variable}`}>
       <body className="min-h-dvh bg-surface font-sans text-ink">
         <SonidoProvider>
           <MomentosProvider>

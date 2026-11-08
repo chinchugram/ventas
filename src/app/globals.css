@@ -113,9 +113,45 @@
   --sticker-tilt: -3deg;
 }
 
-/* Oscuro: solo en pantalla, para que imprimir saque siempre papel claro. */
+/*
+ * Oscuro: solo en pantalla, para que imprimir saque siempre papel claro. Sigue al sistema salvo que
+ * el usuario haya fijado un tema (`data-tema` en <html>, Configuración → Otros).
+ */
 @media screen and (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-tema="claro"]) {
+    --surface: #14201a;
+    --surface-raised: #1c2b23;
+    --surface-sunken: #0f1813;
+
+    --ink: #fff4e6;
+    --ink-muted: #b5bfb6;
+    --line: #2a3a31;
+    --line-strong: #6e7e73;
+
+    --brand: #ff7a45;
+    --brand-text: #ff9a6b;
+    --brand-soft: #43271b;
+    --press: #060a08;
+
+    --ok-text: #7fe0bd;
+    --ok-soft: #163a2d;
+    --ok-line: #2f6b54;
+    --aviso-text: #ffd166;
+    --aviso-soft: #3a2f12;
+    --aviso-line: #75602a;
+    --critico-text: #ff9b9b;
+    --critico-soft: #3b1f20;
+    --critico-line: #7a3a3a;
+    --info-text: #9ccbf7;
+    --info-soft: #172d42;
+    --info-line: #345a80;
+
+    --focus: #ff9a6b;
+  }
+}
+
+@media screen {
+  :root[data-tema="oscuro"] {
     --surface: #14201a;
     --surface-raised: #1c2b23;
     --surface-sunken: #0f1813;

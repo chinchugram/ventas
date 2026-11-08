@@ -10,7 +10,7 @@ export function sinValidezFiscal(ambiente: ComprobanteCompleto["ambiente"]): boo
 }
 
 const MOTIVO = {
-  SIMULADO: "Comprobante simulado: no fue autorizado por ARCA",
+  SIMULADO: "Comprobante interno: no reemplaza a la factura electrónica",
   HOMOLOGACION: "Comprobante de homologación (pruebas): no tiene validez fiscal",
   PRODUCCION: "",
 } as const;

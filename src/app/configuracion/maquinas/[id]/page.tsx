@@ -21,7 +21,7 @@ export default async function MaquinaPage({ params }: { params: Promise<{ id: st
         titulo={maquina.nombre}
         descripcion={maquina.activo ? "Editar máquina" : "Máquina dada de baja"}
         accion={
-          <Boton href="/configuracion" variante="secundario">
+          <Boton href="/configuracion/maquinas" variante="secundario">
             Volver
           </Boton>
         }

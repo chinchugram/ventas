@@ -46,7 +46,7 @@ export const ARRANQUE: PasoArranque[] = [
   {
     titulo: "Cargá tus máquinas",
     texto:
-      "En Configuración → Agregar máquina: láser, plotter, etc., con su costo por hora " +
+      "En Configuración → Máquinas: láser, plotter, etc., con su costo por hora " +
       "(incluí amortización, energía y consumibles). Las recetas las usan para costear.",
     ruta: "/configuracion/maquinas/nueva",
   },
@@ -88,8 +88,8 @@ export const ARRANQUE: PasoArranque[] = [
     titulo: "Completá los datos fiscales",
     texto:
       "Razón social, CUIT, condición frente al IVA, domicilio, inicio de actividades y punto de venta. " +
-      "Hacen falta para emitir facturas desde una venta.",
-    ruta: "/configuracion",
+      "Hacen falta para emitir comprobantes desde una venta.",
+    ruta: "/configuracion/datos-fiscales",
     opcional: true,
   },
 ];
@@ -267,7 +267,7 @@ export const SECCIONES: SeccionGuia[] = [
     puntos: [
       "La factura se emite desde una venta. La letra (A, B o C) sale de tu condición y la del cliente.",
       "Hacen falta los datos fiscales completos en Configuración.",
-      "Hoy los comprobantes salen SIMULADOS, sin validez fiscal: la conexión con ARCA todavía no está activa.",
+      "Son comprobantes internos, marcados como sin validez fiscal.",
       "Solo el dueño emite notas de crédito.",
     ],
   },
@@ -316,8 +316,8 @@ export const PREGUNTAS: Pregunta[] = [
     respuesta: "No. Los costos y márgenes no llegan nunca a la pantalla del empleado.",
   },
   {
-    pregunta: "¿Las facturas son válidas?",
-    respuesta: "Todavía no: salen simuladas hasta que se conecte ARCA.",
+    pregunta: "¿Los comprobantes tienen validez fiscal?",
+    respuesta: "No: son comprobantes internos y lo dicen en el papel. Sirven para entregarle al cliente el detalle de lo que compró.",
   },
   {
     pregunta: "Olvidé mi clave.",

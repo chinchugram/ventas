@@ -34,7 +34,6 @@ export async function POST(request: Request) {
   const usuario = await usuarioActual();
   if (!usuario) return json({ error: SIN_SESION }, 401);
   if (usuario.rol !== "DUENO" && usuario.rol !== "EMPLEADO") return json({ error: "No disponible." }, 403);
-  if (!asistenteDisponible()) return json({ error: "El asistente no está configurado." }, 503);
 
   // Cuerpo chico: 6 mensajes de ~1000 caracteres entran de sobra en 16 KB.
   const crudo = await request.text();
@@ -47,6 +46,7 @@ export async function POST(request: Request) {
   }
   const validado = validarConversacion(cuerpo);
   if (!validado.ok) return json({ error: validado.error }, 400);
+  if (!asistenteDisponible()) return json({ error: "El asistente no está configurado." }, 503);
 
   if (superaLimite(usuario.id, Date.now())) {
     return json({ error: "Hiciste muchas preguntas seguidas. Probá de nuevo en un rato." }, 429);

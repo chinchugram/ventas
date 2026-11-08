@@ -68,7 +68,7 @@ export function DatosFiscalesForm({
         <p className="text-body-sm text-ink-muted">Quién figura como emisor en cada factura o nota de crédito.</p>
       </div>
 
-      <Aviso tono="critico" titulo="Sin conexión con ARCA, todo comprobante sale SIN VALIDEZ FISCAL." />
+      <Aviso tono="info" titulo="Los comprobantes que emite la app son internos: no tienen validez fiscal." />
 
       {faltantes.length > 0 ? (
         <Aviso tono="aviso" titulo="Según lo guardado, falta para poder emitir:">

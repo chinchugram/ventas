@@ -16,7 +16,7 @@ export default async function NuevaMaquinaPage() {
         titulo="Nueva máquina"
         descripcion="Un recurso de producción con su costo por hora"
         accion={
-          <Boton href="/configuracion" variante="secundario">
+          <Boton href="/configuracion/maquinas" variante="secundario">
             Volver
           </Boton>
         }

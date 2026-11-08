@@ -12,7 +12,7 @@ export const ETIQUETA_CONDICION_IVA: Record<CondicionIva, string> = {
 };
 
 export const ETIQUETA_AMBIENTE = {
-  SIMULADO: "Simulado",
+  SIMULADO: "Interno",
   HOMOLOGACION: "Homologación (pruebas de ARCA)",
   PRODUCCION: "Producción",
 } as const;

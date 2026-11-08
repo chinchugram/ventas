@@ -126,7 +126,7 @@ export async function FacturarPanel({ ventaId }: { ventaId: string }) {
                 {a.codigo === "DATOS_FISCALES" && !puedeConfigurar ? " Pedile al dueño que los complete." : ""}
               </p>
               {a.codigo === "DATOS_FISCALES" && puedeConfigurar ? (
-                <Link href="/configuracion" className={CLASE_ENLACE}>
+                <Link href="/configuracion/datos-fiscales" className={CLASE_ENLACE}>
                   Ir a Configuración
                 </Link>
               ) : null}
