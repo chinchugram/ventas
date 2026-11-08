@@ -63,7 +63,9 @@ const LISTAS_PRECIOS: Seccion = {
   acciones: ["gestionarListasPrecios"],
   ayuda: "Precios especiales por cliente",
 };
-const ADMINISTRACION: Seccion[] = [LISTAS_PRECIOS, USUARIOS, CONFIGURACION];
+// Cualquier usuario con sesion de un negocio puede cambiar su clave: es el permiso de "todos".
+const AYUDA: Seccion = { href: "/ayuda", etiqueta: "Ayuda", icono: "ayuda", acciones: ["cambiarClavePropia"], ayuda: "Cómo usar la app" };
+const ADMINISTRACION: Seccion[] = [LISTAS_PRECIOS, USUARIOS, CONFIGURACION, AYUDA];
 
 // Escritorio ancho (lg): pocas secciones sueltas y el resto agrupado en menus con nombre, cada
 // entrada con una frase que dice para que sirve. Ningun icono suelto sin texto.
@@ -72,7 +74,7 @@ const DIRECTAS_ESCRITORIO: Seccion[] = [INICIO, VENTAS, CLIENTES, PRESUPUESTOS, 
 const GRUPOS_ESCRITORIO: Grupo[] = [
   { etiqueta: "Productos", icono: "articulos", entradas: [ARTICULOS, CORTES, PRODUCCION] },
   { etiqueta: "Stock y compras", icono: "materiales", entradas: [MATERIALES, COMPRAS, REPOSICION] },
-  { etiqueta: "Más", icono: "mas", entradas: [COMPROBANTES, RECORDATORIOS, REPORTES, LISTAS_PRECIOS, USUARIOS, CONFIGURACION] },
+  { etiqueta: "Más", icono: "mas", entradas: [COMPROBANTES, RECORDATORIOS, REPORTES, LISTAS_PRECIOS, USUARIOS, CONFIGURACION, AYUDA] },
 ];
 const ACCIONES_NUEVA_VENTA: readonly Accion[] = ["cargarVenta"];
 const ID_HOJA_MAS = "hoja-mas";

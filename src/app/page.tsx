@@ -15,6 +15,8 @@ import { ETIQUETA_ESTADO_PAGO } from "@/lib/queries/ventas";
 import { Aviso, Boton, Etiqueta, ListaPanel, Seccion, SemaforoMargen, Tarjeta, TituloBloque, TONO_ESTADO_PAGO, Vacio } from "@/components/ui";
 import { GananciaDelMes, VentasPorDia, type DiaVentas } from "@/components/tablero";
 import { requierePermisoPagina } from "@/lib/permisos";
+import { getPrimerosPasos } from "@/lib/queries/primeros-pasos";
+import { PrimerosPasos } from "@/components/primeros-pasos";
 import { puedeTodo } from "@/lib/permisos-pura";
 
 // El dashboard lee datos que cambian con cada venta: nunca se cachea ni se
@@ -32,13 +34,14 @@ export default async function Dashboard() {
   // El negocio sale de la sesion; todas las lecturas del dashboard corren dentro de ese negocio.
   const negocioId = await negocioDeLaSesion(usuario);
   const DIAS_GRAFICO = 14;
-  const [resumen, ultimas, deudas, facturadoPorDia, articulos, materiales] = await Promise.all([
+  const [resumen, ultimas, deudas, facturadoPorDia, articulos, materiales, primerosPasos] = await Promise.all([
     getResumenMes(negocioId),
     getUltimasVentas(negocioId, 8),
     getDeudas(negocioId),
     getFacturadoPorDia(negocioId, primerDiaDelGrafico(DIAS_GRAFICO)),
     getArticulosConMargen(),
     getMateriales(),
+    getPrimerosPasos(negocioId),
   ]);
 
   const stockBajo = materiales.filter((m) => m.stockMinimo.cmp(0) > 0);
@@ -61,6 +64,8 @@ export default async function Dashboard() {
             : `${resumen.cantidadVentas} ${resumen.cantidadVentas === 1 ? "venta" : "ventas"} en el mes.`
         }
       />
+
+      {primerosPasos ? <PrimerosPasos pasos={primerosPasos} /> : null}
 
       <GananciaDelMes
         ganancia={resumen.ganancia}
