@@ -32,9 +32,15 @@ export function ChatAyuda() {
   useEffect(() => {
     if (!abierto) return;
     inputRef.current?.focus();
+    // Con el chat a pantalla completa, la página de atrás no se desplaza.
+    const overflowAntes = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const conEscape = (e: KeyboardEvent) => e.key === "Escape" && setAbierto(false);
     window.addEventListener("keydown", conEscape);
-    return () => window.removeEventListener("keydown", conEscape);
+    return () => {
+      window.removeEventListener("keydown", conEscape);
+      document.body.style.overflow = overflowAntes;
+    };
   }, [abierto]);
 
   const cerrar = () => setAbierto(false);
@@ -84,15 +90,18 @@ export function ChatAyuda() {
 
       {abierto && (
         // Oscurece la pantalla de atrás: el chat queda en primer plano y no se mezcla con la página.
-        <div aria-hidden className="fixed inset-0 z-[62] bg-black/55" onClick={() => setAbierto(false)} />
+        <div aria-hidden className="fixed inset-0 z-[62] hidden bg-black/55 md:block" onClick={() => setAbierto(false)} />
       )}
 
       {abierto && (
         <section
+          role="dialog"
+          aria-modal="true"
           aria-label="Asistente de ayuda"
-          className="fixed inset-x-2 rounded-lg border-2 border-brand bg-surface-raised shadow-2xl bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[65] flex max-h-[70dvh] flex-col overflow-hidden md:inset-x-auto md:right-6 md:bottom-6 md:w-96"
+          // Celular: pantalla completa (como una hoja que tapa todo). Desde md: panel flotante abajo a la derecha.
+          className="fixed inset-0 z-[65] flex h-dvh flex-col overflow-hidden bg-surface-raised pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-6 md:bottom-6 md:h-auto md:max-h-[70dvh] md:w-96 md:rounded-lg md:border-2 md:border-brand md:pb-0 md:shadow-2xl"
         >
-          <header className="flex items-center justify-between gap-2 bg-brand px-4 py-2 text-on-color">
+          <header className="flex items-center justify-between gap-2 bg-brand px-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 text-on-color md:pt-2">
             <p className="flex items-center gap-2 font-display text-body font-bold">
               <Icono nombre="ayuda" className="h-5 w-5" />
               Asistente de ayuda
