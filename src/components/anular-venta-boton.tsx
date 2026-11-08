@@ -8,7 +8,7 @@ import { ConfirmarAccion } from "@/components/confirmar-accion";
 /** Anular una venta: pide confirmación en el lugar (no `window.confirm`) y, si sale bien, refresca el detalle. */
 export function AnularVentaBoton({ ventaId }: { ventaId: string }) {
   const router = useRouter();
-  const { pendiente, error, enviar } = useAccion(anularVenta);
+  const { pendiente, error, enviar } = useAccion(anularVenta, { gravedad: "dinero" });
 
   return (
     <ConfirmarAccion

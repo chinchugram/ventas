@@ -4,7 +4,8 @@ import { useState, useTransition, type ReactNode } from "react";
 import type { Resultado } from "@/lib/acciones";
 import type { Momento } from "@/lib/sonido";
 import { claseBoton } from "@/components/ui";
-import { Tilde, useMomento, type MomentoAnunciable } from "@/components/momentos";
+import { Tilde, mensajeDeLogro, useMomento, type MomentoAnunciable } from "@/components/momentos";
+import type { Logro } from "@/lib/logros";
 
 /**
  * Error general del formulario (el que devuelve la server action). Momento "error" (momentos.md):
@@ -105,16 +106,25 @@ export const ERROR_SIN_RESPUESTA =
  * Momentos (momentos.md), sin repetir código por pantalla:
  *  - Bien: suena `momento` (por defecto `guardado`, que es silencioso). Con `anuncio`, además
  *    muestra el aviso flotante del momento, que sobrevive a la navegación (`router.push`).
+ *  - Bien y el resultado trae `logro` (lib/logros.ts: meta del mes, primer cliente): si corresponde
+ *    festejarlo (`mensajeDeLogro`), suena `logro` EN LUGAR del momento de siempre (nunca dos
+ *    sonidos) y sale el aviso con el estallido y el mensaje de marca.
  *  - La acción respondió con un error: suena `error` (dos notas que bajan); `BloqueError` sacude.
  *  - No hubo respuesta: suena `offline` (el aviso grave: no es un error del usuario).
+ *  - Con `gravedad` ("dinero" | "datos": anular, nota de crédito, facturar, bajas, ajustes de stock)
+ *    ningún error suena (momentos.md: un error grave no lleva sonido simpático; decisión de ventas:
+ *    nada). Siguen el texto y la sacudida de `BloqueError`.
  *
  *   useAccion(registrarPago, { momento: "cobro", anuncio: (_r, d) => `¡Cobrado! ${d.monto}…` });
+ *   useAccion(anularVenta, { gravedad: "dinero" });
  */
 export function useAccion<D, R extends Resultado | { ok: true } | { ok: false; error: string }>(
   accion: (datos: D) => Promise<R>,
   opciones: {
     momento?: ElegirMomento<D, Extract<R, { ok: true }>>;
     anuncio?: (r: Extract<R, { ok: true }>, datos: D) => ReactNode;
+    /** Acción que toca plata o datos delicados: sus errores no suenan (ni `error` ni `offline`). */
+    gravedad?: "dinero" | "datos";
   } = {},
 ) {
   const [pendiente, iniciar] = useTransition();
@@ -128,19 +138,26 @@ export function useAccion<D, R extends Resultado | { ok: true } | { ok: false; e
       try {
         r = await accion(datos);
       } catch {
-        reproducir("offline");
+        if (!opciones.gravedad) reproducir("offline");
         setError(ERROR_SIN_RESPUESTA);
         return;
       }
       if (r.ok) {
         const bien = r as Extract<R, { ok: true }>;
         const { momento: elegir = "guardado", anuncio } = opciones;
-        const momento = typeof elegir === "function" ? elegir(bien, datos) : elegir;
-        if (anuncio) anunciar({ momento: momento as MomentoAnunciable, mensaje: anuncio(bien, datos) });
-        else reproducir(momento);
+        const logro = (bien as { logro?: Logro }).logro;
+        const festejo = logro ? mensajeDeLogro(logro) : null;
+        if (festejo) {
+          // Un solo sonido: el logro reemplaza al del momento (p. ej. el `cobro` de una venta pagada).
+          anunciar({ momento: "logro", mensaje: festejo });
+        } else {
+          const momento = typeof elegir === "function" ? elegir(bien, datos) : elegir;
+          if (anuncio) anunciar({ momento: momento as MomentoAnunciable, mensaje: anuncio(bien, datos) });
+          else reproducir(momento);
+        }
         alTerminarBien?.(bien);
       } else {
-        reproducir("error");
+        if (!opciones.gravedad) reproducir("error");
         setError((r as { ok: false; error: string }).error);
       }
     });

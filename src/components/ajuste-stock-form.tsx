@@ -8,7 +8,7 @@ import { TituloBloque } from "@/components/ui";
 
 export function AjusteStockForm({ materialId, unidad }: { materialId: string; unidad: string }) {
   const router = useRouter();
-  const { pendiente, error, enviar } = useAccion(ajustarStock);
+  const { pendiente, error, enviar } = useAccion(ajustarStock, { gravedad: "datos" });
   const [stockContado, setStockContado] = useState("");
   const [motivo, setMotivo] = useState("");
 

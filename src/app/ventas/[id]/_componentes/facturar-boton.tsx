@@ -29,7 +29,7 @@ export function FacturarBoton({
   tipoPrevisto: string | null;
 }) {
   const router = useRouter();
-  const { pendiente, error, enviar } = useAccion(emitirFactura);
+  const { pendiente, error, enviar } = useAccion(emitirFactura, { gravedad: "dinero" });
   const [resultado, setResultado] = useState<Emitida | null>(null);
 
   const texto = reintento ? "Reintentar la facturación" : "Facturar";

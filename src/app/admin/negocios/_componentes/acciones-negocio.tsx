@@ -34,7 +34,7 @@ export function AccionesNegocio({
 
 function BajaOReactivacion({ id, nombre, activo }: { id: string; nombre: string; activo: boolean }) {
   const router = useRouter();
-  const { pendiente, error, enviar } = useAccion(cambiarActivoNegocio);
+  const { pendiente, error, enviar } = useAccion(cambiarActivoNegocio, { gravedad: "datos" });
   const cambiar = (nuevo: boolean, alTerminar?: () => void) =>
     enviar({ id, activo: nuevo }, () => {
       alTerminar?.();

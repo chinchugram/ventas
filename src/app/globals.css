@@ -777,7 +777,8 @@
 
 /*
  * Interruptor de sonido (InterruptorSonido): pista de 32 × 16 con perilla de 8, todo con la escala
- * de 4px. Encendido (`aria-pressed="true"` en el botón): pista brand y perilla on-color a la derecha.
+ * de 4px. Encendido (`aria-pressed="true"` en el botón del encabezado, `aria-checked="true"` en el
+ * `role="switch"` de Configuración): pista brand y perilla on-color a la derecha.
  */
 @layer components {
   .pista-sonido {
@@ -803,11 +804,13 @@
       background-color var(--dur-press);
   }
 
-  [aria-pressed="true"] > .pista-sonido {
+  [aria-pressed="true"] > .pista-sonido,
+  [role="switch"][aria-checked="true"] > .pista-sonido {
     background: var(--brand);
   }
 
-  [aria-pressed="true"] > .pista-sonido > .perilla-sonido {
+  [aria-pressed="true"] > .pista-sonido > .perilla-sonido,
+  [role="switch"][aria-checked="true"] > .pista-sonido > .perilla-sonido {
     transform: translateX(calc(var(--spacing) * 8 - 2 * var(--border-width) - 2 * var(--hueco) - var(--perilla)));
     background: var(--on-color);
   }
