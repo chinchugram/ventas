@@ -3,8 +3,10 @@
  * Se sintetiza con Web Audio, sin archivos. Solo navegador: ninguna función toca `window` al importar.
  *
  * Reglas del manual que se cumplen acá:
- *  - Apagado por defecto. La preferencia se guarda en el navegador (localStorage) y se avisa a todas
- *    las pestañas y componentes (evento propio + `storage`).
+ *  - Encendido por defecto (decisión de ventas, docs/brand/README.md): quien no quiere escuchar lo
+ *    apaga con el interruptor del encabezado o el de Configuración (o baja el volumen). La preferencia
+ *    se guarda en el navegador (localStorage) y se avisa a todas las pestañas y componentes (evento
+ *    propio + `storage`). Sin tope diario de sonidos: no se limita por cantidad.
  *  - Sin sonido automático al cargar: el AudioContext se crea recién con un gesto del usuario
  *    (`prepararAudio`, que el SonidoProvider engancha al primer toque o tecla) o en el primer
  *    `reproducir`, que siempre sale de una acción del usuario.
@@ -82,13 +84,17 @@ export const DURACION_SONIDO = Object.fromEntries([
 /** Respaldo en memoria si localStorage no anda (modo privado, bloqueado). */
 let memoria: boolean | undefined;
 
-/** ¿El usuario prendió el sonido en este navegador? Apagado por defecto. */
+/**
+ * ¿El sonido está prendido en este navegador? Encendido por defecto: solo lo apaga haber elegido
+ * "apagado" (en el encabezado o en Configuración). Que esté prendido no hace sonar nada al cargar:
+ * el audio arranca recién con un gesto del usuario.
+ */
 export function sonidoEncendido(): boolean {
   if (memoria !== undefined) return memoria;
   try {
-    return localStorage.getItem(CLAVE) === "encendido";
+    return localStorage.getItem(CLAVE) !== "apagado";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -100,7 +106,9 @@ export function guardarSonido(encendido: boolean): void {
     memoria = encendido;
   }
   // Prenderlo es un gesto del usuario: buen momento para preparar el audio (no suena nada).
+  // Apagarlo corta en seco lo que estuviera sonando.
   if (encendido) prepararAudio();
+  else if (contexto) cortarAnterior(contexto);
   document.dispatchEvent(new CustomEvent(EVENTO_SONIDO, { detail: encendido }));
 }
 

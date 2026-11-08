@@ -115,13 +115,14 @@ export function NuevaVentaForm({ articulos, clientes, esModoDemo = false, verCos
   const [observaciones, setObservaciones] = useState("");
   const [comprobante, setComprobante] = useState<Simulacion | null>(null);
   const [entregada, setEntregada] = useState(true);
-  // Momento al guardar (momentos.md): si entró plata es un cobro (caja registradora); si no, una
-  // acción completada (pop doble). El comprobante aparece con un salto.
+  // Momento al guardar (momentos.md): si entró plata es un cobro (caja registradora); si no, es una
+  // venta guardada, silenciosa (solo el comprobante, que aparece con un salto). Si la venta deja el
+  // margen del mes arriba de la meta, `useAccion` festeja el logro en lugar del cobro.
   const {
     pendiente: guardando,
     error: errorGuardado,
     enviar: enviarVenta,
-  } = useAccion(registrarVenta, { momento: (_r, datos) => (datos.pago ? "cobro" : "turno") });
+  } = useAccion(registrarVenta, { momento: (_r, datos) => (datos.pago ? "cobro" : "guardado") });
   const [preciosCargados, setPreciosCargados] = useState<(PreciosCliente & { clienteId: string }) | null>(null);
   const [reintento, setReintento] = useState(0);
 

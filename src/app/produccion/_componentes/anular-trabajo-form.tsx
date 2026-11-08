@@ -15,7 +15,7 @@ export function AnularTrabajoForm({ trabajoId }: { trabajoId: string }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [motivo, setMotivo] = useState("");
-  const { pendiente, error, enviar } = useAccion(anularTrabajo);
+  const { pendiente, error, enviar } = useAccion(anularTrabajo, { gravedad: "datos" });
 
   if (!abierto) {
     return (

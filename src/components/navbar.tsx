@@ -213,7 +213,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {/* Sonido: apagado por defecto, se recuerda en el navegador (momentos.md). En un toque. */}
+            {/* Sonido: prendido por defecto, se recuerda en el navegador (momentos.md). Se apaga en un toque; también en Configuración. */}
             <InterruptorSonido conTexto={false} className="min-h-11 px-3" />
             {puedeNuevaVenta ? (
               // Entre md y xl no entra el texto junto a la navegación: queda el "+" con su nombre accesible.

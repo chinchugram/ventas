@@ -160,7 +160,7 @@ function BajaOReactivacion({
   protegido: boolean;
 }) {
   const router = useRouter();
-  const { pendiente, error, enviar } = useAccion(cambiarActivoUsuario);
+  const { pendiente, error, enviar } = useAccion(cambiarActivoUsuario, { gravedad: "datos" });
   const cambiar = (nuevo: boolean, alTerminar?: () => void) =>
     enviar({ id, activo: nuevo }, () => {
       alTerminar?.();

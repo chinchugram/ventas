@@ -14,7 +14,7 @@ export function AjustarStockForm({ trabajoId }: { trabajoId: string }) {
   const router = useRouter();
   const [confirmar, setConfirmar] = useState(false);
   const [listo, setListo] = useState(false);
-  const { pendiente, error, enviar } = useAccion(ajustarStockDeTrabajo);
+  const { pendiente, error, enviar } = useAccion(ajustarStockDeTrabajo, { gravedad: "datos" });
 
   return (
     <form

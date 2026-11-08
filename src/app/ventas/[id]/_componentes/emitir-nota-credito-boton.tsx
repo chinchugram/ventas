@@ -23,7 +23,7 @@ export function EmitirNotaCreditoBoton({
   etiquetaFactura: string;
 }) {
   const router = useRouter();
-  const { pendiente, error, setError, enviar } = useAccion(emitirNotaCredito);
+  const { pendiente, error, setError, enviar } = useAccion(emitirNotaCredito, { gravedad: "dinero" });
   const [abierto, setAbierto] = useState(false);
   const [resultado, setResultado] = useState<{ emitida: boolean; mensaje: string } | null>(null);
 

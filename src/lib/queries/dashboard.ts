@@ -187,6 +187,32 @@ async function resumenPeriodoDesdeBase(
   };
 }
 
+/**
+ * Solo margen y meta del mes de hoy (Argentina), para el logro "meta del mes" que informa
+ * `registrarVenta` (ventas/actions.ts). Es una lectura aparte, ADITIVA: no cambia ningun calculo.
+ * Usa la misma consulta (ventas no anuladas con `fecha` en el mes) y la misma regla de margen
+ * que `resumenPeriodoDesdeBase`; si esa regla cambia, cambiar las dos.
+ */
+export async function margenDelMesEnTx(
+  tx: TxNegocio,
+  ahora = new Date(),
+): Promise<{ margenPct: Dinero; metaMargenPct: Dinero }> {
+  const hoy = hoyEnArgentina(ahora);
+  const { desde, hasta } = rangoDeMes(hoy.anio, hoy.mes);
+  const config = await configDelNegocio(tx);
+  const metaMargenPct = configNumero(config, "margenObjetivo", "40");
+  const agregado = await tx.venta.aggregate({
+    where: { fecha: { gte: desde, lt: hasta }, estado: { not: "ANULADA" } },
+    _sum: { totalBruto: true, costoTotal: true },
+  });
+  const facturadoBruto = aMoneda(d(agregado._sum.totalBruto));
+  const ganancia = aMoneda(facturadoBruto.minus(aMoneda(d(agregado._sum.costoTotal))));
+  return {
+    margenPct: facturadoBruto.isZero() ? CERO : d(ganancia.div(facturadoBruto).times(100)),
+    metaMargenPct,
+  };
+}
+
 /** Configuracion del negocio de la transaccion (clave -> valor), como la que usan las pantallas. */
 async function configDelNegocio(tx: TxNegocio): Promise<Record<string, string>> {
   const filas = await tx.configuracion.findMany();

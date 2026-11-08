@@ -11,6 +11,7 @@ import { DatosFiscalesForm, type ValoresDatosFiscales } from "./_componentes/dat
 import { requierePermisoPagina } from "@/lib/permisos";
 import { getMarca } from "@/lib/marca";
 import { LogoForm } from "./_componentes/logo-form";
+import { SwitchSonido } from "@/components/sonido";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,14 @@ export default async function ConfiguracionPage() {
           esModoDemo={estadoDemo().activo}
         />
       </div>
+
+      {/* Sonido (momentos.md): la misma preferencia que el interruptor del encabezado. */}
+      <section aria-labelledby="titulo-sonido" className="tarjeta mb-6 space-y-3 p-4 sm:p-6">
+        <TituloBloque id="titulo-sonido" className="mb-0">
+          Sonido
+        </TituloBloque>
+        <SwitchSonido />
+      </section>
 
       <div className="mb-3 flex items-end justify-between gap-3">
         <div className="min-w-0">

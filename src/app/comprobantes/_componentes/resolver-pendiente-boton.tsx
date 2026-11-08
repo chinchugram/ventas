@@ -12,7 +12,7 @@ import { Aviso, Boton } from "@/components/ui";
  */
 export function ResolverPendienteBoton({ comprobanteId }: { comprobanteId: string }) {
   const router = useRouter();
-  const { pendiente, error, enviar } = useAccion(resolverComprobantePendiente);
+  const { pendiente, error, enviar } = useAccion(resolverComprobantePendiente, { gravedad: "dinero" });
   const [mensaje, setMensaje] = useState<string | null>(null);
 
   return (

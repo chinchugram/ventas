@@ -12,7 +12,7 @@ import { Boton } from "@/components/ui";
  */
 export function AnularPagoBoton({ pagoId }: { pagoId: string }) {
   const router = useRouter();
-  const { pendiente, error, setError, enviar } = useAccion(anularPago);
+  const { pendiente, error, setError, enviar } = useAccion(anularPago, { gravedad: "dinero" });
   const [abierto, setAbierto] = useState(false);
   const [motivo, setMotivo] = useState("");
 

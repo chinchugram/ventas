@@ -14,6 +14,8 @@ import {
 } from "react";
 import { useSonido } from "@/components/sonido";
 import { audioPreparado, type Momento } from "@/lib/sonido";
+import type { Logro } from "@/lib/logros";
+import { fmtPorcentaje } from "@/lib/money";
 
 /*
  * Momentos (docs/brand/momentos.md): mensaje + animación + (a veces) sonido, en un solo lugar.
@@ -24,6 +26,9 @@ import { audioPreparado, type Momento } from "@/lib/sonido";
  *  - `MomentosProvider` (layout.tsx) muestra ese aviso y detecta "sin conexión" (`offline`).
  *  - Piezas visuales: `Tilde` (guardado), `Moneda` (cobro), `MontoQueCuenta` (cobro),
  *    `Estallido` y `LogroMeta` (logro).
+ *  - Logros que informa una acción (`logro` en el resultado, lib/logros.ts): `mensajeDeLogro` decide
+ *    si se festeja (meta: una vez por mes, el mismo control que el tablero; primer cliente: el
+ *    servidor ya lo informa una sola vez) y con qué mensaje. `useAccion` lo usa solo.
  *
  * Reglas que se cumplen acá: el sonido lo decide `lib/sonido.ts` (interruptor, volumen bajo, uno
  * corta al anterior, `guardado` no suena); nada suena al cargar (el estallido de la meta y el aviso
@@ -165,7 +170,7 @@ function AvisoMomento({ anuncio, alCerrar }: { anuncio: Anuncio; alCerrar: () =>
       data-momento={anuncio.momento}
       className={`pointer-events-auto borde flex items-center gap-3 rounded-md border-ok-line bg-ok-soft py-1 pr-1 pl-3 text-body-sm font-semibold text-ok-text shadow-press ${ANIMACION_AVISO[anuncio.momento]}`}
     >
-      {anuncio.momento === "cobro" ? <Moneda /> : <Tilde />}
+      {anuncio.momento === "cobro" ? <Moneda /> : anuncio.momento === "logro" ? <InsigniaLogro /> : <Tilde />}
       <p className="min-w-0 flex-1 py-2">{anuncio.mensaje}</p>
       <button
         type="button"
@@ -285,33 +290,93 @@ export function Estallido() {
   );
 }
 
+/** Momento "logro" en el aviso flotante: un sticker con una estrella y el estallido alrededor. */
+function InsigniaLogro() {
+  return (
+    <span
+      aria-hidden="true"
+      className="borde relative inline-flex size-7 shrink-0 items-center justify-center rounded-full border-line-strong bg-sol text-on-color"
+    >
+      <svg viewBox="0 0 24 24" className="size-4" fill="currentColor">
+        <path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />
+      </svg>
+      <Estallido />
+    </span>
+  );
+}
+
 const CLAVE_LOGRO_META = "ventas:logro-meta";
+
+function mesActual(): string {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** ¿La meta de este mes ya se festejó en este navegador? (tablero o una venta). */
+function metaYaFestejada(mes: string): boolean {
+  try {
+    return localStorage.getItem(CLAVE_LOGRO_META) === mes;
+  } catch {
+    // Sin almacenamiento: festeja igual (una vez por carga).
+    return false;
+  }
+}
+
+function anotarMetaFestejada(mes: string) {
+  try {
+    localStorage.setItem(CLAVE_LOGRO_META, mes);
+  } catch {
+    // Sin almacenamiento: vale solo para esta carga.
+  }
+}
+
+/** Mensajes de festejo (voz.md: festejo con todo, una exclamación, el dato real; se rotan). */
+const MENSAJES_LOGRO: { [T in Logro["tipo"]]: ((l: Extract<Logro, { tipo: T }>) => string)[] } = {
+  meta: [
+    (l) => `¡Pasaste la meta del mes! El margen va en ${fmtPorcentaje(l.margenPct)} y la meta es ${fmtPorcentaje(l.metaPct)}.`,
+    (l) => `¡Meta del mes cumplida! Margen ${fmtPorcentaje(l.margenPct)}, arriba del ${fmtPorcentaje(l.metaPct)} que te propusiste.`,
+    (l) => `¡Arriba de la meta! El margen del mes ya llegó a ${fmtPorcentaje(l.margenPct)}.`,
+  ],
+  primerCliente: [
+    (l) => `¡${l.nombre} es tu primer cliente! Esto recién arranca.`,
+    (l) => `¡Primer cliente adentro: ${l.nombre}! Esto recién empieza.`,
+    (l) => `¡Tu primer cliente, ${l.nombre}! Arrancamos.`,
+  ],
+};
+
+/**
+ * Mensaje para festejar un logro que informó una acción, o `null` si no corresponde festejarlo.
+ * La meta se festeja una vez por mes (la misma marca que `LogroMeta`, así el tablero no repite);
+ * el primer cliente lo informa el servidor una sola vez por negocio.
+ */
+export function mensajeDeLogro(logro: Logro): string | null {
+  if (logro.tipo === "meta") {
+    const mes = mesActual();
+    if (metaYaFestejada(mes)) return null;
+    anotarMetaFestejada(mes);
+  }
+  const opciones = MENSAJES_LOGRO[logro.tipo] as ((l: Logro) => string)[];
+  const elegido = opciones[Math.floor(Math.random() * opciones.length)] ?? opciones[0];
+  return elegido ? elegido(logro) : null;
+}
 
 /**
  * Logro "meta del mes" en el tablero: la primera vez que el usuario ve el margen arriba de la meta
  * en el mes (en este navegador), estalla una vez. No suena: aparece al cargar la página y el manual
- * no deja sonar nada al cargar.
+ * no deja sonar nada al cargar. Si la meta ya se festejó con sonido al guardar la venta que la
+ * cruzó (`mensajeDeLogro`), el tablero no la repite ese mes.
  */
 export function LogroMeta({ activo, children }: { activo: boolean; children: ReactNode }) {
   const [festejar, setFestejar] = useState(false);
 
   useEffect(() => {
     if (!activo) return;
-    const hoy = new Date();
-    const mes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
-    try {
-      if (localStorage.getItem(CLAVE_LOGRO_META) === mes) return;
-    } catch {
-      // Sin almacenamiento: festeja igual (una vez por carga).
-    }
+    const mes = mesActual();
+    if (metaYaFestejada(mes)) return;
     // Después de hidratar (el estallido es solo del navegador). Se anota recién al festejar, así un
     // efecto que se monta dos veces (modo estricto) no se lo saltea.
     const t = window.setTimeout(() => {
-      try {
-        localStorage.setItem(CLAVE_LOGRO_META, mes);
-      } catch {
-        // Sin almacenamiento: vale solo para esta carga.
-      }
+      anotarMetaFestejada(mes);
       setFestejar(true);
     }, 0);
     return () => window.clearTimeout(t);
