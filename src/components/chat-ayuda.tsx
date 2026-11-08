@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { claseBoton } from "@/components/ui";
 import { Icono } from "@/components/iconos";
+import { reproducir } from "@/lib/sonido";
 
 type Mensaje = { rol: "usuario" | "asistente"; texto: string };
 
@@ -49,6 +50,8 @@ export function ChatAyuda() {
       const datos = (await r.json().catch(() => ({}))) as { respuesta?: string; error?: string };
       if (!r.ok || !datos.respuesta) throw new Error(datos.error ?? "No pude responder ahora. Probá de nuevo.");
       setMensajes([...conPregunta, { rol: "asistente", texto: datos.respuesta }]);
+      // Respeta el interruptor de sonido: apagado, no suena.
+      reproducir("tap");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No pude responder ahora.");
       // La pregunta vuelve al campo para reintentar sin tipearla de nuevo.

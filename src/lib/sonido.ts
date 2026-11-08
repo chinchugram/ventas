@@ -24,8 +24,8 @@
 const CLAVE = "ventas:sonido";
 export const EVENTO_SONIDO = "ventas:sonido";
 
-/** Eventos del catálogo de momentos.md, más `pop` (tocar una pieza, como en la landing). */
-export type Momento = "cobro" | "turno" | "guardado" | "logro" | "offline" | "error" | "pop";
+/** Eventos del catálogo de momentos.md, más `pop` (tocar una pieza, como en la landing) y `tap` (llega una respuesta del chat). */
+export type Momento = "cobro" | "turno" | "guardado" | "logro" | "offline" | "error" | "pop" | "tap";
 
 type Nota = {
   /** Comienzo, en segundos desde el disparo. */
@@ -71,6 +71,8 @@ const SONIDOS: Record<Exclude<Momento, "guardado">, Nota[]> = {
   ],
   // Una nota que sube rápido y se apaga (el pop de la landing de Kiwitt).
   pop: [{ en: 0, desde: 420, hasta: 880, dura: 0.16, onda: "sine", vol: 0.12 }],
+  // Tap: un toque seco y suave, como un dedo sobre el vidrio (respuesta del chat de ayuda).
+  tap: [{ en: 0, desde: 1400, hasta: 900, dura: 0.05, onda: "sine", vol: 0.1 }],
 };
 
 /** Cuánto dura cada momento, en milisegundos: lo que hay que esperar para no cortarlo (p. ej. antes de navegar). */
