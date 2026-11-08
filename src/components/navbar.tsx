@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Icono, type NombreIcono } from "@/components/iconos";
 import { LogoMarca } from "@/components/logo-marca";
 import { LogoKiwitt } from "@/components/logo-kiwitt";
-import { InterruptorModo } from "@/components/interruptor-modo";
+import { BotonAyudaIA } from "@/components/chat-ayuda";
 import { RUTAS_MODO_SIMPLE, type Modo } from "@/lib/modo";
 import { claseBoton } from "@/components/ui";
 import { salir } from "@/app/login/actions";
@@ -115,11 +115,13 @@ export function Navbar({
   logo,
   usuario,
   modo,
+  conAyudaIA,
 }: {
   nombre: string;
   logo: string | null;
   usuario: UsuarioNavbar;
   modo: Modo;
+  conAyudaIA: boolean;
 }) {
   const pathname = usePathname() ?? "/";
   const principales = entradasVisibles(usuario.rol, PRINCIPALES, modo);
@@ -226,8 +228,8 @@ export function Navbar({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {/* Modo simple / avanzado: cuánto del menú se muestra. El sonido se prende y apaga en Configuración. */}
-            <InterruptorModo modo={modo} />
+            {/* Asistente con IA (si está configurado). El modo simple/avanzado y el sonido están en Configuración → Otros. */}
+            {conAyudaIA ? <BotonAyudaIA /> : null}
             {puedeNuevaVenta ? (
               // Hasta 2xl no entra el texto junto a la navegación y el selector de modo: queda el "+" con su nombre accesible.
               <Link

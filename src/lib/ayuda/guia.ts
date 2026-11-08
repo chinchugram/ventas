@@ -26,7 +26,7 @@ export type SeccionGuia = {
 export type Pregunta = { pregunta: string; respuesta: string };
 
 export const MODOS =
-  "La app tiene dos modos, arriba a la derecha: Simple (lo indispensable: ventas, clientes, cobranzas, artículos y la calculadora de cortes) " +
+  "La app tiene dos modos, en Configuración → Otros: Simple (lo indispensable: ventas, clientes, cobranzas, artículos y la calculadora de cortes) " +
   "y Avanzado (todo: recetas y margen real, stock, compras, producción, presupuestos, facturas y reportes). Cambiar de modo no borra nada.";
 
 export const INTRO =

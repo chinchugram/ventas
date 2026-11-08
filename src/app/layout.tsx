@@ -64,7 +64,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </a>
             {/* Sin sesion (la pantalla de /login) no hay navegacion. Al cliente solo viajan nombre y rol. */}
             {usuario ? (
-              <Navbar nombre={marca.nombre} logo={marca.logo} usuario={{ nombre: usuario.nombre, rol: usuario.rol }} modo={modo} />
+              <Navbar nombre={marca.nombre} logo={marca.logo} usuario={{ nombre: usuario.nombre, rol: usuario.rol }} modo={modo} conAyudaIA={asistenteDisponible()} />
             ) : null}
 
             <main id="contenido" className={`mx-auto max-w-page px-4 pt-6 ${usuario ? "pb-32 md:pb-10" : "pb-10"}`}>

@@ -10,7 +10,23 @@ import { ARRANQUE, SECCIONES } from "@/lib/ayuda/guia";
 type Mensaje = { rol: "usuario" | "asistente"; texto: string };
 
 const MAX_CARACTERES = 500;
-const SALUDO = "¡Hola! Preguntame cómo hacer algo en la app. Por ejemplo: ¿cómo cargo una receta?";
+const SALUDO = "¡Hola! Soy el asistente con IA de la app. Preguntame cómo hacer algo, por ejemplo: ¿cómo cargo una receta?";
+export const EVENTO_ABRIR_AYUDA = "ventas:abrir-ayuda";
+
+/** Botón del encabezado que abre el chat. Destellos = función con IA. */
+export function BotonAyudaIA() {
+  return (
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new Event(EVENTO_ABRIR_AYUDA))}
+      title="Preguntale a la IA cómo usar la app"
+      className="borde inline-flex min-h-11 items-center gap-1.5 rounded-full border-brand bg-brand-soft px-3 text-label font-bold text-brand-text transition-colors hover:bg-brand hover:text-on-color"
+    >
+      <Icono nombre="ia" className="h-5 w-5" />
+      Ayuda IA
+    </button>
+  );
+}
 
 /**
  * Chat de ayuda flotante. La conversacion vive solo en la pestaña (se pierde al recargar):
@@ -28,6 +44,13 @@ export function ChatAyuda() {
   useEffect(() => {
     finRef.current?.scrollIntoView({ block: "end" });
   }, [mensajes, enviando, abierto]);
+
+  // Lo abre el botón "Ayuda IA" del encabezado (BotonAyudaIA), que vive en otro árbol de componentes.
+  useEffect(() => {
+    const abrir = () => setAbierto(true);
+    window.addEventListener(EVENTO_ABRIR_AYUDA, abrir);
+    return () => window.removeEventListener(EVENTO_ABRIR_AYUDA, abrir);
+  }, []);
 
   useEffect(() => {
     if (!abierto) return;
@@ -77,17 +100,6 @@ export function ChatAyuda() {
 
   return (
     <>
-      {!abierto && (
-        <button
-          type="button"
-          onClick={() => setAbierto(true)}
-          className={`${claseBoton({ chico: true })} fixed right-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-[55] min-h-11 md:bottom-6`}
-        >
-          <Icono nombre="ayuda" className="h-5 w-5" />
-          Ayuda
-        </button>
-      )}
-
       {abierto && (
         // Oscurece la pantalla de atrás: el chat queda en primer plano y no se mezcla con la página.
         <div aria-hidden className="fixed inset-0 z-[62] hidden bg-black/55 md:block" onClick={() => setAbierto(false)} />
@@ -103,8 +115,8 @@ export function ChatAyuda() {
         >
           <header className="flex items-center justify-between gap-2 bg-brand px-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 text-on-color md:pt-2">
             <p className="flex items-center gap-2 font-display text-body font-bold">
-              <Icono nombre="ayuda" className="h-5 w-5" />
-              Asistente de ayuda
+              <Icono nombre="ia" className="h-5 w-5" />
+              Asistente con IA
             </p>
             <button type="button" onClick={() => setAbierto(false)} className="min-h-11 text-label font-bold underline underline-offset-2">
               Cerrar
