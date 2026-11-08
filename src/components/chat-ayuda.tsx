@@ -4,26 +4,30 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { claseBoton } from "@/components/ui";
 import { Icono } from "@/components/iconos";
+import { IconoIA } from "@/components/icono-ia";
 import { reproducir } from "@/lib/sonido";
 import { ARRANQUE, SECCIONES } from "@/lib/ayuda/guia";
 
 type Mensaje = { rol: "usuario" | "asistente"; texto: string };
 
 const MAX_CARACTERES = 500;
-const SALUDO = "¡Hola! Soy el asistente con IA de la app. Preguntame cómo hacer algo, por ejemplo: ¿cómo cargo una receta?";
+const SALUDO = "¡Hola! Preguntame cómo hacer algo en la app, por ejemplo: ¿cómo cargo una receta?";
 export const EVENTO_ABRIR_AYUDA = "ventas:abrir-ayuda";
 
-/** Botón del encabezado que abre el chat. Destellos = función con IA. */
+/**
+ * Botón del encabezado que abre el chat: solo el ícono de IA de la marca, en un botón sticker
+ * con esquinas redondeadas como el isotipo (distinto del "+" redondo de nueva venta).
+ */
 export function BotonAyudaIA() {
   return (
     <button
       type="button"
       onClick={() => window.dispatchEvent(new Event(EVENTO_ABRIR_AYUDA))}
-      title="Preguntale a la IA cómo usar la app"
-      className="borde inline-flex min-h-11 items-center gap-1.5 rounded-full border-brand bg-brand-soft px-3 text-label font-bold text-brand-text transition-colors hover:bg-brand hover:text-on-color"
+      aria-label="Ayuda"
+      title="Ayuda"
+      className={`${claseBoton()} h-11 w-11 shrink-0 rounded-md p-0`}
     >
-      <Icono nombre="ia" className="h-5 w-5" />
-      Ayuda IA
+      <IconoIA className="h-6 w-6" />
     </button>
   );
 }
@@ -109,14 +113,14 @@ export function ChatAyuda() {
         <section
           role="dialog"
           aria-modal="true"
-          aria-label="Asistente de ayuda"
+          aria-label="Ayuda"
           // Celular: pantalla completa (como una hoja que tapa todo). Desde md: panel flotante abajo a la derecha.
           className="fixed inset-0 z-[65] flex h-dvh flex-col overflow-hidden bg-surface-raised pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-6 md:bottom-6 md:h-auto md:max-h-[70dvh] md:w-96 md:rounded-lg md:border-2 md:border-brand md:pb-0 md:shadow-2xl"
         >
           <header className="flex items-center justify-between gap-2 bg-brand px-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 text-on-color md:pt-2">
             <p className="flex items-center gap-2 font-display text-body font-bold">
-              <Icono nombre="ia" className="h-5 w-5" />
-              Asistente con IA
+              <IconoIA className="h-6 w-6" />
+              Ayuda
             </p>
             <button type="button" onClick={() => setAbierto(false)} className="min-h-11 text-label font-bold underline underline-offset-2">
               Cerrar

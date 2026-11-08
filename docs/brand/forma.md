@@ -82,6 +82,9 @@ Un bloque de acento con `radius-md`, `shadow-press` y texto `on-color`. Se usa p
 
 - Línea de 2px, puntas redondeadas, 20px, en `ink`. Sin emojis en la interfaz.
 - Todavía no hay set propio. Mientras tanto, Phosphor en su variante Bold, que acompaña el peso de los botones.
+- **IA:** toda función con IA usa el mismo ícono, el *destello de marca*: un destello de cuatro puntas con
+  una pieza redonda al lado (el vocabulario del isotipo), en verde bosque sobre un sticker mandarina con
+  esquinas redondeadas. Va sin texto. En ventas: `src/components/icono-ia.tsx`.
 
 ## Movimiento
 
