@@ -1,71 +1,877 @@
 @import "tailwindcss";
 
-@theme inline {
-  /* HL Laser: naranja y negro del logo. */
-  --color-marca: #f09102;
-  --color-marca-claro: #fff3de;
-  --color-marca-texto: #a85a00; /* naranja legible sobre blanco (contraste 4.6:1) */
-  --color-tinta: #1a171a; /* negro del logo; tambien el texto sobre naranja */
-  --color-ok: oklch(0.62 0.15 155);
-  --color-critico: oklch(0.58 0.19 25);
-  --color-aviso: oklch(0.72 0.15 75);
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-}
+/*
+ * Tokens de diseño: marca Kiwitt (manual en docs/brand/, copia del de Kiwitt).
+ *
+ * ÚNICA fuente de verdad de los valores visuales de la app. Los componentes usan las utilidades
+ * que salen de acá (`bg-surface`, `text-ink`, `bg-brand`, `shadow-press`, `rounded-lg`,
+ * `font-display`, `text-display-md`…) o `var(--…)`; nunca un color, tamaño o sombra escrito a mano.
+ *
+ * Cómo está armado:
+ *  1. `:root` declara los valores crudos (claro), con los mismos nombres que tokens.css de Kiwitt.
+ *  2. El tema oscuro sigue `prefers-color-scheme` y solo en pantalla: al imprimir (comprobantes,
+ *     presupuestos) siempre sale el claro.
+ *  3. `@theme inline` expone los colores como utilidades de Tailwind v4. `inline` hace que la utilidad
+ *     use `var(--surface)` y no una copia del valor, así cambian solas con el tema.
+ *  4. `@theme static` declara lo que ya tiene nombre de Tailwind (fuentes, escala, radios, sombras,
+ *     curvas, animaciones, anchos).
+ *  5. No hay capa de compatibilidad: la paleta vieja de Tailwind (slate, red, emerald, amber…) y los
+ *     nombres del branding de HL Laser (marca, tinta…) ya no se usan en ninguna pantalla.
+ *
+ * Los valores marcados "(ventas)" no están en el manual de Kiwitt: los necesita un ERP (estados
+ * ok/aviso/crítico/info y un fondo suave de marca para lo seleccionado). Están calculados para dar
+ * ≥ 4.5:1 de texto sobre `surface`, `surface-raised` y su propio fondo suave, en los dos temas.
+ */
 
-html {
-  /* Mobile-first: el area tactil minima comoda es 44px. */
-  -webkit-text-size-adjust: 100%;
-}
+:root {
+  /* Color: superficies */
+  --surface: #fff8ee;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f6ecdd;
 
-body {
-  @apply bg-slate-100 text-slate-900 antialiased;
-  /* Sin esto, iOS hace zoom automaticamente al enfocar un input con fuente <16px. */
-  font-size: 16px;
+  /* Color: texto y líneas */
+  --ink: #1e3328;
+  --ink-muted: #5b6b60;
+  --line: #eadfcd;
+  --line-strong: #8a8478;
+
+  /* Color: marca */
+  --brand: #ff6b35;
+  --brand-text: #b8461b;
+  --brand-soft: #ffeee3; /* (ventas) fondo de lo seleccionado; encima va ink o brand-text */
+  --on-color: #1e3328;
+  --press: #1e3328;
+
+  /* Color: acentos de producto (iguales en ambos temas). Ventas usa cielo (productos.md). */
+  --c-sol: #ffc233;
+  --c-menta: #4cc9a0;
+  --c-cielo: #6cb4f5;
+  --c-frambuesa: #f2668f;
+
+  /* Color: estados (ventas). Relleno = acento (con on-color encima); texto, fondo suave y borde propios. */
+  --ok: var(--c-menta);
+  --ok-text: #1d7350;
+  --ok-soft: #def4e9;
+  --ok-line: #93d9bf;
+
+  --aviso: var(--c-sol);
+  --aviso-text: #8a5300;
+  --aviso-soft: #fff1cc;
+  --aviso-line: #f5cf72;
+
+  --critico: var(--c-frambuesa);
+  --critico-text: #b3261e;
+  --critico-soft: #fde7e1;
+  --critico-line: #f0a99b;
+
+  --info: var(--c-cielo);
+  --info-text: #1f5f99;
+  --info-soft: #e2effc;
+  --info-line: #a6cdf3;
+
+  /* Color: foco */
+  --focus: #1e3328;
+  --focus-on-color: var(--on-color); /* anillo dentro de un fondo brand o c-* */
+
+  /* Tipografía: escala (tipografia.md). Las familias y los estilos completos están en @theme, abajo. */
+  --display-md-tracking: -0.015em;
+  --label-size: 14px;
+  --label-line: 18px;
+  --label-weight: 700;
+  --body-size: 15px;
+  --body-line: 24px;
+  --body-sm-size: 13px;
+  --body-sm-line: 20px;
+  --eyebrow-size: 12px;
+  --eyebrow-line: 16px;
+  --eyebrow-weight: 500;
+  --eyebrow-tracking: 0.04em;
+  --display-md-size: 28px;
+  --display-md-line: 34px;
+  --display-md-weight: 700;
+  /* (ventas) 16px mínimo en campos: por debajo, iOS Safari hace zoom al enfocar. */
+  --input-size: 16px;
+
+  /* Anchos máximos */
+  --width-page: 1120px;
+  --width-read: 680px;
+
+  /* Bordes y foco */
+  --border-width: 1.5px;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  /* Botón sticker */
+  --press-depth: 3px;
+  --dur-press: 80ms;
+
+  /* Movimiento: rutina (color y opacidad, 120 a 180 ms) y momentos (tope 600 ms) */
+  --dur-rutina: 150ms;
+  --dur-momento: 480ms;
+
+  /* Stickers: giro máximo */
+  --sticker-tilt: -3deg;
 }
 
 /*
- * Estilos base de formulario. Van en la capa `base` para que las utilidades
- * (pl-7, w-5, text-xs...) les ganen al usarlas en un campo puntual.
+ * Oscuro: solo en pantalla, para que imprimir saque siempre papel claro. Sigue al sistema salvo que
+ * el usuario haya fijado un tema (`data-tema` en <html>, Configuración → Otros).
  */
-@layer base {
-  input,
-  select,
-  textarea {
-    @apply w-full rounded-lg border border-slate-500 bg-white px-3 py-2.5 text-slate-900;
-    @apply focus:border-marca-texto focus:ring-2 focus:ring-marca-texto focus:outline-none;
-    /* 16px minimo: por debajo, iOS Safari hace zoom al hacer foco. */
-    font-size: 16px;
-  }
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) {
+    --surface: #14201a;
+    --surface-raised: #1c2b23;
+    --surface-sunken: #0f1813;
 
-  label {
-    @apply mb-1 block text-sm font-medium text-slate-700;
+    --ink: #fff4e6;
+    --ink-muted: #b5bfb6;
+    --line: #2a3a31;
+    --line-strong: #6e7e73;
+
+    --brand: #ff7a45;
+    --brand-text: #ff9a6b;
+    --brand-soft: #43271b;
+    --press: #060a08;
+
+    --ok-text: #7fe0bd;
+    --ok-soft: #163a2d;
+    --ok-line: #2f6b54;
+    --aviso-text: #ffd166;
+    --aviso-soft: #3a2f12;
+    --aviso-line: #75602a;
+    --critico-text: #ff9b9b;
+    --critico-soft: #3b1f20;
+    --critico-line: #7a3a3a;
+    --info-text: #9ccbf7;
+    --info-soft: #172d42;
+    --info-line: #345a80;
+
+    --focus: #ff9a6b;
   }
 }
 
-/* Entrada de la hoja "Mas" en mobile. */
-@keyframes sheet-in {
+@media screen {
+  :root[data-tema="oscuro"] {
+    --surface: #14201a;
+    --surface-raised: #1c2b23;
+    --surface-sunken: #0f1813;
+
+    --ink: #fff4e6;
+    --ink-muted: #b5bfb6;
+    --line: #2a3a31;
+    --line-strong: #6e7e73;
+
+    --brand: #ff7a45;
+    --brand-text: #ff9a6b;
+    --brand-soft: #43271b;
+    --press: #060a08;
+
+    --ok-text: #7fe0bd;
+    --ok-soft: #163a2d;
+    --ok-line: #2f6b54;
+    --aviso-text: #ffd166;
+    --aviso-soft: #3a2f12;
+    --aviso-line: #75602a;
+    --critico-text: #ff9b9b;
+    --critico-soft: #3b1f20;
+    --critico-line: #7a3a3a;
+    --info-text: #9ccbf7;
+    --info-soft: #172d42;
+    --info-line: #345a80;
+
+    --focus: #ff9a6b;
+  }
+}
+
+/*
+ * Documentos para el cliente final (comprobante, presupuesto impreso): son del NEGOCIO, no de
+ * Kiwitt. Dentro de `.tema-documento` la paleta vuelve a neutros (papel blanco, texto casi negro,
+ * grises fríos), siempre en claro aunque la pantalla esté en oscuro, y sin la tipografía display.
+ * El logo del negocio lo pone el documento (LogoMarca). Ver docs/brand/README.md, "Ventas".
+ */
+.tema-documento {
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f1f5f9;
+  --ink: #0f172a;
+  --ink-muted: #475569;
+  --line: #e2e8f0;
+  --line-strong: #94a3b8;
+  --brand-text: #0f172a;
+  --brand-soft: #f1f5f9;
+  --ok-text: #1d7350;
+  --ok-soft: #def4e9;
+  --ok-line: #93d9bf;
+  --aviso-text: #8a5300;
+  --aviso-soft: #fff1cc;
+  --aviso-line: #f5cf72;
+  --critico-text: #b3261e;
+  --critico-soft: #fde7e1;
+  --critico-line: #f0a99b;
+  --info-text: #1f5f99;
+  --info-soft: #e2effc;
+  --info-line: #a6cdf3;
+  --focus: #0f172a;
+  color-scheme: light;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.tema-documento :is(h1, h2, h3) {
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+}
+
+/*
+ * Utilidades de Tailwind. Espaciado: se deja el de Tailwind (`--spacing: 0.25rem`), que ya es la
+ * base de 4px del manual: `p-1` = space-1, `p-3` = space-3, `gap-6` = space-6, `py-16` = space-16.
+ */
+@theme inline {
+  /* Colores: bg-*, text-*, border-*, ring-*, outline-*, fill-*… */
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-brand: var(--brand);
+  --color-brand-text: var(--brand-text);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-color: var(--on-color);
+  --color-press: var(--press);
+  --color-sol: var(--c-sol);
+  --color-menta: var(--c-menta);
+  --color-cielo: var(--c-cielo);
+  --color-frambuesa: var(--c-frambuesa);
+  --color-ok: var(--ok);
+  --color-ok-text: var(--ok-text);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-line: var(--ok-line);
+  --color-aviso: var(--aviso);
+  --color-aviso-text: var(--aviso-text);
+  --color-aviso-soft: var(--aviso-soft);
+  --color-aviso-line: var(--aviso-line);
+  --color-critico: var(--critico);
+  --color-critico-text: var(--critico-text);
+  --color-critico-soft: var(--critico-soft);
+  --color-critico-line: var(--critico-line);
+  --color-info: var(--info);
+  --color-info-text: var(--info-text);
+  --color-info-soft: var(--info-soft);
+  --color-info-line: var(--info-line);
+  --color-focus: var(--focus);
+}
+
+/*
+ * Tokens con nombre de Tailwind (font-*, text-*, radius-*, shadow-*, ease-*, animate-*,
+ * container-*): se declaran acá con su valor y Tailwind los publica como variables en :root
+ * (`static`: siempre, aunque ninguna utilidad los use, porque el CSS de abajo y los componentes
+ * los leen con var()).
+ */
+@theme static {
+  /* Familias: font-display, font-sans, font-mono. Las --fuente-* las define next/font en layout.tsx. */
+  --font-display: var(--fuente-bricolage), "Bricolage Grotesque", ui-rounded, system-ui, sans-serif;
+  --font-sans: var(--fuente-figtree), "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--fuente-plex-mono), "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  /* Escala: text-display-xl … text-eyebrow (tamaño, interlineado, peso y tracking juntos) */
+  --text-display-xl: 72px;
+  --text-display-xl--line-height: 72px;
+  --text-display-xl--font-weight: 800;
+  --text-display-xl--letter-spacing: -0.03em;
+  --text-display-lg: 48px;
+  --text-display-lg--line-height: 52px;
+  --text-display-lg--font-weight: 700;
+  --text-display-lg--letter-spacing: -0.025em;
+  --text-display-md: var(--display-md-size);
+  --text-display-md--line-height: var(--display-md-line);
+  --text-display-md--font-weight: var(--display-md-weight);
+  --text-display-md--letter-spacing: var(--display-md-tracking);
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 28px;
+  --text-body: var(--body-size);
+  --text-body--line-height: var(--body-line);
+  --text-body-sm: var(--body-sm-size);
+  --text-body-sm--line-height: var(--body-sm-line);
+  --text-label: var(--label-size);
+  --text-label--line-height: var(--label-line);
+  --text-label--font-weight: var(--label-weight);
+  --text-mono: 13px;
+  --text-mono--line-height: 20px;
+  --text-eyebrow: var(--eyebrow-size);
+  --text-eyebrow--line-height: var(--eyebrow-line);
+  --text-eyebrow--font-weight: var(--eyebrow-weight);
+  --text-eyebrow--letter-spacing: var(--eyebrow-tracking);
+  --text-input: var(--input-size);
+
+  /* Tracking del logotipo (logo.md): tracking-logo */
+  --tracking-logo: -0.03em;
+
+  /* Anchos: max-w-page, max-w-read */
+  --container-page: var(--width-page);
+  --container-read: var(--width-read);
+
+  /* Radios: rounded-sm (chips, checkboxes), rounded-md (inputs, stickers), rounded-lg (tarjetas),
+     rounded-full (botones, estados). rounded-xl y rounded-2xl valen lo mismo que lg: son los de
+     las tarjetas de antes de la marca y así no hace falta tocarlas. */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 24px;
+  --radius-xl: 24px;
+  --radius-2xl: 24px;
+  --radius-full: 999px;
+
+  /* Sombras sólidas, la única sombra de la marca: shadow-press, shadow-pressed */
+  --shadow-press: 0 3px 0 var(--press);
+  --shadow-pressed: 0 0 0 var(--press);
+
+  /* Curva de los momentos: ease-momento. Duraciones: duration-(--dur-press), duration-(--dur-rutina). */
+  --ease-momento: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Animaciones de momentos (momentos.md): animate-salto, animate-sacudir, animate-latido, animate-entrada */
+  --animate-salto: salto var(--dur-momento) var(--ease-momento);
+  --animate-sacudir: sacudir var(--dur-momento) ease-in-out;
+  --animate-latido: latido 1.6s ease-in-out infinite;
+  --animate-entrada: entrada var(--dur-momento) var(--ease-momento);
+  /* Momentos de src/components/momentos.tsx: tilde (guardado), moneda (cobro), estallido (logro). */
+  --animate-tilde: tilde var(--dur-momento) ease-out both;
+  --animate-caer: caer var(--dur-momento) var(--ease-momento) both;
+  --animate-estallido: estallido var(--dur-momento) ease-out both;
+}
+
+/* Momento "turno/cobro": la pieza salta como un sticker y vuelve con rebote. */
+@keyframes salto {
+  0% {
+    transform: none;
+  }
+  40% {
+    transform: translateY(calc(-2 * var(--press-depth))) rotate(var(--sticker-tilt));
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* Momento "error": el campo se sacude. */
+@keyframes sacudir {
+  0%,
+  100% {
+    transform: none;
+  }
+  20%,
+  60% {
+    transform: translateX(calc(-2 * var(--press-depth)));
+  }
+  40%,
+  80% {
+    transform: translateX(calc(2 * var(--press-depth)));
+  }
+}
+
+/* Momento "offline": un punto que late suave. */
+@keyframes latido {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Aparición de hojas y paneles (animate-entrada: la hoja "Más" del navbar). */
+@keyframes entrada {
   from {
     transform: translateY(1.5rem);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: none;
     opacity: 1;
   }
 }
 
-.sheet-in {
-  animation: sheet-in 200ms ease-out;
+/* Momento "guardado": se dibuja un tilde (el trazo del SVG usa pathLength="1"). */
+@keyframes tilde {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
-table {
-  @apply w-full border-collapse text-sm;
+/* Momento "cobro": cae una moneda y rebota al apoyarse. */
+@keyframes caer {
+  from {
+    transform: translateY(calc(-4 * var(--press-depth)));
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 
-th {
-  @apply border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600;
+/* Momento "logro": cada punto sale del centro hacia (--dx, --dy) y se apaga. */
+@keyframes estallido {
+  from {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(0.4);
+    opacity: 0;
+  }
 }
 
-td {
-  @apply border-b border-slate-100 px-3 py-2;
+/* ─── Base ──────────────────────────────────────────────────────────────── */
+
+@layer base {
+  html {
+    color-scheme: light dark;
+    -webkit-text-size-adjust: 100%;
+    background: var(--surface);
+  }
+
+  @media print {
+    html {
+      color-scheme: light;
+    }
+  }
+
+  body {
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: var(--body-size);
+    line-height: var(--body-line);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: var(--display-md-tracking);
+    text-wrap: balance;
+  }
+
+  /* Enlaces de texto sin clases: brand-text. Los que tienen clases (tarjetas, botones, navegación)
+     siguen el `color: inherit` de Tailwind y ponen su color con una utilidad. */
+  a:not([class]) {
+    color: var(--brand-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+
+  ::selection {
+    background: var(--brand);
+    color: var(--on-color);
+  }
+
+  /* Foco: anillo sólido separado del elemento, así cae sobre el papel (colores.md). */
+  :focus-visible {
+    outline: var(--focus-width) solid var(--focus);
+    outline-offset: var(--focus-offset);
+  }
+
+  /* Dentro de un fondo brand o c-*, el anillo usa on-color. */
+  .sobre-color :focus-visible {
+    outline-color: var(--focus-on-color);
+  }
+
+  /*
+   * Formularios. En la capa `base` para que las utilidades (pl-7, w-5, text-xs…) les ganen al
+   * usarlas en un campo puntual.
+   */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"]),
+  select,
+  textarea {
+    width: 100%;
+    border: var(--border-width) solid var(--line-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+    color: var(--ink);
+    min-height: 2.75rem;
+    padding: 0.625rem 0.75rem;
+    font-size: var(--input-size);
+    line-height: var(--body-line);
+    transition: border-color var(--dur-rutina), background-color var(--dur-rutina);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--ink-muted);
+    opacity: 1;
+  }
+
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"]):focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    border-color: var(--ink);
+    background: var(--surface-raised);
+  }
+
+  input[aria-invalid="true"],
+  select[aria-invalid="true"],
+  textarea[aria-invalid="true"] {
+    border-color: var(--critico-text);
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--brand);
+  }
+
+  input[type="file"] {
+    font-size: var(--body-size);
+    color: var(--ink-muted);
+  }
+
+  label {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--ink);
+    font-size: var(--label-size);
+    line-height: var(--label-line);
+    font-weight: var(--label-weight);
+  }
+
+  /* Tablas: encabezado en eyebrow, filas separadas por `line`, números tabulares a pedido. */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--body-sm-size);
+    line-height: var(--body-sm-line);
+  }
+
+  th {
+    border-bottom: var(--border-width) solid var(--line);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    color: var(--ink-muted);
+    font-family: var(--font-mono);
+    font-size: var(--eyebrow-size);
+    line-height: var(--eyebrow-line);
+    font-weight: var(--eyebrow-weight);
+    letter-spacing: var(--eyebrow-tracking);
+  }
+
+  td {
+    border-bottom: 1px solid var(--line);
+    padding: 0.5rem 0.75rem;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+/* ─── Componentes de marca (clases para usar desde cualquier JSX, también en <Link>) ─── */
+
+@layer components {
+  /*
+   * Botón sticker (forma.md): píldora con sombra sólida que baja --press-depth al apretar.
+   * Variantes: .boton-primario (brand), .boton-secundario (surface-raised + line-strong),
+   * .boton-peligro (borrar, anular), .boton-fantasma (sin relleno ni sombra, para acciones
+   * terciarias). Tamaños: por defecto 44px de alto (área táctil), .boton-chico.
+   */
+  .boton {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border: var(--border-width) solid transparent;
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-press);
+    font-family: var(--font-sans);
+    font-size: var(--label-size);
+    line-height: var(--label-line);
+    font-weight: var(--label-weight);
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      transform var(--dur-press),
+      box-shadow var(--dur-press),
+      background-color var(--dur-rutina),
+      color var(--dur-rutina);
+  }
+
+  .boton:active:not(:disabled, [aria-disabled="true"]) {
+    transform: translateY(var(--press-depth));
+    box-shadow: var(--shadow-pressed);
+  }
+
+  .boton:disabled,
+  .boton[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  /* Mientras guarda, queda apretado. */
+  .boton[aria-busy="true"] {
+    transform: translateY(var(--press-depth));
+    box-shadow: var(--shadow-pressed);
+    opacity: 1;
+    cursor: progress;
+  }
+
+  .boton-primario {
+    background: var(--brand);
+    color: var(--on-color);
+  }
+
+  .boton-secundario {
+    background: var(--surface-raised);
+    color: var(--ink);
+    border-color: var(--line-strong);
+  }
+
+  .boton-secundario:hover:not(:disabled) {
+    background: var(--surface-sunken);
+  }
+
+  .boton-peligro {
+    background: var(--surface-raised);
+    color: var(--critico-text);
+    border-color: var(--critico-text);
+  }
+
+  .boton-peligro:hover:not(:disabled) {
+    background: var(--critico-soft);
+  }
+
+  .boton-fantasma {
+    background: transparent;
+    color: var(--brand-text);
+    box-shadow: none;
+  }
+
+  .boton-fantasma:hover:not(:disabled) {
+    background: var(--brand-soft);
+  }
+
+  /* Fantasma de peligro: "Quitar", "Anular" en una fila. Sin sombra, texto critico. */
+  .boton-fantasma-peligro {
+    background: transparent;
+    color: var(--critico-text);
+    box-shadow: none;
+  }
+
+  .boton-fantasma-peligro:hover:not(:disabled) {
+    background: var(--critico-soft);
+  }
+
+  .boton-chico {
+    min-height: 2.25rem;
+    padding: 0.5rem 1rem;
+  }
+
+  /* En pantallas táctiles, el chico también llega al área táctil de 44px: solo cambia el relleno. */
+  @media (any-pointer: coarse) {
+    .boton-chico {
+      min-height: 2.75rem;
+    }
+  }
+
+  .boton-ancho {
+    width: 100%;
+  }
+
+  /*
+   * Chip elegible: opción que se marca (artículo del catálogo, método de cobro, filtro, pestaña).
+   * Es un <button aria-pressed> o un <Link aria-current="page">. Seleccionado = acento cielo
+   * (el de ventas, productos.md) con on-color y sombra sólida, como un sticker. 44px de alto.
+   */
+  .chip {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border: var(--border-width) solid var(--line-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    color: var(--ink);
+    font-size: var(--label-size);
+    line-height: var(--label-line);
+    font-weight: var(--label-weight);
+    text-align: left;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      transform var(--dur-press),
+      box-shadow var(--dur-press),
+      background-color var(--dur-rutina);
+  }
+
+  .chip:hover:not([aria-pressed="true"], [aria-current="page"], :disabled) {
+    background: var(--surface-sunken);
+  }
+
+  .chip:active:not(:disabled) {
+    transform: translateY(var(--press-depth));
+  }
+
+  .chip[aria-pressed="true"],
+  .chip[aria-current="page"] {
+    border-color: var(--press);
+    background: var(--c-cielo);
+    color: var(--on-color);
+    box-shadow: var(--shadow-press);
+  }
+
+  .chip:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  /* Tarjeta: surface-raised, borde line de --border-width y radius-lg (colores.md, forma.md). */
+  .tarjeta {
+    background: var(--surface-raised);
+    color: var(--ink);
+    border: var(--border-width) solid var(--line);
+    border-radius: var(--radius-lg);
+  }
+
+  /*
+   * Sticker: bloque de acento con radius-md, sombra sólida y texto on-color. Para etiquetas
+   * destacadas ("Nuevo", "Hoy") y montos de festejo. El color sale de una utilidad bg-* de acento
+   * o estado (bg-sol, bg-menta, bg-cielo, bg-frambuesa, bg-brand, bg-ok, bg-aviso, bg-critico).
+   */
+  .sticker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-press);
+    color: var(--on-color);
+    font-size: var(--label-size);
+    line-height: var(--label-line);
+    font-weight: var(--label-weight);
+  }
+
+  .sticker-girado {
+    transform: rotate(var(--sticker-tilt));
+  }
+
+  /* Enlace de texto con clases (p. ej. <Link className="enlace">): brand-text subrayado. */
+  .enlace {
+    color: var(--brand-text);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* Epígrafe sobre un título: mono, ink-muted. */
+  .eyebrow {
+    color: var(--ink-muted);
+    font-family: var(--font-mono);
+    font-size: var(--eyebrow-size);
+    line-height: var(--eyebrow-line);
+    font-weight: var(--eyebrow-weight);
+    letter-spacing: var(--eyebrow-tracking);
+  }
+
+  /* Monto de una fila de lista: display en body-lg, bold, números tabulares. El grande es .monto. */
+  .monto-fila {
+    font-family: var(--font-display);
+    font-size: var(--text-body-lg);
+    line-height: var(--text-body-lg--line-height);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Monto: display-md con números tabulares (tipografia.md). */
+  .monto {
+    font-family: var(--font-display);
+    font-size: var(--display-md-size);
+    line-height: var(--display-md-line);
+    font-weight: var(--display-md-weight);
+    letter-spacing: var(--display-md-tracking);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+ * Interruptor de sonido (InterruptorSonido): pista de 32 × 16 con perilla de 8, todo con la escala
+ * de 4px. Encendido (`aria-pressed="true"` en el botón del encabezado, `aria-checked="true"` en el
+ * `role="switch"` de Configuración): pista brand y perilla on-color a la derecha.
+ */
+@layer components {
+  .pista-sonido {
+    --perilla: calc(var(--spacing) * 2);
+    --hueco: calc((var(--spacing) * 4 - 2 * var(--border-width) - var(--perilla)) / 2);
+    display: inline-flex;
+    align-items: center;
+    width: calc(var(--spacing) * 8);
+    height: calc(var(--spacing) * 4);
+    padding-inline: var(--hueco);
+    border: var(--border-width) solid currentColor;
+    border-radius: var(--radius-full);
+    transition: background-color var(--dur-press);
+  }
+
+  .perilla-sonido {
+    width: var(--perilla);
+    height: var(--perilla);
+    border-radius: var(--radius-full);
+    background: currentColor;
+    transition:
+      transform var(--dur-press),
+      background-color var(--dur-press);
+  }
+
+  [aria-pressed="true"] > .pista-sonido,
+  [role="switch"][aria-checked="true"] > .pista-sonido {
+    background: var(--brand);
+  }
+
+  [aria-pressed="true"] > .pista-sonido > .perilla-sonido,
+  [role="switch"][aria-checked="true"] > .pista-sonido > .perilla-sonido {
+    transform: translateX(calc(var(--spacing) * 8 - 2 * var(--border-width) - 2 * var(--hueco) - var(--perilla)));
+    background: var(--on-color);
+  }
+}
+
+/* Borde de marca (1.5px): `borde` + un color (border-line, border-line-strong…). */
+@utility borde {
+  border-width: var(--border-width);
+  border-style: solid;
+}
+
+/* Movimiento reducido: todo pasa sin desplazamientos (momentos.md, forma.md). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .boton:active:not(:disabled),
+  .boton[aria-busy="true"],
+  .chip:active:not(:disabled) {
+    transform: none;
+  }
 }

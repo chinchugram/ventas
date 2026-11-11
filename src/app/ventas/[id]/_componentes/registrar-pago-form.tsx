@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { registrarPago } from "@/app/ventas/[id]/actions";
 import {
   BloqueError,
-  BloqueExito,
   BotonEnviar,
   CampoDecimal,
   CampoNotas,
@@ -16,9 +15,18 @@ import {
 } from "@/components/form";
 import { decimalOCero, esDecimal } from "@/lib/acciones";
 import { d, fmtMoneda } from "@/lib/money";
+import { MontoQueCuenta } from "@/components/momentos";
+import { TituloBloque } from "@/components/ui";
 import { ETIQUETA_METODO, METODOS_PAGO, montoSugerido, validarMontoContraSaldo, type MetodoPago } from "@/lib/cobranzas";
 
 const OPCIONES_METODO = METODOS_PAGO.map((m) => ({ valor: m, etiqueta: ETIQUETA_METODO[m]! }));
+
+/** voz.md: los festejos rotan para no cansar (una exclamación, el monto real después). */
+const FESTEJOS_COBRO = ["¡Cobrado!", "¡Listo, cobrado!", "¡Entró la plata!"];
+let vueltaFestejo = 0;
+function festejoDeCobro(): string {
+  return FESTEJOS_COBRO[vueltaFestejo++ % FESTEJOS_COBRO.length]!;
+}
 
 /**
  * Cobro sobre una venta. El monto arranca con el saldo (el caso comun es
@@ -27,12 +35,19 @@ const OPCIONES_METODO = METODOS_PAGO.map((m) => ({ valor: m, etiqueta: ETIQUETA_
  */
 export function RegistrarPagoForm({ ventaId, saldo, hoy }: { ventaId: string; saldo: string; hoy: string }) {
   const router = useRouter();
-  const { pendiente, error, enviar } = useAccion(registrarPago);
+  // Momento "cobro": caja registradora y aviso flotante (el formulario desaparece si se cobró todo).
+  const { pendiente, error, enviar } = useAccion(registrarPago, {
+    momento: "cobro",
+    anuncio: (_r, datos) => (
+      <>
+        {festejoDeCobro()} <MontoQueCuenta valor={decimalOCero(datos.monto).toNumber()} formato={fmtMoneda} /> ya están en caja.
+      </>
+    ),
+  });
   const [monto, setMonto] = useState(() => montoSugerido(d(saldo)));
   const [metodo, setMetodo] = useState<MetodoPago>("EFECTIVO");
   const [fecha, setFecha] = useState(hoy);
   const [notas, setNotas] = useState("");
-  const [exito, setExito] = useState<string | null>(null);
 
   const aviso = monto.trim() && esDecimal(monto) ? validarMontoContraSaldo(decimalOCero(monto), d(saldo)) : null;
   const resto = decimalOCero(monto).gt(0) && !aviso ? d(saldo).minus(decimalOCero(monto)) : null;
@@ -41,28 +56,26 @@ export function RegistrarPagoForm({ ventaId, saldo, hoy }: { ventaId: string; sa
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        setExito(null);
         enviar({ ventaId, monto, metodo, fecha, notas }, () => {
           const cobrado = decimalOCero(monto);
-          setExito(`Pago de ${fmtMoneda(cobrado)} registrado.`);
           // Sugiere lo que queda para el proximo cobro.
-          setMonto(montoSugerido(d(saldo).minus(cobrado).abs()));
+          // Si se cobró todo, el formulario se va con el refresh: vacío, para no mostrar (ni sacudir)
+          // un "tiene que ser mayor a 0" sobre un cobro que salió bien.
+          const restante = d(saldo).minus(cobrado).abs();
+          setMonto(restante.gt(0) ? montoSugerido(restante) : "");
           setNotas("");
           router.refresh();
         });
       }}
-      className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
-      <h2 className="text-sm font-semibold text-slate-900">Registrar pago</h2>
+      <TituloBloque className="">Registrar pago</TituloBloque>
       <NotaObligatorio />
       <CampoDecimal
         etiqueta="Monto"
         prefijo="$"
         valor={monto}
-        alCambiar={(v) => {
-          setMonto(v);
-          setExito(null);
-        }}
+        alCambiar={setMonto}
         error={aviso}
         ayuda={
           aviso
@@ -92,7 +105,6 @@ export function RegistrarPagoForm({ ventaId, saldo, hoy }: { ventaId: string; sa
         placeholder="N° de transferencia, quién pagó…"
       />
       <BloqueError mensaje={error} />
-      <BloqueExito mensaje={exito} />
       <BotonEnviar pendiente={pendiente} texto="Registrar pago" disabled={!!aviso} variante="marca" />
     </form>
   );

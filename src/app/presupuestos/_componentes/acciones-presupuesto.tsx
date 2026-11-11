@@ -4,12 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BloqueError, useAccion } from "@/components/form";
+import { Aviso, Boton } from "@/components/ui";
 import { anularPresupuesto, convertirPresupuesto, duplicarPresupuesto } from "../actions";
 
 type Conversion = { ventaId: string; numero: number; anio: number; advertencias: string[] };
-
-const BOTON_SECUNDARIO =
-  "inline-flex min-h-12 w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 disabled:opacity-60";
 
 /**
  * Acciones del detalle. Se queda montado despues de convertir (la pagina se
@@ -44,26 +42,24 @@ export function AccionesPresupuesto({
   return (
     <div className="space-y-3">
       {convertido ? (
-        <div role="status" className="space-y-2 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">
-          <p className="font-semibold">
-            Listo: se creó la venta #{convertido.numero}/{convertido.anio} (pendiente de entrega y sin cobrar).
-          </p>
+        <Aviso tono="ok" titulo={`Listo, se creó la venta #${convertido.numero}/${convertido.anio}.`} role="status">
+          <p>Quedó pendiente de entrega y sin cobrar.</p>
           {convertido.advertencias.length > 0 ? (
-            <ul className="list-disc space-y-1 pl-5 text-amber-900">
+            <ul className="mt-2 list-disc space-y-1 pl-5">
               {convertido.advertencias.map((a) => (
                 <li key={a}>{a}</li>
               ))}
             </ul>
           ) : null}
-          <Link href={`/ventas/${convertido.ventaId}`} className="inline-flex min-h-11 items-center font-semibold underline">
+          <Link href={`/ventas/${convertido.ventaId}`} className="enlace inline-flex min-h-11 items-center">
             Ver la venta
           </Link>
-        </div>
+        </Aviso>
       ) : null}
 
       {puedeConvertir ? (
-        <button
-          type="button"
+        <Boton
+          ancho
           disabled={ocupado}
           aria-busy={conversion.pendiente || undefined}
           onClick={() =>
@@ -72,54 +68,49 @@ export function AccionesPresupuesto({
               router.refresh();
             })
           }
-          className="min-h-12 w-full rounded-lg bg-marca py-3 font-semibold text-tinta transition-transform active:scale-[0.98] disabled:opacity-60"
         >
           {conversion.pendiente ? "Convirtiendo…" : "Convertir en venta"}
-        </button>
+        </Boton>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-3">
         {puedeEditar ? (
-          <Link href={`/presupuestos/${id}/editar`} className={BOTON_SECUNDARIO}>
+          <Boton href={`/presupuestos/${id}/editar`} variante="secundario">
             Editar
-          </Link>
+          </Boton>
         ) : null}
         {puedeDuplicar ? (
-          <button
-            type="button"
+          <Boton
+            variante={vencido ? "primario" : "secundario"}
             disabled={ocupado}
+            aria-busy={duplicado.pendiente || undefined}
             onClick={() => duplicado.enviar({ id }, (r) => router.push(`/presupuestos/${r.id}`))}
-            className={`${BOTON_SECUNDARIO} ${vencido ? "col-span-2 border-marca bg-marca-claro text-marca-texto" : ""}`}
+            className={vencido ? "col-span-2" : ""}
           >
             {duplicado.pendiente ? "Duplicando…" : "Duplicar con precios de hoy"}
-          </button>
+          </Boton>
         ) : null}
       </div>
 
       {puedeAnular ? (
         confirmandoAnular ? (
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setConfirmandoAnular(false)} disabled={ocupado} className={BOTON_SECUNDARIO}>
+          <div className="grid grid-cols-2 gap-3">
+            <Boton variante="secundario" onClick={() => setConfirmandoAnular(false)} disabled={ocupado}>
               No anular
-            </button>
-            <button
-              type="button"
+            </Boton>
+            <Boton
+              variante="peligro"
               disabled={ocupado}
+              aria-busy={anulacion.pendiente || undefined}
               onClick={() => anulacion.enviar({ id }, () => router.refresh())}
-              className="min-h-12 rounded-lg bg-red-600 py-3 text-sm font-semibold text-white disabled:opacity-60"
             >
               {anulacion.pendiente ? "Anulando…" : "Sí, anular"}
-            </button>
+            </Boton>
           </div>
         ) : (
-          <button
-            type="button"
-            disabled={ocupado}
-            onClick={() => setConfirmandoAnular(true)}
-            className="min-h-12 w-full rounded-lg border border-red-300 bg-white text-sm font-semibold text-red-700 disabled:opacity-60"
-          >
+          <Boton variante="peligro" ancho disabled={ocupado} onClick={() => setConfirmandoAnular(true)}>
             Anular presupuesto
-          </button>
+          </Boton>
         )
       ) : null}
 

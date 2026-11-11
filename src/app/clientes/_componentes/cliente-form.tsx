@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearCliente, editarCliente, type DatosCliente } from "@/app/clientes/actions";
 import { AvisoDemo, BloqueError, BotonEnviar, CampoNotas, CampoSelect, CampoTexto, NotaObligatorio, useAccion, type Opcion } from "@/components/form";
+import { Aviso } from "@/components/ui";
 import { normalizarCuit, validarCuit } from "@/lib/cuit";
 import { normalizarDni } from "@/lib/comprobantes";
 import { ETIQUETA_CONDICION_IVA } from "@/lib/datos-fiscales";
@@ -96,7 +97,7 @@ export function ClienteForm({
         if (id) editar.enviar(datos, () => router.push(`/clientes/${id}`));
         else crear.enviar(datos, (r) => router.push(`/clientes/${r.id}`));
       }}
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
       <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="los clientes" />
@@ -127,9 +128,9 @@ export function ClienteForm({
         ayuda={avisoCuit ? undefined : "Con o sin guiones. Se verifica el dígito verificador."}
       />
       {avisoFacturaA ? (
-        <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+        <Aviso tono="aviso" role="status">
           {avisoFacturaA}
-        </p>
+        </Aviso>
       ) : null}
       <CampoTexto
         etiqueta="DNI (opcional)"

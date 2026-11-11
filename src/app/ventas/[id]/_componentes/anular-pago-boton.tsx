@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { anularPago } from "@/app/ventas/[id]/actions";
 import { BloqueError, BotonEnviar, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
+import { Boton } from "@/components/ui";
 
 /**
  * Anular un pago pide el motivo: el pago no se borra, queda tachado con ese
@@ -11,19 +12,15 @@ import { BloqueError, BotonEnviar, CampoTexto, NotaObligatorio, useAccion } from
  */
 export function AnularPagoBoton({ pagoId }: { pagoId: string }) {
   const router = useRouter();
-  const { pendiente, error, setError, enviar } = useAccion(anularPago);
+  const { pendiente, error, setError, enviar } = useAccion(anularPago, { gravedad: "dinero" });
   const [abierto, setAbierto] = useState(false);
   const [motivo, setMotivo] = useState("");
 
   if (!abierto) {
     return (
-      <button
-        type="button"
-        onClick={() => setAbierto(true)}
-        className="inline-flex min-h-11 items-center rounded-md px-3 text-xs font-semibold text-red-700 underline-offset-2 hover:underline"
-      >
-        Anular
-      </button>
+      <Boton variante="fantasma-peligro" onClick={() => setAbierto(true)}>
+        Anular pago
+      </Boton>
     );
   }
 
@@ -37,7 +34,7 @@ export function AnularPagoBoton({ pagoId }: { pagoId: string }) {
           router.refresh();
         });
       }}
-      className="mt-2 w-full space-y-2 rounded-lg bg-red-50 p-3"
+      className="borde mt-2 w-full space-y-3 rounded-md border-critico-line bg-critico-soft p-3"
     >
       <NotaObligatorio />
       <CampoTexto
@@ -50,17 +47,16 @@ export function AnularPagoBoton({ pagoId }: { pagoId: string }) {
         required
       />
       <BloqueError mensaje={error} />
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
+      <div className="grid grid-cols-2 gap-3">
+        <Boton
+          variante="secundario"
           onClick={() => {
             setAbierto(false);
             setError(null);
           }}
-          className="rounded-lg border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700"
         >
           Cancelar
-        </button>
+        </Boton>
         <BotonEnviar pendiente={pendiente} texto="Anular pago" textoPendiente="Anulando…" variante="peligro" />
       </div>
     </form>

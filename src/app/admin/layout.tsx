@@ -1,4 +1,7 @@
 import { salir } from "@/app/login/actions";
+import { LogoKiwitt } from "@/components/logo-kiwitt";
+import { InterruptorSonido } from "@/components/sonido";
+import { claseBoton } from "@/components/ui";
 import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
@@ -12,18 +15,22 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const actual = await requierePermisoPagina("administrarNegocios");
   return (
     <>
-      <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-        <p className="text-sm font-semibold text-slate-900">
-          Administración <span className="font-normal text-slate-500">· {actual.nombre}</span>
-        </p>
-        <form action={salir}>
-          <button
-            type="submit"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
-            Salir
-          </button>
-        </form>
+      <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b-(length:--border-width) border-line pb-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <LogoKiwitt variante="isotipo" />
+          <p className="min-w-0 text-body font-bold text-ink">
+            Administración <span className="font-normal text-ink-muted">· {actual.nombre}</span>
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Sonido (momentos.md): el interruptor va en todas las pantallas; acá no hay navbar. */}
+          <InterruptorSonido conTexto={false} className="min-h-11 px-3" />
+          <form action={salir}>
+            <button type="submit" className={claseBoton({ variante: "secundario" })}>
+              Salir
+            </button>
+          </form>
+        </div>
       </header>
       {children}
     </>

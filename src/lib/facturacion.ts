@@ -34,7 +34,7 @@ export const ETIQUETA_ESTADO_COMPROBANTE: Record<EstadoComprobante, string> = {
   RECHAZADO: "Rechazado",
 };
 export const ETIQUETA_AMBIENTE: Record<AmbienteComprobante, string> = {
-  SIMULADO: "Simulado",
+  SIMULADO: "Interno",
   HOMOLOGACION: "Homologación",
   PRODUCCION: "Producción",
 };

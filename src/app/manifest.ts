@@ -12,8 +12,9 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     start_url: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#1a171a",
-    theme_color: "#1a171a",
+    // Papel de Kiwitt (`--surface` claro de globals.css): la app instalada se ve con la marca de la app.
+    background_color: "#fff8ee",
+    theme_color: "#fff8ee",
     lang: "es-AR",
     icons: iconosDe(logo, logoTipo, logoPropio),
   };

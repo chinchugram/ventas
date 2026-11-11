@@ -15,11 +15,14 @@ export function FormularioLogin({ siguiente, negocioInicial }: { siguiente: stri
   const [negocio, setNegocio] = useState(negocioInicial);
   const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
+  // Cada intento fallido vuelve a montar el aviso: así se sacude también si el mensaje se repite.
+  const [intento, setIntento] = useState(0);
 
   // Tras un error: se borra la clave y el foco vuelve a ella; el usuario queda escrito.
   useEffect(() => {
     if (!estado.error) return;
     setClave("");
+    setIntento((n) => n + 1);
     document.getElementById(ID_CLAVE)?.focus();
   }, [estado]);
 
@@ -62,8 +65,8 @@ export function FormularioLogin({ siguiente, negocioInicial }: { siguiente: stri
         maxLength={400}
         required
       />
-      <BloqueError mensaje={estado.error} />
-      <BotonEnviar pendiente={pendiente} texto="Entrar" textoPendiente="Entrando…" variante="marca" className="min-h-11" />
+      <BloqueError key={intento} mensaje={estado.error} />
+      <BotonEnviar pendiente={pendiente} texto="Entrar" textoPendiente="Entrando…" variante="marca" />
     </form>
   );
 }

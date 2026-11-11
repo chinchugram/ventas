@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requierePermisoPagina } from "@/lib/permisos";
 import { getUsuario } from "@/lib/queries/usuarios";
-import { Seccion } from "@/components/ui";
+import { Aviso, Boton, Panel, Seccion } from "@/components/ui";
 import { fechaArgentina, InsigniaRol, Pastilla } from "../_formato";
 import { AccionesUsuario } from "../_componentes/acciones-usuario";
 
@@ -25,19 +24,17 @@ export default async function UsuarioPage({ params }: { params: Promise<{ id: st
   return (
     <>
       <Seccion
+        epigrafe="Usuario"
         titulo={u.nombre}
         descripcion={`${u.usuario} · desde el ${fechaArgentina(u.creadoEn)}`}
         accion={
-          <Link
-            href="/usuarios"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/usuarios" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
 
-      <div className="mb-4 flex flex-wrap gap-1">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <InsigniaRol rol={u.rol} />
         {soyYo ? <Pastilla tono="marca">Vos</Pastilla> : null}
         {!u.activo ? <Pastilla tono="gris">Dado de baja</Pastilla> : null}
@@ -45,23 +42,18 @@ export default async function UsuarioPage({ params }: { params: Promise<{ id: st
       </div>
 
       {!u.activo ? (
-        <p className="mb-4 rounded-lg bg-slate-200 p-3 text-sm text-slate-700">
-          Usuario dado de baja: no puede entrar. Su historial se conserva.
-        </p>
+        <Aviso tono="aviso" titulo="Usuario dado de baja." className="mb-4">
+          No puede entrar. Su historial se conserva.
+        </Aviso>
       ) : null}
 
       {soyYo ? (
-        <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-sm text-slate-700">
+        <Panel className="space-y-3">
+          <p className="text-body text-ink">
             Este es tu usuario. No podés darte de baja ni cambiarte el rol: si hace falta, lo hace otro dueño.
           </p>
-          <Link
-            href="/usuarios/mi-clave"
-            className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta"
-          >
-            Cambiar mi clave
-          </Link>
-        </div>
+          <Boton href="/usuarios/mi-clave">Cambiar mi clave</Boton>
+        </Panel>
       ) : (
         <AccionesUsuario
           id={u.id}

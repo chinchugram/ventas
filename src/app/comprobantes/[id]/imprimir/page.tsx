@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requierePermisoPagina } from "@/lib/permisos";
 import { getComprobante } from "@/lib/queries/comprobante";
+import { Boton } from "@/components/ui";
 import { BotonImprimir } from "../_componentes/boton-imprimir";
 import { DocumentoComprobante } from "../_componentes/documento";
 import { FranjaSinValidez } from "../_componentes/marca-sin-validez";
@@ -17,7 +17,7 @@ const CSS_IMPRESION = `
 @media print {
   html, body { background: #fff !important; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  body > header, body > nav, body > dialog, body > a, .no-imprimir { display: none !important; }
+  body > header, body > nav, body > dialog, body > a, body > div, .no-imprimir { display: none !important; }
   main { max-width: none !important; margin: 0 !important; padding: 0 !important; }
   .documento { border: 0 !important; max-width: none !important; }
   .documento section, .documento header { break-inside: avoid; }
@@ -34,18 +34,17 @@ export default async function ImprimirComprobantePage({ params }: { params: Prom
   return (
     <>
       <style>{CSS_IMPRESION}</style>
-      <div className="no-imprimir mb-4 flex flex-wrap items-center gap-2">
+      <div className="no-imprimir mb-4 flex flex-wrap items-center gap-3">
+        {/* El título visible es el del documento (del negocio, sin títulos de la app): este es el de la página. */}
+        <h1 className="sr-only">Comprobante para imprimir</h1>
         <BotonImprimir />
-        <Link
-          href={`/comprobantes/${comprobante.id}`}
-          className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-        >
+        <Boton href={`/comprobantes/${comprobante.id}`} variante="secundario">
           Volver al detalle
-        </Link>
-        <p className="w-full text-xs text-slate-600">Para el PDF: Imprimir y elegir “Guardar como PDF” como destino.</p>
+        </Boton>
+        <p className="w-full text-body-sm text-ink-muted">Para el PDF: Imprimir y elegir “Guardar como PDF” como destino.</p>
       </div>
       {/* En pantalla la marca también va fuera del papel, bien arriba (no se imprime: el documento ya la lleva). */}
-      <FranjaSinValidez ambiente={comprobante.ambiente} className="no-imprimir mb-3 rounded-lg" />
+      <FranjaSinValidez ambiente={comprobante.ambiente} variante="app" className="no-imprimir mb-3 rounded-md" />
       <DocumentoComprobante c={comprobante} />
     </>
   );

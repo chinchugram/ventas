@@ -137,7 +137,8 @@ const MARCA_B = "ZZAISLAMIENTOB";
 
 // `superadmin` (F4.3): `/admin/**`. Solo lo abre una sesion de SUPERADMIN (sin negocio); un dueno o un empleado
 // reciben 403 y sin sesion se va a /login.
-type Clase = "publica" | "dueno" | "ambos" | "superadmin";
+// `apiPost`: endpoint JSON de cualquier usuario de un negocio que solo atiende POST (el chat de ayuda).
+type Clase = "publica" | "dueno" | "ambos" | "superadmin" | "apiPost";
 
 const CLASIFICACION: Record<string, Clase> = {
   // Publicas: el login y lo que el `matcher` del proxy deja pasar (manifiesto, iconos, logo).
@@ -159,6 +160,9 @@ const CLASIFICACION: Record<string, Clase> = {
   "/compras": "dueno",
   "/compras/nueva": "dueno",
   "/configuracion": "dueno",
+  "/configuracion/datos-fiscales": "dueno",
+  "/configuracion/maquinas": "dueno",
+  "/configuracion/otros": "dueno",
   "/configuracion/maquinas/nueva": "dueno",
   "/configuracion/maquinas/[id]": "dueno",
   "/cortes": "dueno",
@@ -198,6 +202,9 @@ const CLASIFICACION: Record<string, Clase> = {
   "/produccion/trabajo/[id]": "ambos",
   "/reposicion": "ambos",
   "/usuarios/mi-clave": "ambos",
+  // Guía de uso y chat de ayuda: cualquier usuario de un negocio. El chat solo responde a POST.
+  "/ayuda": "ambos",
+  "/api/ayuda": "apiPost",
   "/ventas": "ambos",
   "/ventas/nueva": "ambos",
   "/ventas/[id]": "ambos",
@@ -1156,6 +1163,24 @@ async function probarRuta(patron: string, clase: Clase, url: string, ctx: Contex
   // 1b. /admin/**: solo el SUPERADMIN. Dueno y empleado reciben 403 (HTML y RSC); sin sesion, /login.
   if (clase === "superadmin") {
     await probarRutaAdmin(f, url, ctx);
+    return;
+  }
+
+  // 1c. Endpoint JSON solo-POST: sin sesion no se atiende; con sesion (dueno o empleado) un cuerpo vacio
+  //     se rechaza con 400 en la validacion, antes de llamar a ningun servicio externo.
+  if (clase === "apiPost") {
+    const json = { "Content-Type": "application/json" };
+    const sin = await pedir(url, { metodo: "POST", cabeceras: json, cuerpo: "{}" });
+    registrar(f, "sinCookie", aLogin(sin), "POST sin cookie: redireccion a /login o 401", evidencia(sin));
+    const rTrucha = await pedir(url, { metodo: "POST", cabeceras: json, cuerpo: "{}", cookie: await cookieInventada(ctx.prisma) });
+    registrar(f, "sinCookie", aLogin(rTrucha), "POST con cookie inventada: redireccion a /login o 401", evidencia(rTrucha));
+    const rBaja = await pedir(url, { metodo: "POST", cabeceras: json, cuerpo: "{}", cookie: await crearSesionDirecta(ctx.prisma, ses.bajaId) });
+    registrar(f, "baja", aLogin(rBaja), "POST de usuario dado de baja: redireccion a /login o 401", evidencia(rBaja));
+    for (const [quien, cookie] of [["empleado", ses.empleado], ["dueno", ses.dueno]] as const) {
+      const r = await pedir(url, { metodo: "POST", cabeceras: json, cuerpo: "{}", cookie });
+      registrar(f, quien, r.status === 400 && destinoDe(r) === null, `${quien}: POST vacio responde 400 (paso la sesion, fallo la validacion)`, evidencia(r));
+      sinFugas(f, "fugas", `lo que recibe ${quien} del endpoint`, r.cuerpo, ctx);
+    }
     return;
   }
 

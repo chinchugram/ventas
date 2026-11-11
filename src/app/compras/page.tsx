@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { fmtFecha, fmtMonedaCorta, fmtNumero } from "@/lib/money";
 import { getCompras } from "@/lib/queries/compras";
-import { Seccion, Vacio } from "@/components/ui";
+import { Boton, Seccion, Vacio } from "@/components/ui";
 import { requierePermisoPagina } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
@@ -13,36 +12,33 @@ export default async function ComprasPage() {
   return (
     <>
       <Seccion
+        epigrafe="Lo que entra al taller"
         titulo="Compras"
-        descripcion="Lo que entra al taller, a quién y a qué costo"
-        accion={
-          <Link href="/compras/nueva" className="inline-flex min-h-11 items-center rounded-lg bg-marca px-3 text-sm font-semibold text-tinta">
-            Nueva compra
-          </Link>
-        }
+        descripcion="A quién le compraste y a qué costo"
+        accion={<Boton href="/compras/nueva">Nueva compra</Boton>}
       />
 
       {compras.length === 0 ? (
         <Vacio
-          mensaje="Todavía no hay compras registradas"
+          mensaje="Todavía no hay compras registradas."
           hint="Cada compra suma stock y deja el precio pagado, para que el costo no dependa de la memoria."
         />
       ) : (
         <ul className="space-y-2">
           {compras.map((c) => (
-            <li key={c.id} className="rounded-xl border border-slate-200 bg-white p-4">
+            <li key={c.id} className="tarjeta p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium text-slate-900">{c.proveedor}</p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-body font-semibold break-words text-ink">{c.proveedor}</p>
+                  <p className="text-body-sm break-words text-ink-muted">
                     {fmtFecha(c.fecha)}
                     {c.comprobante ? ` · ${c.comprobante}` : ""}
                   </p>
-                  <p className="text-xs text-slate-500">Registrado por {c.registradoPor ?? "—"}</p>
+                  <p className="text-body-sm text-ink-muted">Registrado por {c.registradoPor ?? "—"}</p>
                 </div>
-                <p className="shrink-0 font-semibold tabular-nums text-slate-900">{fmtMonedaCorta(c.total)}</p>
+                <p className="monto-fila shrink-0 text-ink">{fmtMonedaCorta(c.total)}</p>
               </div>
-              <ul className="mt-3 space-y-1 text-sm text-slate-600">
+              <ul className="mt-3 space-y-1 border-t-(length:--border-width) border-line pt-3 text-body-sm text-ink-muted">
                 {c.items.map((i, idx) => (
                   <li key={idx} className="flex justify-between gap-3">
                     <span className="min-w-0 truncate">{i.material}</span>

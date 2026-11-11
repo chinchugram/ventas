@@ -3,7 +3,7 @@ import { fmtNumero } from "@/lib/money";
 import { getListasPrecios, type ListaListado } from "@/lib/queries/listas-precios";
 import { dbDisponible } from "@/lib/prisma";
 import { requierePermisoPagina } from "@/lib/permisos";
-import { Seccion, Vacio } from "@/components/ui";
+import { Aviso, Boton, Etiqueta, Plegable, Seccion, Vacio } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -17,27 +17,21 @@ export default async function ListasPreciosPage() {
   return (
     <>
       <Seccion
+        epigrafe="Precios por cliente"
         titulo="Listas de precios"
         descripcion="Precios distintos para ciertos clientes"
-        accion={
-          <Link
-            href="/listas-precios/nueva"
-            className="inline-flex min-h-11 items-center rounded-lg bg-tinta px-3 text-sm font-semibold text-white"
-          >
-            + Nueva lista
-          </Link>
-        }
+        accion={<Boton href="/listas-precios/nueva">Nueva lista</Boton>}
       />
 
       {!hayBase ? (
-        <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          Modo demostración: sin base de datos conectada no hay listas de precios.
-        </p>
+        <Aviso tono="aviso" titulo="Modo demostración" className="mb-4">
+          Sin base de datos conectada no hay listas de precios.
+        </Aviso>
       ) : null}
 
       {activas.length === 0 ? (
         <Vacio
-          mensaje="No hay listas de precios"
+          mensaje="Todavía no hay listas de precios."
           hint="Creá una (por ejemplo «Mayoristas» con 15% de descuento) y asignala a un cliente desde su ficha."
         />
       ) : (
@@ -49,20 +43,17 @@ export default async function ListasPreciosPage() {
       )}
 
       {deBaja.length > 0 ? (
-        <details className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
-          <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-slate-700">
-            Dadas de baja ({deBaja.length})
-          </summary>
-          <ul className="mt-2 divide-y divide-slate-100">
+        <Plegable titulo={`Dadas de baja (${deBaja.length})`} className="mt-6">
+          <ul className="divide-y-(length:--border-width) divide-line">
             {deBaja.map((l) => (
               <li key={l.id}>
-                <Link href={`/listas-precios/${l.id}`} className="block py-3 text-sm text-slate-600 hover:underline">
+                <Link href={`/listas-precios/${l.id}`} className="flex min-h-11 items-center px-4 text-body text-ink-muted hover:underline">
                   {l.nombre}
                 </Link>
               </li>
             ))}
           </ul>
-        </details>
+        </Plegable>
       ) : null}
     </>
   );
@@ -71,17 +62,14 @@ export default async function ListasPreciosPage() {
 function FilaLista({ lista }: { lista: ListaListado }) {
   return (
     <li>
-      <Link
-        href={`/listas-precios/${lista.id}`}
-        className="block rounded-xl border border-slate-200 bg-white p-4 hover:border-slate-300"
-      >
+      <Link href={`/listas-precios/${lista.id}`} className="tarjeta block p-4 hover:bg-surface-sunken">
         <div className="flex items-start justify-between gap-3">
-          <p className="min-w-0 break-words font-medium text-slate-900">{lista.nombre}</p>
-          <span className="shrink-0 rounded-md bg-marca-claro px-2 py-0.5 text-xs font-semibold tabular-nums text-marca-texto">
+          <p className="min-w-0 text-body font-semibold break-words text-ink">{lista.nombre}</p>
+          <Etiqueta tono={lista.descuentoPct.gt(0) ? "marca" : "neutro"} className="shrink-0 tabular-nums">
             {lista.descuentoPct.gt(0) ? `−${fmtNumero(lista.descuentoPct)}%` : "sin descuento"}
-          </span>
+          </Etiqueta>
         </div>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-body-sm text-ink-muted">
           {lista.preciosEspecificos} {lista.preciosEspecificos === 1 ? "precio específico" : "precios específicos"} ·{" "}
           {lista.clientes} {lista.clientes === 1 ? "cliente" : "clientes"}
         </p>

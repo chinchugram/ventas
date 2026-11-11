@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { getArticulosParaPresupuesto, getClientesParaPresupuesto } from "@/lib/queries/presupuestos";
-import { Seccion } from "@/components/ui";
+import { Aviso, Boton, Seccion } from "@/components/ui";
 import { estadoDemo } from "@/lib/respaldo";
 import { requierePermisoPagina } from "@/lib/permisos";
 import { PresupuestoForm } from "../_componentes/presupuesto-form";
@@ -18,20 +17,17 @@ export default async function NuevoPresupuestoPage() {
         titulo="Nuevo presupuesto"
         descripcion="Los precios se congelan al guardar"
         accion={
-          <Link
-            href="/presupuestos"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/presupuestos" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
       {estadoDemo().activo ? (
         <SinBase />
       ) : clientes.length === 0 || articulos.length === 0 ? (
-        <p role="status" className="rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
+        <Aviso tono="aviso" titulo="Falta cargar datos" role="status">
           Para armar un presupuesto hace falta al menos un cliente y un artículo activos.
-        </p>
+        </Aviso>
       ) : (
         <PresupuestoForm
           clientes={clientes}

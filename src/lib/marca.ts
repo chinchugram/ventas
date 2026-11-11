@@ -9,6 +9,10 @@ import { inicialesDe, logoUrlSegura, tipoPorExtension, type LogoValidado, type T
 /**
  * Marca visual del negocio (F4.2): nombre y logo propios de cada negocio.
  *
+ * La INTERFAZ de la app no usa colores del negocio: usa siempre la marca Kiwitt (docs/brand/).
+ * Del negocio se muestran su nombre y su logo (encabezado, /login) y los documentos para su
+ * cliente final (comprobante, presupuesto). Decisión en docs/brand/README.md, "Cómo se aplica en ventas".
+ *
  * Nombre: la clave `nombreNegocio` de la configuracion del negocio (la edita el dueño en
  * /configuracion); si falta, `Negocio.nombre`.
  *

@@ -10,10 +10,28 @@ import { registrarVentaEnTx } from "@/lib/dominio/ventas";
 import { revalidarVentas } from "@/lib/revalidar";
 import { negocioUnico } from "@/lib/dominio/auth";
 import { conNegocio } from "@/lib/negocio";
+import { margenDelMesEnTx } from "@/lib/queries/dashboard";
+import { cruzoLaMeta, type Logro } from "@/lib/logros";
 
 export type ResultadoVenta =
-  | { ok: true; id: string; numero: number; anio: number; advertencias: string[] }
+  // `logro` es opcional: solo viene cuando esta venta dejo el margen del mes arriba de la meta.
+  | { ok: true; id: string; numero: number; anio: number; advertencias: string[]; logro?: Logro }
   | { ok: false; error: string };
+
+type MargenDelMes = Awaited<ReturnType<typeof margenDelMesEnTx>>;
+
+/**
+ * Margen y meta del mes, en una lectura aparte de la transaccion de la venta (no la toca ni la
+ * alarga). Es solo para festejar: si falla, no hay logro y la venta sigue su curso.
+ */
+async function leerMargenDelMes(negocioId: string): Promise<MargenDelMes | null> {
+  try {
+    return await conNegocio(negocioId, (tx) => margenDelMesEnTx(tx));
+  } catch (error) {
+    console.error("[registrarVenta] margen del mes (logro)", error);
+    return null;
+  }
+}
 
 const esquemaVenta = z.object({
   clienteId: z.uuid("Cliente inválido"),
@@ -50,6 +68,9 @@ export async function registrarVenta(datos: DatosVenta): Promise<ResultadoVenta>
   const usuarioId = idParaGuardar(sesion.usuario);
   try {
     const negocioId = await negocioUnico(prisma);
+    // Logro "meta del mes" (momentos.md): margen antes y despues de la venta, con la misma regla
+    // del tablero. Dos lecturas aparte: la venta se calcula y se guarda exactamente igual que antes.
+    const antes = await leerMargenDelMes(negocioId);
     const { id, numero, anio, advertencias } = await conNegocio(negocioId, (tx) =>
       registrarVentaEnTx(tx, negocioId, {
         ...resto,
@@ -60,7 +81,12 @@ export async function registrarVenta(datos: DatosVenta): Promise<ResultadoVenta>
       }),
     );
     revalidarVentas();
-    return { ok: true, id, numero, anio, advertencias };
+    const despues = antes ? await leerMargenDelMes(negocioId) : null;
+    const logro: Logro | undefined =
+      antes && despues && cruzoLaMeta(antes.margenPct, despues.margenPct, despues.metaMargenPct)
+        ? { tipo: "meta", margenPct: despues.margenPct.toString(), metaPct: despues.metaMargenPct.toString() }
+        : undefined;
+    return { ok: true, id, numero, anio, advertencias, ...(logro ? { logro } : {}) };
   } catch (error) {
     console.error("[registrarVenta]", error);
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar la venta.") };

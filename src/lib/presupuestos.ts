@@ -24,11 +24,12 @@ export const ETIQUETA_ESTADO: Record<EstadoCalculado, string> = {
   ANULADO: "Anulado",
 };
 
-export const ESTILO_ESTADO: Record<EstadoCalculado, string> = {
-  ABIERTO: "bg-sky-50 text-sky-800",
-  VENCIDO: "bg-amber-50 text-amber-800",
-  CONVERTIDO: "bg-emerald-50 text-emerald-700",
-  ANULADO: "bg-slate-200 text-slate-700",
+/** Tono de la `Etiqueta` de cada estado (ver `Tono` en components/ui.tsx). */
+export const TONO_ESTADO: Record<EstadoCalculado, "neutro" | "ok" | "aviso" | "info"> = {
+  ABIERTO: "info",
+  VENCIDO: "aviso",
+  CONVERTIDO: "ok",
+  ANULADO: "neutro",
 };
 
 // ─── Vencimiento ─────────────────────────────────────────────────────────────

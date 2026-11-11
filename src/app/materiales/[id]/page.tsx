@@ -1,11 +1,10 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fmtFecha, fmtMoneda, fmtNumero } from "@/lib/money";
 import { getMateriales, getMaterialesStock, tieneCostos } from "@/lib/queries/materiales";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { getMovimientos } from "@/lib/queries/compras";
 import { AjusteStockForm } from "@/components/ajuste-stock-form";
-import { Seccion, Tarjeta, Vacio } from "@/components/ui";
+import { Boton, ListaPanel, Seccion, Tarjeta, Vacio } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -24,24 +23,19 @@ export default async function MaterialPage({ params }: { params: Promise<{ id: s
   return (
     <>
       <Seccion
+        epigrafe="Movimientos de stock"
         titulo={material.nombre}
-        descripcion="Movimientos de stock"
+        descripcion="Lo que entró, lo que salió y cómo quedó"
         accion={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {puede(usuario, "editarMateriales") ? (
-              <Link
-                href={`/materiales/${material.id}/editar`}
-                className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-              >
+              <Boton href={`/materiales/${material.id}/editar`} variante="secundario">
                 Editar
-              </Link>
+              </Boton>
             ) : null}
-            <Link
-              href="/materiales"
-              className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-            >
+            <Boton href="/materiales" variante="secundario">
               Volver
-            </Link>
+            </Boton>
           </div>
         }
       />
@@ -58,34 +52,32 @@ export default async function MaterialPage({ params }: { params: Promise<{ id: s
       ) : null}
 
       {movimientos.length === 0 ? (
-        <Vacio mensaje="Sin movimientos todavía" hint="Las compras y los ajustes quedan registrados acá." />
+        <Vacio mensaje="Sin movimientos todavía." hint="Las compras, las ventas y los ajustes quedan registrados acá." />
       ) : (
-        <ul className="space-y-2">
+        <ListaPanel>
           {movimientos.map((m) => {
             const entra = m.cantidad.cmp(0) > 0;
             return (
-              <li key={m.id} className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-medium text-slate-900">{TEXTO_TIPO[m.tipo]}</p>
-                    <p className="text-sm text-slate-500">
-                      {fmtFecha(m.fecha)}
-                      {m.motivo ? ` · ${m.motivo}` : ""}
-                    </p>
-                    <p className="text-xs text-slate-500">Registrado por {m.registradoPor ?? "—"}</p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className={`font-semibold tabular-nums ${entra ? "text-emerald-700" : "text-red-700"}`}>
-                      {entra ? "+" : ""}
-                      {fmtNumero(m.cantidad)} {material.unidad}
-                    </p>
-                    <p className="text-xs text-slate-500">saldo {fmtNumero(m.stockResultante)}</p>
-                  </div>
+              <li key={m.id} className="flex items-start justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <p className="text-body font-semibold text-ink">{TEXTO_TIPO[m.tipo]}</p>
+                  <p className="text-body-sm break-words text-ink-muted">
+                    {fmtFecha(m.fecha)}
+                    {m.motivo ? ` · ${m.motivo}` : ""}
+                  </p>
+                  <p className="text-body-sm text-ink-muted">Registrado por {m.registradoPor ?? "—"}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className={`monto-fila ${entra ? "text-ok-text" : "text-ink"}`}>
+                    {entra ? "+" : ""}
+                    {fmtNumero(m.cantidad)} {material.unidad}
+                  </p>
+                  <p className="text-body-sm text-ink-muted tabular-nums">saldo {fmtNumero(m.stockResultante)}</p>
                 </div>
               </li>
             );
           })}
-        </ul>
+        </ListaPanel>
       )}
     </>
   );

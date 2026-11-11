@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
 import { getArticulosParaLista, getListaPrecio } from "@/lib/queries/listas-precios";
-import { Seccion } from "@/components/ui";
+import { Aviso, Boton, Seccion } from "@/components/ui";
 import { AdvertenciaBajoCosto } from "../_componentes/advertencia-bajo-costo";
 import { BotonActivoLista } from "../_componentes/boton-activo";
 import { ListaForm } from "../_componentes/lista-form";
@@ -21,23 +20,20 @@ export default async function ListaPrecioPage({ params }: { params: Promise<{ id
   return (
     <div className="space-y-4">
       <Seccion
+        epigrafe="Lista de precios"
         titulo={lista.nombre}
         descripcion={`${lista.clientes} ${lista.clientes === 1 ? "cliente la tiene" : "clientes la tienen"} asignada · Creada por ${lista.creadaPor ?? "—"}`}
         accion={
-          <Link
-            href="/listas-precios"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/listas-precios" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
 
       {!lista.activo ? (
-        <p className="rounded-lg bg-slate-200 p-3 text-sm text-slate-700">
-          Lista dada de baja: no se aplica en las ventas. Los clientes que la tienen pagan precio de catálogo hasta que
-          la reactives.
-        </p>
+        <Aviso tono="aviso" titulo="Esta lista está dada de baja.">
+          No se aplica en las ventas: los clientes que la tienen pagan precio de catálogo hasta que la reactives.
+        </Aviso>
       ) : null}
 
       <ListaForm id={lista.id} inicial={{ nombre: lista.nombre, descuentoPct: lista.descuentoPct.toString().replace(".", ",") }} />

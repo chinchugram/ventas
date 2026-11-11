@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Seccion } from "@/components/ui";
+import { Aviso, Boton, Panel, Seccion } from "@/components/ui";
 import { hoyArgentinaISO } from "@/lib/acciones";
 import { fmtNumero } from "@/lib/money";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
@@ -10,8 +9,6 @@ import { CargarTrabajoForm } from "../../_componentes/cargar-trabajo-form";
 
 export const dynamic = "force-dynamic";
 
-const ENLACE = "inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700";
-
 export default async function CargarTrabajoPage({ params }: { params: Promise<{ ventaItemId: string }> }) {
   const usuario = await requierePermisoPagina("cargarProduccion");
   const { ventaItemId } = await params;
@@ -19,28 +16,31 @@ export default async function CargarTrabajoPage({ params }: { params: Promise<{ 
   if (!linea) notFound();
 
   const volver = (
-    <Link href="/produccion" className={ENLACE}>
+    <Boton href="/produccion" variante="secundario">
       Volver
-    </Link>
+    </Boton>
   );
 
   return (
     <>
       <Seccion
+        epigrafe="Producción"
         titulo="Cargar trabajo"
         descripcion={`${linea.descripcion} · ${fmtNumero(linea.cantidad)} u · venta #${linea.numero}/${linea.anio} · ${linea.cliente}`}
         accion={volver}
       />
 
       {linea.ventaAnulada ? (
-        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">La venta está anulada: no se carga producción.</p>
+        <Aviso tono="aviso" titulo="La venta está anulada.">
+          No se carga producción de una venta anulada.
+        </Aviso>
       ) : linea.trabajoVigenteId ? (
-        <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-sm text-slate-700">Esta línea ya tiene un trabajo cargado. Para corregirlo, anulalo y cargalo de nuevo.</p>
-          <Link href={`/produccion/trabajo/${linea.trabajoVigenteId}`} className={ENLACE}>
+        <Panel className="space-y-3">
+          <p className="text-body text-ink">Esta línea ya tiene un trabajo cargado. Para corregirlo, anulalo y cargalo de nuevo.</p>
+          <Boton href={`/produccion/trabajo/${linea.trabajoVigenteId}`} variante="secundario">
             Ver el trabajo cargado
-          </Link>
-        </div>
+          </Boton>
+        </Panel>
       ) : (
         <CargarTrabajoForm
           ventaItemId={linea.ventaItemId}

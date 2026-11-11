@@ -5,6 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icono, type NombreIcono } from "@/components/iconos";
 import { LogoMarca } from "@/components/logo-marca";
+import { LogoKiwitt } from "@/components/logo-kiwitt";
+import { BotonAyudaIA } from "@/components/chat-ayuda";
+import { RUTAS_MODO_SIMPLE, type Modo } from "@/lib/modo";
+import { claseBoton } from "@/components/ui";
 import { salir } from "@/app/login/actions";
 import type { Rol } from "@/lib/auth-pura";
 import { puedeTodo, rutaDeInicio, type Accion } from "@/lib/permisos-pura";
@@ -60,25 +64,27 @@ const LISTAS_PRECIOS: Seccion = {
   acciones: ["gestionarListasPrecios"],
   ayuda: "Precios especiales por cliente",
 };
-const ADMINISTRACION: Seccion[] = [LISTAS_PRECIOS, USUARIOS, CONFIGURACION];
+// Cualquier usuario con sesion de un negocio puede cambiar su clave: es el permiso de "todos".
+const AYUDA: Seccion = { href: "/ayuda", etiqueta: "Ayuda", icono: "ayuda", acciones: ["cambiarClavePropia"], ayuda: "Cómo usar la app" };
+const ADMINISTRACION: Seccion[] = [LISTAS_PRECIOS, USUARIOS, CONFIGURACION, AYUDA];
 
-// Escritorio ancho (lg): pocas secciones sueltas y el resto agrupado en menus con nombre, cada
+// Escritorio ancho (xl): pocas secciones sueltas y el resto agrupado en menus con nombre, cada
 // entrada con una frase que dice para que sirve. Ningun icono suelto sin texto.
 type Grupo = { etiqueta: string; icono: NombreIcono; entradas: Seccion[] };
 const DIRECTAS_ESCRITORIO: Seccion[] = [INICIO, VENTAS, CLIENTES, PRESUPUESTOS, COBRANZAS];
 const GRUPOS_ESCRITORIO: Grupo[] = [
   { etiqueta: "Productos", icono: "articulos", entradas: [ARTICULOS, CORTES, PRODUCCION] },
   { etiqueta: "Stock y compras", icono: "materiales", entradas: [MATERIALES, COMPRAS, REPOSICION] },
-  { etiqueta: "Más", icono: "mas", entradas: [COMPROBANTES, RECORDATORIOS, REPORTES, LISTAS_PRECIOS, USUARIOS, CONFIGURACION] },
+  { etiqueta: "Más", icono: "mas", entradas: [COMPROBANTES, RECORDATORIOS, REPORTES, LISTAS_PRECIOS, USUARIOS, CONFIGURACION, AYUDA] },
 ];
 const ACCIONES_NUEVA_VENTA: readonly Accion[] = ["cargarVenta"];
 const ID_HOJA_MAS = "hoja-mas";
 const ID_MENU_USUARIO = "menu-usuario";
 const NUEVA_VENTA = "/ventas/nueva";
 
-/** Las entradas que el rol puede usar. */
-function entradasVisibles(rol: Rol, secciones: Seccion[]): Seccion[] {
-  return secciones.filter((s) => puedeTodo({ rol }, s.acciones));
+/** Las entradas que el rol puede usar y que el modo muestra (en simple, solo lo indispensable). */
+function entradasVisibles(rol: Rol, secciones: Seccion[], modo: Modo): Seccion[] {
+  return secciones.filter((s) => puedeTodo({ rol }, s.acciones) && (modo === "avanzado" || RUTAS_MODO_SIMPLE.has(s.href)));
 }
 
 // Clases literales (Tailwind no ve las armadas con plantillas): la barra inferior tiene una columna
@@ -104,18 +110,30 @@ function inicial(nombre: string): string {
   return ([...nombre.trim()][0] ?? "?").toLocaleUpperCase("es-AR");
 }
 
-export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string | null; usuario: UsuarioNavbar }) {
+export function Navbar({
+  nombre,
+  logo,
+  usuario,
+  modo,
+  conAyudaIA,
+}: {
+  nombre: string;
+  logo: string | null;
+  usuario: UsuarioNavbar;
+  modo: Modo;
+  conAyudaIA: boolean;
+}) {
   const pathname = usePathname() ?? "/";
-  const principales = entradasVisibles(usuario.rol, PRINCIPALES);
-  const secundarias = entradasVisibles(usuario.rol, SECUNDARIAS);
-  const administracion = entradasVisibles(usuario.rol, ADMINISTRACION);
-  const directas = entradasVisibles(usuario.rol, DIRECTAS_ESCRITORIO);
+  const principales = entradasVisibles(usuario.rol, PRINCIPALES, modo);
+  const secundarias = entradasVisibles(usuario.rol, SECUNDARIAS, modo);
+  const administracion = entradasVisibles(usuario.rol, ADMINISTRACION, modo);
+  const directas = entradasVisibles(usuario.rol, DIRECTAS_ESCRITORIO, modo);
   // Un menu sin ninguna entrada permitida para el rol no se muestra.
-  const grupos = GRUPOS_ESCRITORIO.map((g) => ({ ...g, entradas: entradasVisibles(usuario.rol, g.entradas) })).filter(
+  const grupos = GRUPOS_ESCRITORIO.map((g) => ({ ...g, entradas: entradasVisibles(usuario.rol, g.entradas, modo) })).filter(
     (g) => g.entradas.length > 0,
   );
   const puedeNuevaVenta = puedeTodo(usuario, ACCIONES_NUEVA_VENTA);
-  // Escritorio ancho (lg): secciones sueltas y menus desplegables. Entre md y lg no entran: se muestran
+  // Escritorio ancho (xl): secciones sueltas y menus desplegables. Entre md y xl no entran: se muestran
   // las principales y el resto va en la hoja "Mas", la misma del celular.
   const enHojaMas = [...secundarias, ...administracion];
   const columnasBarra = COLUMNAS_BARRA[principales.length + 1 + (puedeNuevaVenta ? 1 : 0)] ?? "grid-cols-5";
@@ -163,20 +181,26 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
 
   return (
     <>
-      {/* Encabezado: negro del logo, igual en celular y escritorio. */}
-      <header className="sticky top-0 z-40 w-full bg-tinta shadow-md">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+      {/* Encabezado: papel con la tinta de Kiwitt, igual en celular y escritorio y en los dos temas. */}
+      <header className="sticky top-0 z-40 w-full border-b-(length:--border-width) border-line bg-surface">
+        <div className="mx-auto flex min-h-16 max-w-page items-center justify-between gap-2 px-4">
           <div className="flex min-w-0 items-center gap-2 lg:gap-3">
             <Link
               href={rutaDeInicio(usuario.rol)}
-              className="flex shrink-0 items-center rounded-lg p-1"
-              aria-label={`${nombre}, ir al inicio`}
+              className="flex min-h-11 min-w-0 shrink-0 items-center gap-2 rounded-md pr-1"
+              aria-label={`${nombre}, ventas por Kiwitt: ir al inicio`}
             >
-              <LogoMarca nombre={nombre} logo={logo} alto="h-10" />
+              {/* Marca de la app (Kiwitt) y, como marca secundaria, la del negocio. */}
+              <LogoKiwitt variante="isotipo" />
+              <span aria-hidden="true" className="h-6 w-(--border-width) shrink-0 bg-line" />
+              <LogoMarca nombre={nombre} logo={logo} alto="h-8" className="max-w-20 rounded-sm object-contain" />
+              <span className="max-w-32 truncate text-label text-ink md:hidden" aria-hidden="true">
+                {nombre}
+              </span>
             </Link>
 
-            {/* Desde md: las principales y "Más" (hoja); desde lg, las secciones sueltas y los menús
-                desplegables con nombre. */}
+            {/* Desde md: las principales y "Más" (hoja); desde xl (con el selector de modo
+                al lado no entran antes), las secciones sueltas y los menús desplegables con nombre. */}
             <nav className="hidden min-w-0 items-center gap-1 md:flex" aria-label="Principal">
               {principales.map((s) => (
                 <EnlaceBarra key={s.href} seccion={s} activa={estaActiva(pathname, s.href)} />
@@ -184,10 +208,10 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
               {directas
                 .filter((s) => !PRINCIPALES.includes(s))
                 .map((s) => (
-                  <EnlaceBarra key={s.href} seccion={s} activa={estaActiva(pathname, s.href)} className="hidden lg:block" />
+                  <EnlaceBarra key={s.href} seccion={s} activa={estaActiva(pathname, s.href)} className="hidden xl:inline-flex" />
                 ))}
               {grupos.map((g) => (
-                <MenuDesplegable key={g.etiqueta} grupo={g} pathname={pathname} className="hidden lg:block" alDerecha={g.etiqueta === "Más"} />
+                <MenuDesplegable key={g.etiqueta} grupo={g} pathname={pathname} className="hidden xl:block" alDerecha={g.etiqueta === "Más"} />
               ))}
               <button
                 type="button"
@@ -195,29 +219,31 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
                 aria-haspopup="dialog"
                 aria-expanded={masAbierto}
                 aria-controls={ID_HOJA_MAS}
-                className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 lg:hidden ${
-                  masActivo
-                    ? "bg-marca text-tinta"
-                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                }`}
+                className={`${CLASE_ITEM_BARRA} gap-1 xl:hidden ${masActivo ? CLASE_ITEM_ACTIVO : CLASE_ITEM_INACTIVO}`}
               >
                 Más
-                <Icono nombre="mas" className="h-4 w-4" />
+                <Icono nombre="mas" className="h-4 w-4" grosor={2} />
               </button>
             </nav>
           </div>
 
-          <div className="hidden shrink-0 items-center gap-2 md:flex">
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Asistente con IA (si está configurado). El modo simple/avanzado y el sonido están en Configuración → Otros. */}
+            {conAyudaIA ? <BotonAyudaIA /> : null}
             {puedeNuevaVenta ? (
+              // Hasta 2xl no entra el texto junto a la navegación y el selector de modo: queda el "+" con su nombre accesible.
               <Link
                 href={NUEVA_VENTA}
-                className="flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-marca px-3 text-sm font-semibold text-tinta transition-transform hover:brightness-105 active:scale-95"
+                aria-label="Nueva venta"
+                className={`${claseBoton({ chico: true })} hidden min-h-11 min-w-11 whitespace-nowrap px-3 md:inline-flex 2xl:px-4`}
               >
                 <Icono nombre="nueva" className="h-4 w-4" grosor={2.5} />
-                Nueva venta
+                <span className="hidden 2xl:inline">Nueva venta</span>
               </Link>
             ) : null}
-            <MenuUsuario usuario={usuario} pathname={pathname} />
+            <div className="hidden md:block">
+              <MenuUsuario usuario={usuario} pathname={pathname} />
+            </div>
           </div>
         </div>
       </header>
@@ -232,67 +258,39 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
         onClick={(e) => {
           if (e.target === e.currentTarget) setMasAbierto(false);
         }}
-        className="sheet-in fixed inset-x-0 bottom-0 top-auto m-0 max-h-[85dvh] w-full max-w-none overflow-y-auto rounded-t-3xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-900/50 backdrop:backdrop-blur-sm md:inset-0 md:m-auto md:h-fit md:max-w-sm md:rounded-3xl"
+        className="animate-entrada fixed inset-x-0 bottom-0 top-auto m-0 max-h-[85dvh] w-full max-w-none overflow-y-auto rounded-t-lg border-(length:--border-width) border-b-0 border-line bg-surface-raised p-0 text-ink backdrop:bg-press/60 md:inset-0 md:m-auto md:h-fit md:max-w-sm md:rounded-lg md:border-b-(length:--border-width) md:shadow-press"
       >
-        <div className="px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-          <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-300" aria-hidden="true" />
-          <div className="mb-2 flex items-center justify-between">
-            <h2 id="hoja-mas-titulo" className="px-3 text-sm font-semibold text-slate-500">
+        <div className="px-4 pt-3 pb-[calc(--spacing(4)+env(safe-area-inset-bottom))]">
+          <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-line-strong md:hidden" aria-hidden="true" />
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 id="hoja-mas-titulo" className="px-3 font-display text-body-lg font-bold text-ink">
               Más secciones
             </h2>
-            <button
-              type="button"
-              onClick={() => setMasAbierto(false)}
-              className="flex min-h-11 min-w-11 items-center justify-center rounded-xl px-3 text-sm font-semibold text-slate-700 active:bg-slate-100"
-            >
+            <button type="button" onClick={() => setMasAbierto(false)} className={`${claseBoton({ variante: "fantasma", chico: true })} min-h-11`}>
               Cerrar
             </button>
           </div>
           <ul className="space-y-1">
-            {enHojaMas.map((s) => {
-              const activa = estaActiva(pathname, s.href);
-              return (
-                <li key={s.href}>
-                  <Link
-                    href={s.href}
-                    onClick={() => setMasAbierto(false)}
-                    aria-current={activa ? "page" : undefined}
-                    className={`flex items-center gap-3 rounded-xl px-3 py-3.5 text-base font-medium ${
-                      activa ? "bg-marca-claro text-tinta" : "text-slate-700 active:bg-slate-100"
-                    }`}
-                  >
-                    <span
-                      className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                        activa ? "bg-marca text-tinta" : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      <Icono nombre={s.icono} className="h-5 w-5" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block">{s.etiqueta}</span>
-                      {s.ayuda ? <span className="block text-sm font-normal text-slate-500">{s.ayuda}</span> : null}
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
+            {enHojaMas.map((s) => (
+              <li key={s.href}>
+                <EntradaConAyuda seccion={s} activa={estaActiva(pathname, s.href)} alElegir={() => setMasAbierto(false)} />
+              </li>
+            ))}
           </ul>
-          <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-200 px-3 pt-3">
-            <p className="min-w-0 text-sm text-slate-600">
-              <span className="block truncate font-semibold text-slate-900">{usuario.nombre}</span>
+          <div className="mt-3 border-t-(length:--border-width) border-line px-3 pt-3">
+            <p className="min-w-0 text-body-sm text-ink-muted">
+              <span className="block truncate text-body font-bold text-ink">{usuario.nombre}</span>
               {ETIQUETA_ROL[usuario.rol]}
-              <Link
-                href={MI_CLAVE}
-                onClick={() => setMasAbierto(false)}
-                className="flex min-h-11 items-center font-medium text-marca-texto underline underline-offset-2"
-              >
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <Link href={MI_CLAVE} onClick={() => setMasAbierto(false)} className="enlace inline-flex min-h-11 items-center text-label">
                 Cambiar mi clave
               </Link>
-            </p>
-            <BotonSalir className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 active:bg-slate-100">
-              <IconoSalir className="h-5 w-5" />
-              Cerrar sesión
-            </BotonSalir>
+              <BotonSalir className={`${claseBoton({ variante: "secundario", chico: true })} min-h-11`}>
+                <IconoSalir className="h-5 w-5" />
+                Cerrar sesión
+              </BotonSalir>
+            </div>
           </div>
         </div>
       </dialog>
@@ -300,7 +298,7 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
       {/* Barra inferior (solo celular): lo que se usa todos los dias, a un pulgar. */}
       <nav
         aria-label="Principal"
-        className="fixed inset-x-0 bottom-0 z-[60] border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-[60] border-t-(length:--border-width) border-line bg-surface-raised pb-[env(safe-area-inset-bottom)] md:hidden"
       >
         <ul className={`mx-auto grid max-w-md ${columnasBarra} items-end`}>
           {principales.includes(INICIO) ? <ItemBarra seccion={INICIO} activa={estaActiva(pathname, "/")} /> : null}
@@ -308,11 +306,12 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
 
           {puedeNuevaVenta ? (
             <li className="flex justify-center">
+              {/* Botón sticker redondo: el primario de la marca, a un pulgar. */}
               <Link
                 href={NUEVA_VENTA}
                 aria-label="Nueva venta"
                 aria-current={pathname === NUEVA_VENTA ? "page" : undefined}
-                className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-tinta shadow-lg ring-4 ring-white transition-transform active:scale-90"
+                className={`${claseBoton()} -mt-6 h-14 w-14 p-0 ring-4 ring-surface-raised`}
               >
                 <Icono nombre="nueva" className="h-7 w-7" grosor={2.5} />
               </Link>
@@ -328,13 +327,10 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
               aria-haspopup="dialog"
               aria-expanded={masAbierto}
               aria-controls={ID_HOJA_MAS}
-              className={`flex w-full flex-col items-center gap-0.5 pt-2 pb-1.5 text-xs font-medium ${
-                masActivo || masAbierto ? "text-tinta" : "text-slate-500"
-              }`}
+              className={`${CLASE_ITEM_INFERIOR} ${masActivo || masAbierto ? "text-ink" : "text-ink-muted"}`}
             >
-              <Icono nombre="mas" />
+              <FichaIcono nombre="mas" activa={masActivo} />
               Más
-              <Indicador visible={masActivo} />
             </button>
           </li>
         </ul>
@@ -343,17 +339,52 @@ export function Navbar({ nombre, logo, usuario }: { nombre: string; logo: string
   );
 }
 
+/*
+ * Estado activo (productos.md): la pestaña seleccionada lleva el acento de ventas, `cielo`, como un
+ * sticker (relleno + texto on-color + sombra sólida). El resto, tinta suave sobre el papel.
+ * Todas las piezas tocables miden 44px o más.
+ */
+const CLASE_ITEM_BARRA =
+  "inline-flex min-h-11 items-center whitespace-nowrap rounded-md px-2 text-label transition-colors duration-(--dur-rutina)";
+const CLASE_ITEM_ACTIVO = "bg-cielo text-on-color shadow-press";
+const CLASE_ITEM_INACTIVO = "text-ink-muted hover:bg-surface-sunken hover:text-ink";
+const CLASE_ITEM_INFERIOR = "flex min-h-14 w-full flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 text-body-sm font-semibold";
+
 /** Enlace suelto de la barra de escritorio. */
 function EnlaceBarra({ seccion, activa, className = "" }: { seccion: Seccion; activa: boolean; className?: string }) {
   return (
     <Link
       href={seccion.href}
       aria-current={activa ? "page" : undefined}
-      className={`${className} whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 ${
-        activa ? "bg-marca text-tinta" : "text-slate-300 hover:bg-white/10 hover:text-white"
-      }`}
+      className={`${className} ${CLASE_ITEM_BARRA} ${activa ? CLASE_ITEM_ACTIVO : CLASE_ITEM_INACTIVO}`}
     >
       {seccion.etiqueta}
+    </Link>
+  );
+}
+
+/** Entrada con icono y frase de ayuda: la usan la hoja "Más" y los menús desplegables. */
+function EntradaConAyuda({ seccion, activa, alElegir }: { seccion: Seccion; activa: boolean; alElegir?: () => void }) {
+  return (
+    <Link
+      href={seccion.href}
+      onClick={alElegir}
+      aria-current={activa ? "page" : undefined}
+      className={`flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 transition-colors duration-(--dur-rutina) ${
+        activa ? "bg-brand-soft" : "hover:bg-surface-sunken"
+      }`}
+    >
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-sm ${
+          activa ? "bg-cielo text-on-color" : "bg-surface-sunken text-ink"
+        }`}
+      >
+        <Icono nombre={seccion.icono} className="h-5 w-5" grosor={2} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-label text-ink">{seccion.etiqueta}</span>
+        {seccion.ayuda ? <span className="block text-body-sm text-ink-muted">{seccion.ayuda}</span> : null}
+      </span>
     </Link>
   );
 }
@@ -413,9 +444,7 @@ function MenuDesplegable({
         onClick={() => setAbierto((v) => !v)}
         aria-expanded={abierto}
         aria-controls={idPanel}
-        className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors xl:px-2.5 ${
-          activo ? "bg-marca text-tinta" : abierto ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"
-        }`}
+        className={`${CLASE_ITEM_BARRA} gap-1 ${activo ? CLASE_ITEM_ACTIVO : abierto ? "bg-surface-sunken text-ink" : CLASE_ITEM_INACTIVO}`}
       >
         {grupo.etiqueta}
         <svg
@@ -426,7 +455,7 @@ function MenuDesplegable({
           strokeLinecap="round"
           strokeLinejoin="round"
           aria-hidden="true"
-          className={`h-3.5 w-3.5 ${abierto ? "rotate-180" : ""}`}
+          className={`h-3.5 w-3.5 transition-transform duration-(--dur-rutina) ${abierto ? "rotate-180" : ""}`}
         >
           <path d={FLECHA_ABAJO} />
         </svg>
@@ -434,32 +463,13 @@ function MenuDesplegable({
       {abierto ? (
         <ul
           id={idPanel}
-          className={`absolute top-full ${alDerecha ? "right-0" : "left-0"} z-50 mt-2 w-72 rounded-xl bg-white p-2 text-slate-900 shadow-xl ring-1 ring-slate-200`}
+          className={`tarjeta absolute top-full ${alDerecha ? "right-0" : "left-0"} z-50 mt-2 w-72 space-y-1 p-2 shadow-press`}
         >
-          {grupo.entradas.map((s) => {
-            const activa = estaActiva(pathname, s.href);
-            return (
-              <li key={s.href}>
-                <Link
-                  href={s.href}
-                  aria-current={activa ? "page" : undefined}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 ${activa ? "bg-marca-claro" : "hover:bg-slate-100"}`}
-                >
-                  <span
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                      activa ? "bg-marca text-tinta" : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    <Icono nombre={s.icono} className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-slate-900">{s.etiqueta}</span>
-                    {s.ayuda ? <span className="block text-xs text-slate-500">{s.ayuda}</span> : null}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
+          {grupo.entradas.map((s) => (
+            <li key={s.href}>
+              <EntradaConAyuda seccion={s} activa={estaActiva(pathname, s.href)} />
+            </li>
+          ))}
         </ul>
       ) : null}
     </div>
@@ -472,25 +482,30 @@ function ItemBarra({ seccion, activa }: { seccion: Seccion; activa: boolean }) {
       <Link
         href={seccion.href}
         aria-current={activa ? "page" : undefined}
-        className={`flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-xs font-medium ${
-          activa ? "text-tinta" : "text-slate-500"
-        }`}
+        className={`${CLASE_ITEM_INFERIOR} ${activa ? "text-ink" : "text-ink-muted"}`}
       >
-        <Icono nombre={seccion.icono} />
+        <FichaIcono nombre={seccion.icono} activa={activa} />
         {seccion.etiqueta}
-        <Indicador visible={activa} />
       </Link>
     </li>
   );
 }
 
-/** Punto naranja bajo la seccion activa. Reserva su espacio para que nada salte. */
-function Indicador({ visible }: { visible: boolean }) {
+/**
+ * Icono de la barra inferior. En la sección activa va dentro de una píldora `cielo` (el acento de
+ * ventas, como un sticker, con su sombra sólida: el cielo solo no llega a 3:1 sobre la barra); la
+ * etiqueta pasa a `ink`. La píldora siempre ocupa su lugar: nada salta.
+ */
+function FichaIcono({ nombre, activa }: { nombre: NombreIcono; activa: boolean }) {
   return (
     <span
       aria-hidden="true"
-      className={`h-1 w-1 rounded-full ${visible ? "bg-marca" : "bg-transparent"}`}
-    />
+      className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors duration-(--dur-rutina) ${
+        activa ? "bg-cielo text-on-color shadow-press" : ""
+      }`}
+    >
+      <Icono nombre={nombre} className="h-5 w-5" grosor={2} />
+    </span>
   );
 }
 
@@ -515,7 +530,7 @@ function IconoSalir({ className }: { className: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.75}
+      strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -528,7 +543,7 @@ function IconoSalir({ className }: { className: string }) {
 
 /**
  * Menu del usuario en el encabezado de escritorio: la inicial (en la barra no
- * entra el nombre completo) abre un panel con el nombre, el rol y "Cerrar sesion".
+ * entra el nombre completo; está en `title` y en el nombre accesible) abre un panel con el nombre, el rol y "Cerrar sesion".
  * Patron "disclosure": boton con aria-expanded; Escape o un clic afuera lo cierran.
  */
 function MenuUsuario({ usuario, pathname }: { usuario: UsuarioNavbar; pathname: string }) {
@@ -568,33 +583,31 @@ function MenuUsuario({ usuario, pathname }: { usuario: UsuarioNavbar; pathname: 
         aria-controls={ID_MENU_USUARIO}
         aria-label={`${usuario.nombre}: cuenta y cerrar sesión`}
         title={usuario.nombre}
-        className="flex h-11 items-center gap-2 rounded-lg px-1.5 transition-colors hover:bg-white/10"
+        className={`flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full px-1 transition-colors duration-(--dur-rutina) hover:bg-surface-sunken ${
+          abierto ? "bg-surface-sunken" : ""
+        }`}
       >
         <span
           aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/15 text-sm font-semibold text-white"
+          className="borde flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-line-strong bg-surface-sunken font-display text-label text-ink"
         >
           {inicial(usuario.nombre)}
         </span>
-        <span className="hidden max-w-32 truncate text-sm font-medium text-slate-200 2xl:block">{usuario.nombre}</span>
       </button>
       {abierto ? (
-        <div
-          id={ID_MENU_USUARIO}
-          className="absolute top-full right-0 z-50 mt-2 w-60 rounded-xl bg-white p-3 text-slate-900 shadow-xl ring-1 ring-slate-200"
-        >
-          <p className="px-1 text-sm text-slate-600">
-            <span className="block truncate font-semibold text-slate-900">{usuario.nombre}</span>
+        <div id={ID_MENU_USUARIO} className="tarjeta absolute top-full right-0 z-50 mt-2 w-64 p-4 shadow-press">
+          <p className="text-body-sm text-ink-muted">
+            <span className="block truncate text-body font-bold text-ink">{usuario.nombre}</span>
             {ETIQUETA_ROL[usuario.rol]}
           </p>
           <Link
             href={MI_CLAVE}
             aria-current={estaActiva(pathname, MI_CLAVE) ? "page" : undefined}
-            className="mt-3 flex min-h-11 w-full items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className={`${claseBoton({ variante: "secundario", chico: true, ancho: true })} mt-4 min-h-11`}
           >
             Cambiar mi clave
           </Link>
-          <BotonSalir className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          <BotonSalir className={`${claseBoton({ variante: "secundario", chico: true, ancho: true })} mt-3 min-h-11`}>
             <IconoSalir className="h-5 w-5" />
             Cerrar sesión
           </BotonSalir>

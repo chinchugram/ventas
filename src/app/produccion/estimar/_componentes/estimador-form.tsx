@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BotonEnviar, CampoDecimal } from "@/components/form";
+import { Boton, Chip, TituloBloque, Vacio } from "@/components/ui";
 import { decimalOCero } from "@/lib/acciones";
 import { MAX_LINEAS } from "@/lib/estimacion-tiempos";
 
@@ -57,7 +57,7 @@ export function EstimadorForm({ articulos, inicial }: { articulos: ArticuloDTO[]
   return (
     <form onSubmit={estimar} className="space-y-6">
       <section>
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-600 uppercase">Agregar artículo</h2>
+        <TituloBloque>Agregar artículo</TituloBloque>
         <input
           type="search"
           aria-label="Buscar artículo en el catálogo"
@@ -69,48 +69,40 @@ export function EstimadorForm({ articulos, inicial }: { articulos: ArticuloDTO[]
         <ul className="flex flex-wrap gap-2">
           {filtrados.map((a) => (
             <li key={a.id}>
-              <button
-                type="button"
-                onClick={() => agregar(a.id)}
-                className={`flex cursor-pointer touch-manipulation items-center gap-2 rounded-lg border px-3 py-3 text-left text-sm font-medium transition-transform active:scale-95 ${
-                  yaCargados.has(a.id) ? "border-marca bg-marca-claro text-marca-texto" : "border-slate-300 bg-white text-slate-800"
-                }`}
-              >
+              <Chip activo={yaCargados.has(a.id)} onClick={() => agregar(a.id)}>
                 {a.nombre}
-              </button>
+              </Chip>
             </li>
           ))}
         </ul>
-        {filtrados.length === 0 ? <p className="mt-2 text-sm text-slate-600">Ningún artículo coincide con la búsqueda.</p> : null}
+        {filtrados.length === 0 ? <p className="mt-2 text-body-sm text-ink-muted">Ningún artículo coincide con la búsqueda.</p> : null}
       </section>
 
       <section>
-        <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold tracking-wide text-slate-600 uppercase">Pedido</h2>
-          <span className="text-sm text-slate-600">
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <TituloBloque className="mb-0">Pedido</TituloBloque>
+          <span className="text-body-sm text-ink-muted tabular-nums">
             {lineas.length} {lineas.length === 1 ? "línea" : "líneas"}
           </span>
         </div>
         {lineas.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-600">
-            Todavía no agregaste nada.
-          </p>
+          <Vacio mensaje="Todavía no agregaste nada." hint="Tocá un artículo de arriba para armar el pedido." />
         ) : (
           <ul className="space-y-2">
             {lineas.map((linea) => {
               const nombre = porId.get(linea.articuloId)?.nombre ?? "Artículo no disponible";
               return (
-                <li key={linea.clave} className="rounded-xl border border-slate-200 bg-white p-4">
+                <li key={linea.clave} className="tarjeta p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-medium text-slate-900">{nombre}</p>
-                    <button
-                      type="button"
+                    <p className="text-body font-semibold text-ink">{nombre}</p>
+                    <Boton
+                      variante="fantasma-peligro"
                       onClick={() => setLineas(lineas.filter((l) => l !== linea))}
                       aria-label={`Quitar ${nombre}`}
-                      className="inline-flex min-h-11 shrink-0 items-center rounded-md px-3 text-xs font-semibold text-red-600"
+                      className="-mt-2 -mr-2 shrink-0 px-4"
                     >
                       Quitar
-                    </button>
+                    </Boton>
                   </div>
                   <CampoDecimal
                     className="mt-2 max-w-40"
@@ -125,17 +117,12 @@ export function EstimadorForm({ articulos, inicial }: { articulos: ArticuloDTO[]
         )}
       </section>
 
-      <div className="grid grid-cols-3 gap-2">
-        <Link
-          href="/produccion/estimar"
-          onClick={() => setLineas([])}
-          className="inline-flex min-h-12 items-center justify-center rounded-lg border border-slate-300 bg-white text-sm font-medium text-slate-700"
-        >
+      <div className="grid grid-cols-3 gap-3">
+        <Boton href="/produccion/estimar" variante="secundario" onClick={() => setLineas([])}>
           Limpiar
-        </Link>
+        </Boton>
         <BotonEnviar
           className="col-span-2"
-          variante="marca"
           pendiente={enviando}
           disabled={lineas.length === 0}
           texto="Estimar tiempos"

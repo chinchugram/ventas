@@ -6,7 +6,8 @@ import { d, type Dinero } from "@/lib/money";
 
 export type Resultado = { ok: true } | { ok: false; error: string };
 
-export const SIN_BASE = "No hay base de datos conectada: esta pantalla está en modo demostración y no guarda.";
+export const SIN_BASE =
+  "Esto no se guardó: la app está en modo demostración, sin base de datos conectada. Lo que cargaste sigue en pantalla para que lo pruebes.";
 
 /**
  * Error que se le puede mostrar al usuario tal cual (cliente dado de baja, pago
@@ -15,14 +16,23 @@ export const SIN_BASE = "No hay base de datos conectada: esta pantalla está en 
  */
 export class ErrorDeNegocio extends Error {}
 
-/** Mensaje para el usuario: el de un `ErrorDeNegocio`, o `generico` para el resto. */
+/**
+ * Qué hacer después de un error inesperado (voz.md: qué pasó, qué hacer, sin culpar). No promete
+ * nada sobre lo guardado: eso lo dice cada `generico` cuando se sabe.
+ */
+export const QUE_HACER_SI_FALLA = "Probá de nuevo en un rato; si sigue pasando, avisá a quien administra el sistema.";
+
+/**
+ * Mensaje para el usuario: el de un `ErrorDeNegocio` tal cual, o `generico` (qué pasó) seguido de
+ * `QUE_HACER_SI_FALLA` (qué hacer) para el resto.
+ */
 export function mensajeDeError(error: unknown, generico: string): string {
-  return error instanceof ErrorDeNegocio ? error.message : generico;
+  return error instanceof ErrorDeNegocio ? error.message : `${generico} ${QUE_HACER_SI_FALLA}`;
 }
 
 /** Primer problema de una validacion de zod, listo para mostrar. */
 export function primerError(error: z.ZodError): string {
-  return error.issues[0]?.message ?? "Datos inválidos";
+  return error.issues[0]?.message ?? "Revisá los datos: hay uno que no pudimos leer.";
 }
 
 // ─── Decimales tipeados por el usuario ────────────────────────────────────────

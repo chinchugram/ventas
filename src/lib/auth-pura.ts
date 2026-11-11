@@ -44,7 +44,7 @@ export function esSuperadmin(usuario: SesionDeUsuario): usuario is SuperadminSes
 
 // ─── Claves ───────────────────────────────────────────────────────────────────
 
-export const CLAVE_MIN = 10;
+export const CLAVE_MIN = 9;
 /** Tope de largo: scrypt sobre entradas enormes seria una forma barata de cansar al servidor. */
 export const CLAVE_MAX = 200;
 
@@ -340,4 +340,4 @@ export function destinoSeguro(siguiente: string | null | undefined): string | nu
  * cual fue.
  */
 export const ERROR_LOGIN =
-  "Negocio, usuario o clave incorrectos. Si fallaste varias veces seguidas, esperá unos minutos antes de volver a intentar.";
+  "No pudimos entrar con esos datos. Revisá el negocio, el usuario y la clave. Si probaste varias veces seguidas, esperá unos minutos y volvé a intentar.";

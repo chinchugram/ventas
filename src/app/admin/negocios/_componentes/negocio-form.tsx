@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearNegocio } from "@/app/admin/negocios/actions";
+import { TituloBloque } from "@/components/ui";
 import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
 
 /** Alta de un negocio (nombre + identificador unico). El servidor valida todo; el texto de ayuda es solo una guia. */
@@ -19,15 +20,15 @@ export function NegocioForm({ esModoDemo = false }: { esModoDemo?: boolean }) {
         e.preventDefault();
         setHecho(null);
         enviar({ nombre, slug }, () => {
-          setHecho(`Negocio «${nombre.trim()}» creado con su configuración por defecto. Ahora creale el dueño.`);
+          setHecho(`Listo, «${nombre.trim()}» ya existe con su configuración por defecto. Ahora creale el dueño.`);
           setNombre("");
           setSlug("");
           router.refresh();
         });
       }}
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
-      <h2 className="text-base font-semibold text-slate-900">Nuevo negocio</h2>
+      <TituloBloque className="mb-0">Nuevo negocio</TituloBloque>
       <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="los negocios" />
       <CampoTexto etiqueta="Nombre" name="nombre" valor={nombre} alCambiar={setNombre} maxLength={80} autoComplete="off" required />

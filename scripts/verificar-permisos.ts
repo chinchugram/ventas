@@ -97,7 +97,12 @@ const PAGINAS_ESPERADAS: Record<string, Accion[]> = {
   "/comprobantes/[id]/imprimir": ["verComprobantes"],
   "/compras": ["registrarCompra", "verCostos"],
   "/compras/nueva": ["registrarCompra", "verCostos"],
+  // Guía de uso: cualquier usuario de un negocio (cambiarClavePropia es el permiso de "todos").
+  "/ayuda": ["cambiarClavePropia"],
   "/configuracion": ["configuracion"],
+  "/configuracion/datos-fiscales": ["configuracion"],
+  "/configuracion/maquinas": ["configuracion"],
+  "/configuracion/otros": ["configuracion"],
   "/configuracion/maquinas/nueva": ["configuracion"],
   "/configuracion/maquinas/[id]": ["configuracion"],
   "/cortes": ["verCostos"],
@@ -274,8 +279,15 @@ function main() {
   // con CSP `sandbox` y `nosniff`.
   const RUTA_PUBLICA = "marca/logo/[slug]/route.ts";
   const todosLosHandlers = routeHandlers();
-  const handlers = todosLosHandlers.filter((h) => h.archivo !== RUTA_PUBLICA);
+  // `api/ayuda/route.ts`: chat de ayuda. Cualquier usuario de un negocio; no lee datos del negocio
+  // (solo la guía de uso), así que no exige permisos de reportes: se comprueba aparte.
+  const RUTA_AYUDA = "api/ayuda/route.ts";
+  const handlers = todosLosHandlers.filter((h) => h.archivo !== RUTA_PUBLICA && h.archivo !== RUTA_AYUDA);
   comprobar("route handlers", lista(handlers.map((h) => h.archivo)), lista(["reportes/export/[reporte]/route.ts", "reportes/margen-real/export/route.ts"]));
+  const ayuda = todosLosHandlers.find((h) => h.archivo === RUTA_AYUDA)?.texto ?? "";
+  comprobar(`${RUTA_AYUDA}: existe`, String(ayuda.length > 0), "true");
+  comprobar(`${RUTA_AYUDA}: pide sesion antes de responder (401 sin sesion)`, String(/if \(!usuario\) return json\(\{ error: SIN_SESION \}, 401\)/.test(ayuda) && ayuda.indexOf("usuarioActual()") < ayuda.indexOf("responder(")), "true");
+  comprobar(`${RUTA_AYUDA}: no lee datos del negocio`, String(/conNegocio|prisma|@\/lib\/queries/.test(ayuda)), "false");
   const publica = todosLosHandlers.find((h) => h.archivo === RUTA_PUBLICA);
   comprobar(`${RUTA_PUBLICA}: existe (ruta publica del logo)`, String(Boolean(publica)), "true");
   comprobar(`${RUTA_PUBLICA}: solo GET`, String(/export async function (POST|PUT|PATCH|DELETE)\b/.test(publica?.texto ?? "")), "false");
@@ -316,7 +328,7 @@ function main() {
     String(panel.includes('"verComprobantes"') && panel.indexOf('"verComprobantes"') < panel.indexOf("await estadoFacturacionDeVenta(")),
     "true",
   );
-  comprobar("el boton de facturar solo se pinta con emitirComprobante", String(/puedeEmitir = puede\(usuario, "emitirComprobante"\)/.test(panel) && /puedeEmitir \? \(\s*<div className="mt-3">\s*<FacturarBoton/.test(panel)), "true");
+  comprobar("el boton de facturar solo se pinta con emitirComprobante", String(/puedeEmitir = puede\(usuario, "emitirComprobante"\)/.test(panel) && /puedeEmitir \? (\(\s*<div[^>]*>\s*)?<FacturarBoton/.test(panel)), "true");
   comprobar("el enlace a Configuracion solo se pinta con configuracion", String(/puedeConfigurar = puede\(usuario, "configuracion"\)/.test(panel) && /a\.codigo === "DATOS_FISCALES" && puedeConfigurar/.test(panel)), "true");
   const consultasComprobantes = leerSrc("lib", "queries", "comprobantes.ts");
   comprobar("las consultas de comprobantes no leen costos ni margenes", String(/costo|margen/i.test(consultasComprobantes.replace(/^.*\/\/.*$/gm, ""))), "false");
@@ -337,7 +349,7 @@ function main() {
     href: m[1] ?? rutas.get(m[2]!) ?? `(constante ${m[2]} sin resolver)`,
     acciones: [...m[3]!.matchAll(/"([A-Za-z]+)"/g)].map((x) => x[1]!),
   }));
-  comprobar("entradas del navbar leidas", String(entradas.length), "17");
+  comprobar("entradas del navbar leidas", String(entradas.length), "18");
   for (const e of entradas) {
     if (e.href === "/usuarios") {
       comprobar("navbar /usuarios: solo con gestionarUsuarios (la pagina la crea 4.4)", lista(e.acciones), "gestionarUsuarios");
@@ -349,11 +361,11 @@ function main() {
   }
   const visibles = (rol: "DUENO" | "EMPLEADO") => entradas.filter((e) => puedeTodo({ rol }, e.acciones as Accion[])).map((e) => e.href);
   comprobar(
-    "el empleado ve solo ventas, clientes, materiales, reposicion, produccion, presupuestos, comprobantes, cobranzas y recordatorios",
+    "el empleado ve solo ventas, clientes, materiales, reposicion, produccion, presupuestos, comprobantes, cobranzas, recordatorios y ayuda",
     lista(visibles("EMPLEADO")),
-    lista(["/ventas", "/clientes", "/materiales", "/reposicion", "/produccion", "/presupuestos", "/comprobantes", "/cobranzas", "/cobranzas/hoy"]),
+    lista(["/ventas", "/clientes", "/materiales", "/reposicion", "/produccion", "/presupuestos", "/comprobantes", "/cobranzas", "/cobranzas/hoy", "/ayuda"]),
   );
-  comprobar("el dueno ve las 17 entradas", String(visibles("DUENO").length), "17");
+  comprobar("el dueno ve las 18 entradas", String(visibles("DUENO").length), "18");
 
   console.log("--- El auditor detecta lo que tiene que detectar ---");
   const base = (cuerpo: string, extra = "") => `"use server";\n${extra}\nexport async function f(datos: { a: string }): Promise<{ ok: true } | { ok: false; error: string }> {\n${cuerpo}\n}\n`;

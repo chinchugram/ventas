@@ -10,6 +10,7 @@ import type { UsuarioSesion } from "@/lib/auth";
 import { mensajeDeError, primerError, SIN_BASE, textoOpcional, type Resultado } from "@/lib/acciones";
 import { CONDICIONES_IVA_CLIENTE, cambiarActivoClienteEnTx, crearClienteEnTx, editarClienteEnTx } from "@/lib/dominio/clientes";
 import { normalizarDni } from "@/lib/comprobantes";
+import type { Logro } from "@/lib/logros";
 
 export type { Resultado } from "@/lib/acciones";
 
@@ -55,7 +56,13 @@ function revalidarClientes(id?: string) {
   for (const ruta of ["/", "/ventas", "/ventas/nueva", "/reportes", "/cobranzas", "/listas-precios"]) revalidatePath(ruta);
 }
 
-export async function crearCliente(datos: DatosCliente): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+/**
+ * Alta de cliente. `logro` (opcional) viene solo con el primer cliente del negocio (momentos.md):
+ * se cuenta dentro de la misma transaccion del alta, asi es una sola vez por negocio.
+ */
+export async function crearCliente(
+  datos: DatosCliente,
+): Promise<{ ok: true; id: string; logro?: Logro } | { ok: false; error: string }> {
   const permiso = await verificarPermiso("editarClientes");
   if (!permiso.ok) return permiso;
   const parsed = esquemaCliente.safeParse(segunPermisoDeListas(permiso.usuario, datos));
@@ -63,9 +70,15 @@ export async function crearCliente(datos: DatosCliente): Promise<{ ok: true; id:
   if (!(await dbDisponible())) return { ok: false, error: SIN_BASE };
 
   let id: string;
+  let esElPrimero = false;
   try {
     const negocioId = await negocioActual();
-    ({ id } = await conNegocio(negocioId, (tx) => crearClienteEnTx(tx, negocioId, parsed.data)));
+    ({ id, esElPrimero } = await conNegocio(negocioId, async (tx) => {
+      const creado = await crearClienteEnTx(tx, negocioId, parsed.data);
+      // Cuenta todos los clientes del negocio (activos y de baja): 1 = el que se acaba de crear.
+      const total = await tx.cliente.count({ where: { negocioId } });
+      return { ...creado, esElPrimero: total === 1 };
+    }));
   } catch (error) {
     if (esCuitDuplicado(error)) return { ok: false, error: "Ya hay un cliente con ese CUIT." };
     console.error("[crearCliente]", error);
@@ -73,7 +86,7 @@ export async function crearCliente(datos: DatosCliente): Promise<{ ok: true; id:
   }
 
   revalidarClientes(id);
-  return { ok: true, id };
+  return esElPrimero ? { ok: true, id, logro: { tipo: "primerCliente", nombre: parsed.data.nombre } } : { ok: true, id };
 }
 
 export async function editarCliente(datos: DatosCliente & { id: string }): Promise<Resultado> {

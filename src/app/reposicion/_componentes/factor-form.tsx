@@ -26,7 +26,7 @@ export function FactorForm({ inicial, esModoDemo }: { inicial: string; esModoDem
           router.refresh();
         });
       }}
-      className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-3 p-4 sm:p-6"
     >
       <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="los cambios" />
@@ -45,14 +45,15 @@ export function FactorForm({ inicial, esModoDemo }: { inicial: string; esModoDem
         <BotonEnviar
           pendiente={pendiente}
           texto="Guardar"
+          ancho={false}
           disabled={!!errorFactor}
-          className="w-auto! shrink-0 px-5"
+          className="shrink-0"
         />
       </div>
       {errorFactor ? (
-        <p className="text-xs text-red-700">{errorFactor}</p>
+        <p className="text-body-sm font-semibold text-critico-text">{errorFactor}</p>
       ) : (
-        <p className="text-xs text-slate-500">
+        <p className="text-body-sm text-ink-muted">
           Con 2 se sugiere comprar hasta el doble del mínimo; con 1, justo hasta el mínimo. De 1 a 10.
         </p>
       )}

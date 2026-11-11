@@ -1,5 +1,6 @@
 import { fmtHorasMinutos, fmtMinutos, type Estimacion, type LineaEstimada, type Subtotal, type TotalPedido } from "@/lib/estimacion-tiempos";
 import { fmtNumero, type Dinero } from "@/lib/money";
+import { Aviso, Panel, TituloBloque } from "@/components/ui";
 
 /**
  * Resultado de `/produccion/estimar`. Solo tiempos (minutos y h:mm): no recibe ni
@@ -17,7 +18,7 @@ const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno
 /** "Basado en 5 trabajos · entre 40 min y 62 min" */
 function Respaldo({ e }: { e: Extract<Estimacion, { suficiente: true }> }) {
   return (
-    <p className="text-xs text-slate-500">
+    <p className="text-body-sm text-ink-muted">
       Basado en {plural(e.muestras, "trabajo", "trabajos")} · {rango(e.minutosMin, e.minutosMax)}
     </p>
   );
@@ -25,7 +26,7 @@ function Respaldo({ e }: { e: Extract<Estimacion, { suficiente: true }> }) {
 
 function SinDatos({ e, criterio }: { e: Extract<Estimacion, { suficiente: false }>; criterio: Criterio }) {
   return (
-    <p className="text-sm text-amber-800">
+    <p className="text-body-sm font-semibold text-aviso-text">
       Sin datos suficientes: hay {plural(e.muestras, "trabajo cargado", "trabajos cargados")} y hacen falta al menos {criterio.minMuestras}.
     </p>
   );
@@ -34,12 +35,12 @@ function SinDatos({ e, criterio }: { e: Extract<Estimacion, { suficiente: false 
 function Tiempo({ titulo, e, criterio }: { titulo: string; e: Estimacion; criterio: Criterio }) {
   return (
     <div>
-      <dt className="text-xs font-medium tracking-wide text-slate-500 uppercase">{titulo}</dt>
+      <dt className="eyebrow">{titulo}</dt>
       <dd className="mt-0.5">
         {e.suficiente ? (
           <>
-            <p className="font-semibold tabular-nums text-slate-900">
-              {fmtHorasMinutos(e.minutos)} h <span className="font-normal text-slate-500">({fmtMinutos(e.minutos)})</span>
+            <p className="monto-fila text-ink">
+              {fmtHorasMinutos(e.minutos)} h <span className="font-sans text-body-sm font-normal text-ink-muted">({fmtMinutos(e.minutos)})</span>
             </p>
             <Respaldo e={e} />
           </>
@@ -54,13 +55,13 @@ function Tiempo({ titulo, e, criterio }: { titulo: string; e: Estimacion; criter
 function TarjetaLinea({ linea, criterio }: { linea: LineaEstimada; criterio: Criterio }) {
   const suficiente = linea.maquinaTotal.suficiente && linea.manoObra.suficiente;
   return (
-    <li className="rounded-xl border border-slate-200 bg-white p-4">
+    <li className="tarjeta p-4">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="font-medium text-slate-900">{linea.nombre}</p>
-        <p className="shrink-0 text-sm tabular-nums text-slate-600">× {fmtNumero(linea.cantidad)}</p>
+        <p className="text-body font-semibold text-ink">{linea.nombre}</p>
+        <p className="shrink-0 text-body-sm tabular-nums text-ink-muted">× {fmtNumero(linea.cantidad)}</p>
       </div>
       {linea.maquinaTotal.suficiente ? (
-        <p className="mt-0.5 text-xs text-slate-500">
+        <p className="mt-0.5 text-body-sm text-ink-muted">
           {fmtMinutos(linea.maquinaTotal.minutosPorUnidad)} de máquina y{" "}
           {linea.manoObra.suficiente ? fmtMinutos(linea.manoObra.minutosPorUnidad) : "—"} de mano de obra por unidad (mediana)
         </p>
@@ -69,7 +70,7 @@ function TarjetaLinea({ linea, criterio }: { linea: LineaEstimada; criterio: Cri
       <dl className="mt-3 space-y-3">
         <Tiempo titulo="Máquinas (total)" e={linea.maquinaTotal} criterio={criterio} />
         {linea.maquinas.length > 0 ? (
-          <div className="space-y-2 border-l-2 border-slate-200 pl-3">
+          <div className="space-y-2 border-l-(length:--border-width) border-line-strong pl-3">
             {linea.maquinas.map((m) => (
               <Tiempo key={m.maquinaId} titulo={m.maquinaNombre} e={m} criterio={criterio} />
             ))}
@@ -78,7 +79,7 @@ function TarjetaLinea({ linea, criterio }: { linea: LineaEstimada; criterio: Cri
         <Tiempo titulo="Mano de obra" e={linea.manoObra} criterio={criterio} />
       </dl>
       {!suficiente && linea.trabajos === 0 ? (
-        <p className="mt-3 text-xs text-slate-500">Todavía no se cargó ningún trabajo de este artículo.</p>
+        <p className="mt-3 text-body-sm text-ink-muted">Todavía no se cargó ningún trabajo de este artículo.</p>
       ) : null}
     </li>
   );
@@ -87,20 +88,20 @@ function TarjetaLinea({ linea, criterio }: { linea: LineaEstimada; criterio: Cri
 function FilaTotal({ titulo, s, nota }: { titulo: string; s: Subtotal | null; nota?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-sm text-slate-700">
+      <dt className="text-body-sm text-ink">
         {titulo}
-        {nota ? <span className="block text-xs text-amber-800">{nota}</span> : null}
+        {nota ? <span className="block text-body-sm text-aviso-text">{nota}</span> : null}
       </dt>
       <dd className="text-right">
         {s ? (
           <>
-            <span className="font-semibold tabular-nums text-slate-900">{fmtHorasMinutos(s.minutos)} h</span>
-            <span className="block text-xs tabular-nums text-slate-500">
+            <span className="monto-fila text-ink">{fmtHorasMinutos(s.minutos)} h</span>
+            <span className="block text-body-sm tabular-nums text-ink-muted">
               {fmtMinutos(s.minutos)} · {rango(s.minutosMin, s.minutosMax)}
             </span>
           </>
         ) : (
-          <span className="text-sm text-amber-800">Sin datos</span>
+          <span className="text-body-sm font-semibold text-aviso-text">Sin datos</span>
         )}
       </dd>
     </div>
@@ -111,23 +112,23 @@ export function ResultadoEstimacion({ lineas, total, criterio }: { lineas: Linea
   const parcial = total.lineasSinDatos > 0;
   return (
     <section aria-labelledby="titulo-resultado" className="space-y-4">
-      <h2 id="titulo-resultado" className="text-sm font-semibold tracking-wide text-slate-600 uppercase">
+      <TituloBloque id="titulo-resultado" className="mb-0">
         Estimación
-      </h2>
+      </TituloBloque>
 
-      <div className="rounded-xl border border-slate-300 bg-white p-4">
-        <p className="mb-3 text-sm font-semibold text-slate-900">{parcial ? "Total parcial del pedido" : "Total del pedido"}</p>
+      <Panel compacto>
+        <p className="mb-3 font-display text-body-lg font-bold text-ink">{parcial ? "Total parcial del pedido" : "Total del pedido"}</p>
         {parcial ? (
-          <p role="status" className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          <Aviso tono="aviso" role="status" className="mb-3">
             {total.lineasConDatos === 0
               ? "Ninguna línea tiene datos suficientes: no hay total para mostrar."
               : `${plural(total.lineasSinDatos, "línea no suma", "líneas no suman")} porque no ${total.lineasSinDatos === 1 ? "tiene" : "tienen"} datos suficientes. Este total es solo de ${total.lineasConDatos === 1 ? "la otra línea" : `las otras ${total.lineasConDatos} líneas`}.`}
-          </p>
+          </Aviso>
         ) : null}
         <dl className="space-y-3">
           <FilaTotal titulo="Máquinas" s={total.maquinaTotal} />
           {total.porMaquina.length > 0 ? (
-            <div className="space-y-2 border-l-2 border-slate-200 pl-3">
+            <div className="space-y-2 border-l-(length:--border-width) border-line-strong pl-3">
               {total.porMaquina.map((m) => (
                 <FilaTotal key={m.maquinaId} titulo={m.maquinaNombre} s={m} nota={m.completo ? undefined : parcial ? "Parcial: no incluye las líneas sin datos" : "Parcial: falta algún dato de esta máquina"} />
               ))}
@@ -135,13 +136,13 @@ export function ResultadoEstimacion({ lineas, total, criterio }: { lineas: Linea
           ) : null}
           <FilaTotal titulo="Mano de obra" s={total.manoObra} />
         </dl>
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-body-sm text-ink-muted">
           Mediana por unidad de los últimos {criterio.n} trabajos de cada artículo (mínimo {criterio.minMuestras}), por la cantidad pedida.
           Tiempos medidos, no una promesa de entrega.
         </p>
-      </div>
+      </Panel>
 
-      <h2 className="text-sm font-semibold tracking-wide text-slate-600 uppercase">Por línea</h2>
+      <TituloBloque className="mb-0">Por línea</TituloBloque>
       <ul className="space-y-3">
         {lineas.map((l, i) => (
           <TarjetaLinea key={`${l.articuloId}-${i}`} linea={l} criterio={criterio} />

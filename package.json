@@ -86,6 +86,7 @@
     "smoke:despliegue": "tsx scripts/smoke-despliegue.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "decimal.js": "^10.6.0",

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarConfiguracion } from "@/app/configuracion/actions";
 import { AvisoDemo, BloqueError, BloqueExito, BotonEnviar, CampoDecimal, CampoSelect, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
+import { Aviso, TituloBloque } from "@/components/ui";
 import { canonico, IVAS_VALIDOS, validarCostoHora, validarMargen } from "@/lib/configuracion";
 
 export type ValoresConfiguracion = {
@@ -58,10 +59,10 @@ export function ConfiguracionForm({
           router.refresh();
         });
       }}
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
       <NotaObligatorio />
-      <h2 className="text-base font-semibold text-slate-900">Datos del negocio</h2>
+      <TituloBloque className="mb-0">Datos del negocio</TituloBloque>
 
       <CampoTexto
         etiqueta="Nombre del negocio"
@@ -83,13 +84,13 @@ export function ConfiguracionForm({
       />
 
       {cambiaCosto ? (
-        <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+        <Aviso tono="aviso" role="status">
           Cambiar el costo/hora cambia el costo y el margen de todas las recetas con mano de obra
           {articulosConManoObra > 0
             ? ` (${articulosConManoObra} ${articulosConManoObra === 1 ? "artículo" : "artículos"})`
             : ""}
           . Las ventas ya hechas conservan el costo con el que se registraron.
-        </p>
+        </Aviso>
       ) : null}
 
       <div className="grid grid-cols-2 gap-3">

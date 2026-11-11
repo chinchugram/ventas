@@ -5,6 +5,7 @@ import { pendienteResoluble, type ComprobanteDeVenta } from "@/lib/facturacion";
 import { usuarioActual } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { fmtFecha, fmtMoneda } from "@/lib/money";
+import { Aviso, Etiqueta, Panel, TituloBloque } from "@/components/ui";
 import { estadoFacturacionDeVenta } from "@/lib/queries/comprobantes";
 import { MarcaAmbiente } from "@/app/comprobantes/_componentes/marca-ambiente";
 import { ResolverPendienteBoton } from "@/app/comprobantes/_componentes/resolver-pendiente-boton";
@@ -12,7 +13,7 @@ import { FacturarBoton } from "./facturar-boton";
 
 const cual = (c: ComprobanteDeVenta) => `${NOMBRE_TIPO[c.tipo]} ${numeroFormateado(c.puntoVenta, c.numero)}`;
 
-const CLASE_ENLACE = "inline-flex min-h-11 items-center text-sm font-medium text-slate-700 underline underline-offset-2";
+const CLASE_ENLACE = "enlace inline-flex min-h-11 items-center";
 
 /**
  * Facturacion de la venta: en que estado esta (sin factura / emitida / con nota
@@ -41,35 +42,34 @@ export async function FacturarPanel({ ventaId }: { ventaId: string }) {
   const tipoPrevisto = avisos.tipoPrevisto ? NOMBRE_TIPO[avisos.tipoPrevisto] : null;
 
   return (
-    <section aria-label="Facturación" className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
-      <h2 className="mb-2 text-sm font-semibold text-slate-900">Facturación</h2>
+    <Panel como="section" className="mb-4 space-y-3">
+      <TituloBloque className="mb-0">Facturación</TituloBloque>
 
-      {situacion === "VENTA_ANULADA" ? <p className="text-sm text-slate-500">La venta está anulada: no se factura.</p> : null}
+      {situacion === "VENTA_ANULADA" ? <p className="text-body-sm text-ink-muted">La venta está anulada: no se factura.</p> : null}
 
       {situacion === "SIN_FACTURA" ? (
-        <p className="text-sm text-slate-600">
+        <p className="text-body text-ink-muted">
           Esta venta todavía no tiene factura.{tipoPrevisto ? ` Saldría una ${tipoPrevisto}.` : ""}
         </p>
       ) : null}
 
       {(situacion === "EMITIDA" || situacion === "CON_NOTA_CREDITO") && factura ? (
-        <div className="space-y-2 text-sm">
+        <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-              {situacion === "CON_NOTA_CREDITO" ? "Con nota de crédito" : "Facturada"}
-            </span>
+            <Etiqueta tono="ok">{situacion === "CON_NOTA_CREDITO" ? "Con nota de crédito" : "Facturada"}</Etiqueta>
             <MarcaAmbiente ambiente={factura.ambiente} />
           </div>
-          <p className="text-slate-800">
-            <span className="font-medium">{cual(factura)}</span> · {fmtFecha(factura.fecha)} · {fmtMoneda(factura.importeTotal)}
+          <p className="text-body text-ink">
+            <span className="font-semibold">{cual(factura)}</span> · {fmtFecha(factura.fecha)} ·{" "}
+            <span className="tabular-nums">{fmtMoneda(factura.importeTotal)}</span>
           </p>
           <Link href={`/comprobantes/${factura.id}`} className={CLASE_ENLACE}>
             Ver la factura
           </Link>
           {notaCredito ? (
-            <p className="text-slate-800">
+            <p className="text-body text-ink">
               {notaCredito.estado === "EMITIDO" ? "Anulada por la " : "Nota de crédito en curso: "}
-              <Link href={`/comprobantes/${notaCredito.id}`} className="font-medium underline underline-offset-2">
+              <Link href={`/comprobantes/${notaCredito.id}`} className="enlace">
                 {cual(notaCredito)}
               </Link>
               {notaCredito.estado === "PENDIENTE" ? " (esperando respuesta del emisor)" : ""}.
@@ -79,11 +79,11 @@ export async function FacturarPanel({ ventaId }: { ventaId: string }) {
       ) : null}
 
       {situacion === "PENDIENTE" && factura ? (
-        <div className="space-y-2 text-sm">
-          <p className="rounded-lg bg-amber-50 p-3 text-amber-800">
-            La {cual(factura)} está pendiente: el emisor no respondió y no se sabe si la autorizó. No se puede volver a facturar esta
+        <div className="space-y-2">
+          <Aviso tono="aviso" titulo="Esperando al emisor">
+            La {cual(factura)} está pendiente: el emisor no respondió y no sabemos si la autorizó. No se puede volver a facturar esta
             venta hasta resolverla.
-          </p>
+          </Aviso>
           <MarcaAmbiente ambiente={factura.ambiente} />
           <div>
             <Link href={`/comprobantes/${factura.id}`} className={CLASE_ENLACE}>
@@ -94,20 +94,20 @@ export async function FacturarPanel({ ventaId }: { ventaId: string }) {
             pendienteViejo ? (
               <ResolverPendienteBoton comprobanteId={factura.id} />
             ) : (
-              <p className="text-slate-500">Se creó hace instantes: puede estar esperando respuesta. Probá de nuevo en unos minutos.</p>
+              <p className="text-body-sm text-ink-muted">Se creó hace instantes: puede estar esperando respuesta. Probá de nuevo en unos minutos.</p>
             )
           ) : null}
         </div>
       ) : null}
 
       {situacion === "RECHAZADA" && factura ? (
-        <div className="space-y-2 text-sm">
-          <p className="rounded-lg bg-red-50 p-3 text-red-700">
-            La {cual(factura)} fue rechazada por el emisor.
+        <div className="space-y-2">
+          <Aviso tono="critico" titulo="El emisor rechazó la factura">
+            La {cual(factura)} no quedó autorizada.
             {factura.observaciones ? <span className="mt-1 block break-words whitespace-pre-line">{factura.observaciones}</span> : null}
-          </p>
+          </Aviso>
           <MarcaAmbiente ambiente={factura.ambiente} />
-          <p className="text-slate-600">
+          <p className="text-body-sm text-ink-muted">
             Una factura rechazada no vale: se puede volver a facturar la venta
             {tipoPrevisto ? ` (saldría una ${tipoPrevisto})` : ""}.
           </p>
@@ -118,41 +118,34 @@ export async function FacturarPanel({ ventaId }: { ventaId: string }) {
       ) : null}
 
       {resumen.puedeEmitir ? (
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2">
           {avisos.bloqueantes.map((a) => (
-            <div key={a.codigo} role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <Aviso key={a.codigo} tono="critico" role="alert">
               <p className="break-words">
                 {a.mensaje}
                 {a.codigo === "DATOS_FISCALES" && !puedeConfigurar ? " Pedile al dueño que los complete." : ""}
               </p>
               {a.codigo === "DATOS_FISCALES" && puedeConfigurar ? (
-                <Link href="/configuracion" className="mt-1 inline-flex min-h-11 items-center font-semibold underline underline-offset-2">
+                <Link href="/configuracion/datos-fiscales" className={CLASE_ENLACE}>
                   Ir a Configuración
                 </Link>
               ) : null}
               {a.codigo === "RECEPTOR" && puedeEditarClientes ? (
-                <Link
-                  href={`/clientes/${f.clienteId}/editar`}
-                  className="mt-1 inline-flex min-h-11 items-center font-semibold underline underline-offset-2"
-                >
+                <Link href={`/clientes/${f.clienteId}/editar`} className={CLASE_ENLACE}>
                   Corregir los datos del cliente
                 </Link>
               ) : null}
-            </div>
+            </Aviso>
           ))}
           {avisos.advertencias.map((a) => (
-            <p key={a} role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            <Aviso key={a} tono="aviso" role="status">
               {a}
-            </p>
+            </Aviso>
           ))}
         </div>
       ) : null}
 
-      {puedeEmitir ? (
-        <div className="mt-3">
-          <FacturarBoton ventaId={ventaId} visible={botonVisible} reintento={resumen.rechazos > 0} tipoPrevisto={tipoPrevisto} />
-        </div>
-      ) : null}
-    </section>
+      {puedeEmitir ? <FacturarBoton ventaId={ventaId} visible={botonVisible} reintento={resumen.rechazos > 0} tipoPrevisto={tipoPrevisto} /> : null}
+    </Panel>
   );
 }

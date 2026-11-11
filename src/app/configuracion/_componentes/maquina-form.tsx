@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearMaquina, editarMaquina } from "@/app/configuracion/actions";
 import { AvisoDemo, BloqueError, BotonEnviar, CampoDecimal, CampoNotas, CampoTexto, NotaObligatorio, useAccion } from "@/components/form";
+import { Aviso } from "@/components/ui";
 import { canonico, validarCostoHora, type DatosMaquina } from "@/lib/configuracion";
 
 type Valores = { nombre: string; costoHora: string; notas: string };
@@ -35,11 +36,11 @@ export function MaquinaForm({
       onSubmit={(e) => {
         e.preventDefault();
         enviar(valores, () => {
-          router.push("/configuracion");
+          router.push("/configuracion/maquinas");
           router.refresh();
         });
       }}
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
       <NotaObligatorio />
       <CampoTexto
@@ -60,9 +61,9 @@ export function MaquinaForm({
         required
       />
       {cambiaCosto && recetas > 0 ? (
-        <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+        <Aviso tono="aviso" role="status">
           Cambia el costo de {recetas} {recetas === 1 ? "receta" : "recetas"}. Las ventas ya hechas conservan su costo.
-        </p>
+        </Aviso>
       ) : null}
       <CampoNotas etiqueta="Notas" valor={valores.notas} alCambiar={cambiar("notas")} maxLength={500} />
 

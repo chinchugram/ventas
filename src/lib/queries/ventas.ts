@@ -148,13 +148,6 @@ export const ETIQUETA_ESTADO_PAGO: Record<EstadoPago, string> = {
   PAGADA: "Pagada",
 };
 
-export const ESTILO_ESTADO_PAGO: Record<EstadoPago, string> = {
-  AL_DIA: "bg-emerald-50 text-emerald-700",
-  PARCIAL: "bg-amber-50 text-amber-700",
-  PENDIENTE: "bg-red-50 text-red-700",
-  PAGADA: "bg-emerald-50 text-emerald-700",
-};
-
 export const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",

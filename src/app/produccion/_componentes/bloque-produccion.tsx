@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { usuarioActual } from "@/lib/auth";
 import { fmtNumero } from "@/lib/money";
 import { puede } from "@/lib/permisos";
 import { getProduccionDeVenta } from "@/lib/queries/produccion";
+import { Boton, Etiqueta, ListaPanel, TituloBloque } from "@/components/ui";
 
 /**
  * Bloque "Producción" del detalle de una venta: por cada linea, si el trabajo esta
@@ -16,29 +16,28 @@ export async function BloqueProduccion({ ventaId }: { ventaId: string }) {
   if (!lineas || lineas.length === 0) return null;
 
   return (
-    <section aria-label="Producción" className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
-      <h2 className="mb-2 text-sm font-semibold text-slate-900">Producción</h2>
-      <ul className="divide-y divide-slate-100 text-sm">
+    <section aria-label="Producción" className="mb-4">
+      <TituloBloque>Producción</TituloBloque>
+      <ListaPanel>
         {lineas.map((l) => (
-          <li key={l.ventaItemId} className="flex items-center justify-between gap-3 py-2">
-            <div className="min-w-0">
-              <p className="break-words text-slate-900">
-                {l.descripcion} <span className="text-slate-500">× {fmtNumero(l.cantidad)}</span>
+          <li key={l.ventaItemId} className="flex items-center justify-between gap-3 p-4">
+            <div className="min-w-0 space-y-1">
+              <p className="text-body break-words text-ink">
+                {l.descripcion} <span className="text-ink-muted tabular-nums">× {fmtNumero(l.cantidad)}</span>
               </p>
-              <p className={l.trabajoId ? "text-xs font-medium text-emerald-800" : "text-xs font-medium text-amber-800"}>
-                {l.trabajoId ? "Cargado" : "Sin cargar"}
-              </p>
+              <Etiqueta tono={l.trabajoId ? "ok" : "aviso"}>{l.trabajoId ? "Cargado" : "Sin cargar"}</Etiqueta>
             </div>
-            <Link
+            <Boton
               href={l.trabajoId ? `/produccion/trabajo/${l.trabajoId}` : `/produccion/cargar/${l.ventaItemId}`}
-              className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800"
+              variante={l.trabajoId ? "fantasma" : "secundario"}
+              className="shrink-0"
             >
               {l.trabajoId ? "Ver trabajo" : "Cargar"}
               <span className="sr-only"> de {l.descripcion}</span>
-            </Link>
+            </Boton>
           </li>
         ))}
-      </ul>
+      </ListaPanel>
     </section>
   );
 }

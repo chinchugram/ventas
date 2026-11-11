@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { dbDisponible } from "@/lib/prisma";
 import { getListasParaElegir } from "@/lib/queries/listas-precios";
 import { puede, requierePermisoPagina } from "@/lib/permisos";
-import { Seccion } from "@/components/ui";
+import { Boton, Seccion } from "@/components/ui";
 import { ClienteForm } from "../_componentes/cliente-form";
 
 export const dynamic = "force-dynamic";
@@ -18,15 +17,13 @@ export default async function NuevoClientePage() {
   return (
     <>
       <Seccion
+        epigrafe="Quién te compra"
         titulo="Nuevo cliente"
         descripcion="Solo el nombre es obligatorio"
         accion={
-          <Link
-            href="/clientes"
-            className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-          >
+          <Boton href="/clientes" variante="secundario">
             Volver
-          </Link>
+          </Boton>
         }
       />
       <ClienteForm esModoDemo={esModoDemo} listas={listas?.map((l) => ({ valor: l.id, etiqueta: l.nombre }))} />

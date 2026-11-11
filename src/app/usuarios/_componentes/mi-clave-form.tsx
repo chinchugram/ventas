@@ -41,7 +41,7 @@ export function MiClaveForm({ esModoDemo = false }: { esModoDemo?: boolean }) {
           router.refresh();
         });
       }}
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
+      className="tarjeta space-y-4 p-4 sm:p-6"
     >
       <NotaObligatorio />
       <AvisoDemo visible={esModoDemo} que="la clave" />

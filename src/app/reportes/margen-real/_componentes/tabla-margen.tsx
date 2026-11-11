@@ -4,6 +4,8 @@
  * pintar filas. El estado no se dice solo con color: lleva una etiqueta de texto.
  */
 
+import { Etiqueta, type Tono } from "@/components/ui";
+
 export type EstadoDesvio = "sobrecosto" | "ahorro" | "igual";
 
 export type FilaMargen = {
@@ -19,38 +21,38 @@ const ETIQUETA: Record<EstadoDesvio, string | null> = {
   igual: null,
 };
 
-const CLASE_BADGE: Record<EstadoDesvio, string> = {
-  sobrecosto: "bg-amber-100 text-amber-800",
-  ahorro: "bg-emerald-100 text-emerald-800",
-  igual: "",
+const TONO: Record<EstadoDesvio, Tono> = {
+  sobrecosto: "aviso",
+  ahorro: "ok",
+  igual: "neutro",
 };
 
 const CLASE_FILA: Record<EstadoDesvio, string> = {
-  sobrecosto: "bg-amber-50",
-  ahorro: "bg-emerald-50",
+  sobrecosto: "bg-aviso-soft",
+  ahorro: "bg-ok-soft",
   igual: "",
 };
 
 const CLASE_TARJETA: Record<EstadoDesvio, string> = {
-  sobrecosto: "border-amber-300 bg-amber-50",
-  ahorro: "border-emerald-300 bg-emerald-50",
-  igual: "border-slate-200 bg-white",
+  sobrecosto: "border-aviso-line bg-aviso-soft",
+  ahorro: "border-ok-line bg-ok-soft",
+  igual: "",
 };
 
 function Badge({ estado }: { estado: EstadoDesvio }) {
   const texto = ETIQUETA[estado];
   if (!texto) return null;
   return (
-    <span className={`ml-2 inline-block rounded-md px-1.5 py-0.5 align-middle text-xs font-semibold ${CLASE_BADGE[estado]}`}>
+    <Etiqueta tono={TONO[estado]} className="ml-2 align-middle">
       {texto}
-    </span>
+    </Etiqueta>
   );
 }
 
 export function TablaMargen({ columnas, filas }: { columnas: string[]; filas: FilaMargen[] }) {
   return (
     <>
-      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white sm:block">
+      <div className="tarjeta hidden overflow-x-auto sm:block">
         <table>
           <thead>
             <tr>
@@ -65,7 +67,7 @@ export function TablaMargen({ columnas, filas }: { columnas: string[]; filas: Fi
             {filas.map((f) => (
               <tr key={f.clave} className={CLASE_FILA[f.estado] || undefined}>
                 {f.celdas.map((celda, j) => (
-                  <td key={j} className={j === 0 ? "font-medium text-slate-900" : "tabular-nums"}>
+                  <td key={j} className={j === 0 ? "font-semibold text-ink" : "tabular-nums"}>
                     {celda}
                     {j === 0 ? <Badge estado={f.estado} /> : null}
                   </td>
@@ -78,16 +80,16 @@ export function TablaMargen({ columnas, filas }: { columnas: string[]; filas: Fi
 
       <div className="space-y-2 sm:hidden">
         {filas.map((f) => (
-          <div key={f.clave} className={`rounded-xl border p-3 ${CLASE_TARJETA[f.estado]}`}>
-            <p className="font-medium text-slate-900">
+          <div key={f.clave} className={`tarjeta p-3 ${CLASE_TARJETA[f.estado]}`}>
+            <p className="font-semibold text-ink">
               {f.celdas[0]}
               <Badge estado={f.estado} />
             </p>
             <dl className="mt-2 space-y-1">
               {f.celdas.slice(1).map((celda, j) => (
                 <div key={j} className="flex items-baseline justify-between gap-3">
-                  <dt className="text-xs text-slate-500">{columnas[j + 1]}</dt>
-                  <dd className="text-sm font-medium tabular-nums text-slate-800">{celda}</dd>
+                  <dt className="eyebrow">{columnas[j + 1]}</dt>
+                  <dd className="text-body-sm font-semibold tabular-nums text-ink">{celda}</dd>
                 </div>
               ))}
             </dl>

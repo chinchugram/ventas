@@ -3,7 +3,7 @@
 // Es solo una ayuda mientras se tipea: el servidor vuelve a validar todo. Si las reglas
 // de `auth-pura` cambian, `npm run test:usuarios` avisa (compara las dos con ejemplos).
 
-export const CLAVE_MIN = 10;
+export const CLAVE_MIN = 9;
 
 export function normalizarUsuario(usuario: string): string {
   return usuario.normalize("NFC").trim().toLowerCase();

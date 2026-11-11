@@ -1,4 +1,4 @@
-import { Seccion } from "@/components/ui";
+import { Aviso, Seccion } from "@/components/ui";
 import { MAX_LINEAS } from "@/lib/estimacion-tiempos";
 import { requierePermisoPagina } from "@/lib/permisos";
 import { estimarTiempos, getArticulosParaEstimar } from "@/lib/queries/estimacion-tiempos";
@@ -33,17 +33,20 @@ export default async function EstimarTiemposPage({ searchParams }: { searchParam
 
   return (
     <>
-      <Seccion titulo="Estimar tiempos" descripcion="Cuántas horas de máquina y de mano de obra lleva un pedido, según trabajos anteriores" />
+      <Seccion
+        epigrafe="Producción"
+        titulo="Estimar tiempos"
+        descripcion="Cuántas horas de máquina y de mano de obra lleva un pedido, según trabajos anteriores."
+      />
 
       {estadoDemo().activo ? (
-        <p role="status" className="rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
-          Modo demostración: no hay base de datos conectada, así que no hay trabajos anteriores con los que estimar. Conectá la base para usar
-          esta pantalla.
-        </p>
+        <Aviso tono="aviso" role="status" titulo="Modo demostración.">
+          No hay base de datos conectada, así que no hay trabajos anteriores con los que estimar. Conectá la base para usar esta pantalla.
+        </Aviso>
       ) : articulos.length === 0 ? (
-        <p role="status" className="rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
-          Para estimar hace falta al menos un artículo activo.
-        </p>
+        <Aviso tono="aviso" role="status" titulo="Todavía no hay con qué estimar.">
+          Para estimar hace falta al menos un artículo activo en el catálogo.
+        </Aviso>
       ) : (
         <div className="space-y-6 pb-8">
           <EstimadorForm articulos={articulos} inicial={lineas} />
@@ -58,14 +61,13 @@ async function Resultado({ lineas }: { lineas: { articuloId: string; cantidad: s
   const r = await estimarTiempos(lineas);
   if (!r.ok) {
     return (
-      <div role="alert" className="rounded-lg bg-red-50 p-4 text-sm text-red-800">
-        <p className="font-medium">No se pudo estimar:</p>
-        <ul className="mt-1 list-disc pl-5">
+      <Aviso tono="critico" role="alert" titulo="No se pudo estimar.">
+        <ul className="list-disc pl-5">
           {r.errores.map((e) => (
             <li key={e}>{e}</li>
           ))}
         </ul>
-      </div>
+      </Aviso>
     );
   }
   return <ResultadoEstimacion lineas={r.lineas} total={r.total} criterio={r.criterio} />;
